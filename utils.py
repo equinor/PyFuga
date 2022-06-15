@@ -1,6 +1,7 @@
 import numpy as np
 from PyPreludium.constants import Cm1, Cm2
 import xarray as xr
+from numpy import newaxis as na
 
 
 def get_beta(x):
@@ -76,15 +77,110 @@ def read_complex(*args, **kwargs):
     return ds.isel(ReIm=0) + 1j * ds.isel(ReIm=1)
 
 
-def compare(A):
-    B = np.fromfile('a.dat', dtype=np.complex128).reshape(6, -1).T
+def GMRES(prev, next):
+        # use params, only: mykind,n
+        # use contr, only: Tprelutnode
+        # use vector_functions, only: outer
+        # implicit none
+
+        # Modified Gram-Schmidt ortonormalization
+        # Y, V, R and invR are nxn matrices
+        # Columns of Y are linearly independent vectors (the input)
+        # Columns of V form an orthonormal basis (V is unitary)
+        # R and invR are lower triangular
+        # invR is the inverse of R
+        # Y=V R*  where R* is the conjugate transpose of R
+
+        # type(Tprelutnode),pointer :: p
+        # complex(mykind), dimension(n,n) :: B
+        # real(mykind) aux
+        # integer(4) i,j,k
+        # real(mykind) norm
+
+        # aux = np.linalg.norm(prev.Yright, axis=0)
+        # next.dat.Yleft = Yleft = prev.Yright / aux
+        # next.dat.Rleft = np.diag(aux)
+        # for j in range(5):
+        #     next.dat.Rleft[j, j + 1:] = np.conj(Yleft[:, j]) @ Yleft[:, j + 1:]
+        #     Yleft[:, j + 1:] = Yleft[:, j + 1:] - (Yleft[:, j] * np.conj(Yleft[:, j])[:, na]) @ Yleft[:, j + 1:]
+
+    next.Yleft = Yleft = prev.Yright
+    next.Rleft = np.zeros_like(Yleft)
+    for j in range(5):
+        aux = np.linalg.norm(Yleft[:, j])
+        Yleft[:, j] = Yleft[:, j] / aux
+        next.Rleft[j, j] = aux
+        next.Rleft[j, j + 1:] = np.conj(Yleft[:, j])@Yleft[:, j + 1:]
+        Yleft[:, j + 1:] = Yleft[:, j + 1:] - \
+            np.dot((Yleft[:, j] * np.conj(Yleft[:, j])[:, na]).T, Yleft[:, j + 1:])
+
+    aux = np.linalg.norm(Yleft[:, -1])
+    Yleft[:, -1] = Yleft[:, -1] / aux
+    next.Rleft[-1, -1] = aux
+
+    # B = np.zeros_like(Yleft)
+    # for j in range(1, 6):
+    #     B[:j, j] = next.dat.Rleft[:j, j] / next.dat.Rleft[j, j]
+    B = np.triu(next.Rleft / np.diag(next.Rleft), 1)  # upper triangle without diagonal
+    # prev.dat.Rright = np.diag(1 / np.diag(next.dat.Rleft))
+    # for i in range(6):
+    #     for j in range(i + 1, 6):
+    #         for k in range(i, j):
+    #             prev.dat.Rright[i, j] = prev.dat.Rright[i, j] - prev.dat.Rright[i, k] * B[k, j]
+
+    prev.Rright = np.diag(1 / np.diag(next.Rleft))
+    for i in range(6):
+        for j in range(i + 1, 6):
+            prev.Rright[i, j] -= np.sum(prev.Rright[i, i:j] * B[i:j, j])
+
+    next.Rleft = np.conj(next.Rleft.T)
+    prev.Rright = np.conj(prev.Rright.T)
+
+
+def compare(A, n):
+    return
+    B = np.fromfile(n + '.dat', dtype=np.complex128).reshape(6, -1).T
     A = np.reshape(A, B.shape)
 
-    aerr = np.abs(A - B)
-    rerr = np.abs(aerr / np.mean([A, B], 0))
-    err = rerr
-    i, j = np.unravel_index(np.argmax(err), B.shape)
-    print(err.max(), (i, j))
-    print("fortran", B[i, j])
-    print("python", A[i, j])
-    print()
+    def comp(a, b):
+        aerr = np.abs(a - b)
+        rerr = np.abs(aerr / np.mean([a, b], 0))
+        rerr[aerr == 0] = 0
+        assert np.abs(a[b == 0]).max() < 1e-50
+        assert np.abs(a[b == 0]).max() < 1e-50
+        rerr[(a == 0) | (b == 0)] = 0
+        err = aerr
+        i, j = np.unravel_index(np.argmax(err), b.shape)
+        import numpy.testing as npt
+        try:
+            assert np.abs(rerr).max() < 1e-10
+        except Exception:
+            print(err.max(), (i, j))
+            print("fortran", B[i, j])
+            print("python", A[i, j])
+            print()
+            raise
+
+    comp(A.real, B.real)
+    comp(A.imag, B.imag)
+
+
+def rel_err(A, B):
+    def comp(a, b):
+        aerr = np.abs(a - b)
+        rerr = np.abs(aerr / np.mean([a, b], 0))
+        rerr[aerr == 0] = 0
+        # if np.sum(b == 0):
+        #     assert np.abs(a[b == 0]).max() < 1e-50
+        # if np.sum(a == 0):
+        #     assert np.abs(b[a == 0]).max() < 1e-50
+        rerr[(a == 0) | (b == 0)] = 0
+
+        i, j = np.unravel_index(np.argmax(aerr), b.shape)
+        print(aerr.max(), (i, j))
+
+        i, j = np.unravel_index(np.argmax(rerr), b.shape)
+        print(rerr.max(), (i, j))
+
+    comp(A.real, B.real)
+    comp(A.imag, B.imag)

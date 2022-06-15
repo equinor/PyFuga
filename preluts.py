@@ -1,45 +1,44 @@
 import numpy as np
 from pathlib import Path
-from PyPreludium.utils import get_beta, psi, phi, dphiu, get_new_h2, save_complex, compare
+from PyPreludium.utils import get_beta, psi, phi, dphiu, get_new_h2, save_complex, compare, GMRES, rel_err
 from PyPreludium.constants import Cm1, n_eq, kappa, kappa2, pscale, max_recs, Ythreshold
 from numpy import newaxis as na
 from tqdm import tqdm
 from py_wake.utils.profiling import timeit
-
+import struct
+import xarray as xr
+from PyPreludium.tests.test_files import tfp
 #np.set_printoptions(precision=2, linewidth=200)
 
 
-# class Prelut():
-#     def __init__(self, ):
+# left: (sub)station (lower height)
+# right: (sub)station + 1 (higher height)
+# (Y+).x = b is a set of boundary condition equations.
+# R is a Gram-Smidt (or QR) transformation of Y
+# dyxu0 = Delta_b for constant longitudinal forcing
+# dyxu1 = Delta_b for longitudinal forcing proportional to kz
+# Additional if transversal and/or vertical forcing is present:
+#  dyxv0 = Delta_b for constant transversal forcing
+#  dyxv1 = Delta_b for transversal forcing proportional to kz
+#  dyxw0 = Delta_b for constant vertical forcing
+#  dyxw1 = Delta_b for vertical forcing proportional to kz
+# Delta_b = integral of (Y+).f between two  (sub)stations
+# where f is the wind turbine forcing.
 
-class NodeData():
-      # left: (sub)station (lower height)
-      # right: (sub)station + 1 (higher height)
-      # (Y+).x = b is a set of boundary condition equations.
-      # R is a Gram-Smidt (or QR) transformation of Y
-      # dyxu0 = Delta_b for constant longitudinal forcing
-      # dyxu1 = Delta_b for longitudinal forcing proportional to kz
-      # Additional if transversal and/or vertical forcing is present:
-      #  dyxv0 = Delta_b for constant transversal forcing
-      #  dyxv1 = Delta_b for transversal forcing proportional to kz
-      #  dyxw0 = Delta_b for constant vertical forcing
-      #  dyxw1 = Delta_b for vertical forcing proportional to kz
-      # Delta_b = integral of (Y+).f between two  (sub)stations
-      # where f is the wind turbine forcing.
-    def __init__(self, beta):
+
+class PrelutNode():
+    def __init__(self):
         self.dyxu0 = np.zeros(n_eq, dtype=np.complex128)
         self.dyxv0 = np.zeros(n_eq, dtype=np.complex128)
         self.dyxw0 = np.zeros(n_eq, dtype=np.complex128)
         self.dyxu1 = np.zeros(n_eq, dtype=np.complex128)
         self.dyxv1 = np.zeros(n_eq, dtype=np.complex128)
         self.dyxw1 = np.zeros(n_eq, dtype=np.complex128)
-        level = 0
-        # complex(mykind), dimension(n,n) :: Yleft,Rleft,Rright
-        # complex(mykind), dimension(n) :: dyxu0,dyxu1,dyxv0,dyxv1,dyxw0, &
-        #                                  dyxw1
-        # real(mykind) sleft,sright
-        # integer(4) level
 
+
+class PrelutNodeFirst(PrelutNode):
+    def __init__(self, beta):
+        PrelutNode.__init__(self)
         sinbeta, cosbeta = np.sin(beta), np.cos(beta)
         self.Yleft = np.array([[-sinbeta, 0, cosbeta, 0, 0, 0],
                                [cosbeta, 0, sinbeta, 0, 0, 0],
@@ -47,25 +46,15 @@ class NodeData():
                                [0, -sinbeta, 0, cosbeta, 0, 0],
                                [0, cosbeta, 0, sinbeta, 0, 0],
                                [0, 0, 0, 0, 0, 1]], dtype=np.complex128).T
-        self.Rleft = np.zeros_like(self.Yleft)
+        self.Rleft = np.eye(6, dtype=np.complex128)
 
 
-class PrelutNode():
-    _next = None
+class PrelutNodeNext(PrelutNode):
+    def __init__(self, previuos_node):
+        PrelutNode.__init__(self)
+        self.GMRES(previuos_node)
 
-    def __init__(self, beta):
-        self.dat = NodeData(beta)
-
-    @property
-    def next(self):
-        return self._next
-
-    @next.setter
-    def next(self, node):
-        self._next = node
-        self.GMRES()
-
-    def GMRES(self):
+    def GMRES(self, prev):
         # use params, only: mykind,n
         # use contr, only: Tprelutnode
         # use vector_functions, only: outer
@@ -85,67 +74,50 @@ class PrelutNode():
         # integer(4) i,j,k
         # real(mykind) norm
 
-        next = self.next
-        # aux = np.linalg.norm(self.Yright, axis=0)
-        # next.dat.Yleft = Yleft = self.Yright / aux
+        # aux = np.linalg.norm(prev.Yright, axis=0)
+        # next.dat.Yleft = Yleft = prev.Yright / aux
         # next.dat.Rleft = np.diag(aux)
         # for j in range(5):
         #     next.dat.Rleft[j, j + 1:] = np.conj(Yleft[:, j]) @ Yleft[:, j + 1:]
         #     Yleft[:, j + 1:] = Yleft[:, j + 1:] - (Yleft[:, j] * np.conj(Yleft[:, j])[:, na]) @ Yleft[:, j + 1:]
 
-        next.dat.Yleft = Yleft = self.Yright
-        next.dat.Rleft = np.zeros_like(Yleft)
+        Yleft = prev.Yright.copy()
+        self.Rleft = np.zeros_like(Yleft)
         for j in range(5):
             aux = np.linalg.norm(Yleft[:, j])
             Yleft[:, j] = Yleft[:, j] / aux
-            next.dat.Rleft[j, j] = aux
-            next.dat.Rleft[j, j + 1:] = np.conj(Yleft[:, j])@Yleft[:, j + 1:]
+            self.Rleft[j, j] = aux
+            self.Rleft[j, j + 1:] = np.conj(Yleft[:, j])@Yleft[:, j + 1:]
             Yleft[:, j + 1:] = Yleft[:, j + 1:] - \
                 np.dot((Yleft[:, j] * np.conj(Yleft[:, j])[:, na]).T, Yleft[:, j + 1:])
 
         aux = np.linalg.norm(Yleft[:, -1])
         Yleft[:, -1] = Yleft[:, -1] / aux
-        next.dat.Rleft[-1, -1] = aux
+        self.Rleft[-1, -1] = aux
 
         # B = np.zeros_like(Yleft)
         # for j in range(1, 6):
-        #     B[:j, j] = next.dat.Rleft[:j, j] / next.dat.Rleft[j, j]
-        B = np.triu(next.dat.Rleft / np.diag(next.dat.Rleft), 1)  # upper triangle without diagonal
-        # self.dat.Rright = np.diag(1 / np.diag(next.dat.Rleft))
+        #     B[:j, j] = self.dat.Rleft[:j, j] / self.dat.Rleft[j, j]
+        B = np.triu(self.Rleft / np.diag(self.Rleft), 1)  # upper triangle without diagonal
+        # prev.dat.Rright = np.diag(1 / np.diag(self.dat.Rleft))
         # for i in range(6):
         #     for j in range(i + 1, 6):
         #         for k in range(i, j):
-        #             self.dat.Rright[i, j] = self.dat.Rright[i, j] - self.dat.Rright[i, k] * B[k, j]
+        #             prev.dat.Rright[i, j] = prev.dat.Rright[i, j] - prev.dat.Rright[i, k] * B[k, j]
 
-
-# 0 Rright 3.3887095708951127e-13 2.9769347466917524 (4, 5)
-# (2.889161255556684e-23-1.5021795710389924e-10j)
-# (1.1415144561211173e-23-1.4987908614680973e-10j)
-        self.dat.Rright = np.diag(1 / np.diag(next.dat.Rleft))
+        prev.Rright = np.diag(1 / np.diag(self.Rleft))
         for i in range(6):
             for j in range(i + 1, 6):
-                self.dat.Rright[i, j] -= np.sum(self.dat.Rright[i, i:j] * B[i:j, j])
+                prev.Rright[i, j] -= np.sum(prev.Rright[i, i:j] * B[i:j, j])
 
-        next.dat.Rleft = np.conj(next.dat.Rleft.T)
-        self.dat.Rright = np.conj(self.dat.Rright.T)
+        self.Rleft = np.conj(self.Rleft.T)
+        prev.Rright = np.conj(prev.Rright.T)
+        self.Yleft = Yleft
 
-
-class PrelutData():
-    def __init__(self, kz0, kzmax, accgoal):
-        self.smaxx = np.log(np.minimum(kzmax / kz0, 1e8))
-
-        self.accgoal = accgoal
-
-    #
-    # character(len=18)::filename
-    #   real(mykind) ds,smaxx,kz0,beta,kzmax,accgoal
-
-      # complex(mykind), dimension(n,n) :: Yright
-      # complex(mykind), dimension(n) :: x,Yx
-      # type(Tprelutnode), pointer :: prev,next
+        # rel_err(ref.sel(i=prev.level + 1).Yleft.T.values, self.Yleft)
 
 
-class PreLUT():
+class PreLUTGenerator():
     # Internt benyttes variablene:
     # u,v,w,p og t=u/kappa for kz<kzm
     # u,v,w,p og kz        for kz>kzm
@@ -155,85 +127,83 @@ class PreLUT():
     # Level incrementeres ved stationer med s=j*ds
     # Der orthonormaliseres ved hver station og gemmes i en hægtet liste.
     # Bruger anden ordens R-K
-    def __init__(self, zeta0, kz0, beta, kzmax, accgoal, ds):
-        self.dat = PrelutData(kz0, kzmax, accgoal)
-        self.first = PrelutNode(beta)
+    def __init__(self, zeta0, kz0, beta, kzmax, ds, accgoal):
+        self.nodes = [PrelutNodeFirst(beta)]
+
         self.zeta0 = zeta0
         self.kz0 = kz0
         self.beta = beta
         self.ds = ds
         self.cosbeta = np.cos(beta)
         self.sinbeta = np.sin(beta)
-        self.acc = self.dat.accgoal / self.dat.smaxx
+        self.accgoal = accgoal
+
+        self.smaxx = np.log(np.minimum(kzmax / kz0, 1e8))
+        self.acc = accgoal / self.smaxx
 
     def make_prelut(self):
-
+        first = self.nodes[0]
         h = np.sqrt(self.acc * 6 / 3.125)
         self.lastkz = self.kz0
 
-        yerr = self.rk2(self.first, 0, h, j=1)
-        h = get_new_h2(h, self.acc, yerr, self.first.Yright)
-        self.first.dat.Rleft = np.eye(6, dtype=np.complex128)
-        sm = np.minimum(self.dat.smaxx, self.sm())
-        self.first.dat.sleft = 0
-        self.first.dat.sright = self.ds
-        segment = self.first
+        yerr = self.rk2(first, first.Yleft, 0, h, j=1)
+        first.dyxu0 = 0
+        first.dyxv0 = 0
+        first.dyxw0 = 0
+        first.dyxu1 = 0
+        first.dyxv1 = 0
+        first.dyxw1 = 0
+        h = get_new_h2(h, self.acc, yerr, first.Yright)
+        sm = np.minimum(self.smaxx, self.smaxx)
+        first.sleft = 0
+        first.sright = self.ds
         s1 = 0.0
         s2 = self.ds
-        s_lst = np.r_[np.arange(0, sm, self.ds), sm, np.arange(sm, self.dat.smaxx)]
+        s_lst = np.r_[np.arange(0, sm, self.ds), sm, np.arange(sm, self.smaxx)]
 
         for i, (s1, s2) in enumerate(zip(s_lst, s_lst[1:][:max_recs])):
-            segment.dat.level = i
-            # segment%dat%dyxu0=cmplx(0.0,0.0,mykind)
-            # segment%dat%dyxv0=cmplx(0.0,0.0,mykind)
-            # segment%dat%dyxw0=cmplx(0.0,0.0,mykind)
-            # segment%dat%dyxu1=cmplx(0.0,0.0,mykind)
-            # segment%dat%dyxv1=cmplx(0.0,0.0,mykind)
-            # segment%dat%dyxw1=cmplx(0.0,0.0,mykind)
-            segment.dat.sleft = s1
-            segment.dat.sright = s2
+            segment = self.nodes[-1]
+            segment.level = i
+
+            segment.sleft = s1
+            segment.sright = s2
             h = self.solve2(segment, h, yerr, self.acc, 1)
-            segment.next = PrelutNode(self.beta)
-            segment.next.prev = segment
-            segment = segment.next
+            if s2 < self.smaxx:
+
+                self.nodes.append(PrelutNodeNext(segment))
 
             # allocate(segment%next)
             # segment%next%prev=>segment
             # call GMRES(segment)
             # segment=>segment%next
 
-        segment.dat.level = i
-        segment.dat.sleft = s1
-        segment.dat.sright = segment.dat.sleft = s1
-        segment.Yright = segment.dat.Yleft
-        # segment%dat%dyxu0=cmplx(0.0,0.0,mykind)
-        # segment%dat%dyxv0=cmplx(0.0,0.0,mykind)
-        # segment%dat%dyxw0=cmplx(0.0,0.0,mykind)
-        # segment%dat%dyxu1=cmplx(0.0,0.0,mykind)
-        # segment%dat%dyxv1=cmplx(0.0,0.0,mykind)
-        # segment%dat%dyxw1=cmplx(0.0,0.0,mykind)
-        segment.dat.Rright = np.zeros_like(segment.dat.Yleft)
-        self.last = segment
+        PrelutNodeNext(self.nodes[-1])
+        # segment.dat.level = i
+        # segment.dat.sleft = s1
+        # segment.dat.sright = segment.dat.sleft = s1
+        # segment.Yright = segment.dat.Yleft
 
-        def get_res(node, k):
-            if node.next is None:
-                return [getattr(node.dat, k)]
-            else:
-                return [getattr(node.dat, k)] + get_res(node.next, k)
+        # segment.dat.Rright = np.zeros_like(segment.dat.Yleft)
+        # self.last = segment
 
-        import xarray as xr
-        level = get_res(self.first, 'level')
+        # def get_res(node, k):
+        #     if node.next is None:
+        #         return [getattr(node.dat, k)]
+        #     else:
+        #         return [getattr(node.dat, k)] + get_res(node.next, k)
+
         var_names = ['Yleft', 'Rleft', 'Rright',
                      'dyxu0', 'dyxu1', 'dyxv0', 'dyxv1', 'dyxw0', 'dyxw1',
-                     'sleft', 'sright']
-        var_values = [np.array(get_res(self.first, k)) for k in var_names]
-        dims = ('level', 'm', 'n')
-        return xr.Dataset({n: (dims[:len(v.shape)], v) for n, v in zip(var_names, var_values)},
-                          coords={'level': level}).transpose('level', 'n', 'm', missing_dims='ignore')
+                     'sleft', 'sright', 'level']
+        var_values = ([np.moveaxis([getattr(n, k) for n in self.nodes], 1, 2) for k in var_names[:3]] +
+                      [np.array([getattr(n, k) for n in self.nodes]) for k in var_names[3:]])
+        return xr.Dataset({**{n: (('i', 'j', 'k')[:len(v.shape)], v)
+                              for n, v in zip(var_names, var_values)},
+                           'zeta0': self.zeta0, 'beta': self.beta, 'kz0': self.kz0},
+                          attrs={'ds': 0.05, 'accgoal': self.accgoal, })
 
-    def rk2(self, node, x, h, j):
-        dat = node.dat
-        y = dat.Yleft
+    def rk2(self, node, y, x, h, j):
+
         B1 = 4.0 / 3.0
         B2 = -1.0 / 3.0
         c1 = 1.0 / 6.0
@@ -242,21 +212,40 @@ class PreLUT():
         c4 = 2.0 / 6.0
 
         def rk2step(t1, h, Ay, y1, j):
-            ym = y1 + h * 0.5 * Ay
+            #compare(Ay, 'rk2step_Ay')
+            #compare(y1, 'rk2step_y1')
+            ym = y1 + h * Ay / 2
+            #compare(ym, 'rk2step_ym')
             A = self.getM(t1 + h * 0.5, j)
-            return y1 + h * np.dot(A, ym)
+            #compare(A, 'rk2step_A')
+            compare(np.dot(A, ym), 'rk2step_Aym')
+            y2 = y1 + h * np.dot(A, ym)
+            #compare(y2, 'rk2step_y2')
+            return y2
 
         A = self.getM(x, j)
-        # compare(A)
+        # compare(A, 'rk2_A')
 
         Ay = A @ y
+        # compare(Ay, 'rk2_Ay')
+
         y2 = rk2step(x, h, Ay, y, j)
+        # compare(y2, 'rk2_y2')
+
         y3 = rk2step(x, h * 0.5, Ay, y, j)
+        # compare(y3, 'rk2_y3')
+
         A = self.getM(x + h * 0.5, j)
+        # compare(A, 'rk2_A2')
+
         Ay = A @y3
+        # compare(Ay, 'rk2_Ay2')
+
         y4 = rk2step(x + h * 0.5, h * 0.5, Ay, y3, j)
+        compare(y4, 'rk2_y4')
 
         yout = B1 * y4 + B2 * y2
+        # compare(yout, 'rk2_yout')
         yerr = yout - y4
         node.Yright = yout
 
@@ -279,16 +268,16 @@ class PreLUT():
                 a1 = 1 / (1 / kz1 + self.cdivkL)
                 am = 1 / (1 / kzm + self.cdivkL)
                 a2 = 1 / (1 / kz2 + self.cdivkL)
-            dat.dyxu0 = h * (np.conj(a1 * c1 * y[1, :] + am * c3 * y3[1, :] + a2 * (c4 * y4[1, :] + c2 * y2[1, :])))
-            dat.dyxv0 = h * (np.conj(a1 * c1 * y[3, :] + am * c3 * y3[3, :] + a2 * (c4 * y4[3, :] + c2 * y2[3, :])))
-            dat.dyxw0 = h * (np.conj(a1 * c1 * y[5, :] + am * c3 * y3[5, :] +
-                                     a2 * (c4 * y4[5, :] + c2 * y2[5, :]))) * kappa
-            dat.dyxu1 = h * (np.conj(kz1 * a1 * c1 * y[2, :] + kzm * am *
-                                     c3 * y3[1, :] + kz2 * a2 * (c4 * y4[1, :] + c2 * y2[1, :])))
-            dat.dyxv1 = h * (np.conj(kz1 * a1 * c1 * y[3, :] + kzm * am *
-                                     c3 * y3[3, :] + kz2 * a2 * (c4 * y4[3, :] + c2 * y2[3, :])))
-            dat.dyxw1 = h * (np.conj(kz1 * a1 * c1 * y[5, :] + kzm * am * c3 *
-                                     y3[5, :] + kz2 * a2 * (c4 * y4[5, :] + c2 * y2[5, :]))) * kappa
+            node.dyxu0 += h * (np.conj(a1 * c1 * y[1, :] + am * c3 * y3[1, :] + a2 * (c4 * y4[1, :] + c2 * y2[1, :])))
+            node.dyxv0 += h * (np.conj(a1 * c1 * y[3, :] + am * c3 * y3[3, :] + a2 * (c4 * y4[3, :] + c2 * y2[3, :])))
+            node.dyxw0 += h * (np.conj(a1 * c1 * y[5, :] + am * c3 * y3[5, :] +
+                                       a2 * (c4 * y4[5, :] + c2 * y2[5, :]))) * kappa
+            node.dyxu1 += h * (np.conj(kz1 * a1 * c1 * y[2, :] + kzm * am *
+                                       c3 * y3[1, :] + kz2 * a2 * (c4 * y4[1, :] + c2 * y2[1, :])))
+            node.dyxv1 += h * (np.conj(kz1 * a1 * c1 * y[3, :] + kzm * am *
+                                       c3 * y3[3, :] + kz2 * a2 * (c4 * y4[3, :] + c2 * y2[3, :])))
+            node.dyxw1 += h * (np.conj(kz1 * a1 * c1 * y[5, :] + kzm * am * c3 *
+                                       y3[5, :] + kz2 * a2 * (c4 * y4[5, :] + c2 * y2[5, :]))) * kappa
         else:
             raise NotImplementedError()
         return yerr
@@ -307,8 +296,8 @@ class PreLUT():
         # real(mykind) t,t1,t2,hh,err,Ynorm,Ynorm1,kz1,kz2,s1,s2
         # integer(4) i
         # real(mykind) u0,norm
-        kz1 = self.kz0 * np.exp(p.dat.sleft)
-        kz2 = self.kz0 * np.exp(p.dat.sright)
+        kz1 = self.kz0 * np.exp(p.sleft)
+        kz2 = self.kz0 * np.exp(p.sright)
 
         if (j == 1):
             t1 = kappa * self.u0(kz1)
@@ -318,28 +307,22 @@ class PreLUT():
             t2 = kz2
 
         t = t1
-        # Yerr=cmplx(0.0,0.0,mykind)
-        # p%dat%dyxu0=cmplx(0.0,0.0,mykind)
-        # p%dat%dyxv0=cmplx(0.0,0.0,mykind)
-        # p%dat%dyxw0=cmplx(0.0,0.0,mykind)
-        # p%dat%dyxu1=cmplx(0.0,0.0,mykind)
-        # p%dat%dyxv1=cmplx(0.0,0.0,mykind)
-        # p%dat%dyxw1=cmplx(0.0,0.0,mykind)
-        # Y1=p%dat%Yleft
-        Ynorm1 = np.linalg.norm(p.dat.Yleft[:, 1])
+
+        Ynorm1 = np.linalg.norm(p.Yleft[:, 1])
+        Y1 = p.Yleft
         while True:
             if (1.1 * h + t > t2):
                 h = t2 - t
-                dyerr = self.rk2(p, t, h, j)
+                dyerr = self.rk2(p, Y1, t, h, j)
                 yerr = yerr + dyerr
                 #     p%Yright=Y2
                 h = get_new_h2(h, self.acc, dyerr, p.Yright)
                 #     t=t2
                 return h
             else:
-                dyerr = self.rk2(p, t, h, j)
+                dyerr = self.rk2(p, Y1, t, h, j)
                 yerr = yerr + dyerr
-                p.dat.Yleft = p.Yright
+                Y1 = p.Yright.copy()
                 t = t + h
                 h = get_new_h2(h, self.acc, dyerr, p.Yright)
                 Ynorm = np.linalg.norm(p.Yright[:, 1]) / Ynorm1
@@ -471,13 +454,13 @@ class PreLUT():
             return (np.log(kz / self.kz0) + self.psi(kz) - self.psi0) / kappa
 
 
-class NeutralPreLUT(PreLUT):
+class NeutralPreLUTGenerator(PreLUTGenerator):
 
         # type(Tprelutdata) :: dat
         # type(Tprelutnode), pointer :: first,last
 
-    def __init__(self, zeta0, kz0, beta, kzmax, accgoal, ds):
-        PreLUT.__init__(self, zeta0, kz0, beta, kzmax, accgoal, ds)
+    def __init__(self, zeta0, kz0, beta, kzmax, ds, accgoal):
+        PreLUTGenerator.__init__(self, zeta0, kz0, beta, kzmax, ds, accgoal)
         self.cdivkL = 0.0
         self.psi0 = self.psi(kz0)
 
@@ -496,8 +479,57 @@ class NeutralPreLUT(PreLUT):
         # Wind speed from MOST normalized by uStar
         return (np.log(kz / self.kz0)) / kappa
 
-    def sm(self):
-        return self.dat.smaxx
+
+class PreLUT():
+
+    @staticmethod
+    def from_pre_file(filename, zeta0, kz0, beta, kzmax, ds):
+        with open(filename, 'rb') as fid:
+            fid.seek(-1, 2)     # go to the file end.
+            eof = fid.tell()   # get the end of file location
+            fid.seek(0, 0)      # go back to file beginning
+
+            def read_complex(shape):
+                n = np.prod(shape)
+                v = np.reshape(struct.unpack('d' * 2 * n, fid.read(16 * n)), shape + (2,))
+                return np.sum(v * np.array([1, 1j]), -1)
+
+            def read_level():
+                r = ([read_complex((6, 6)) for _ in range(3)] +   # Yleft, Rleft, Rright
+                     [read_complex((6,)) for _ in range(6)] +   # dyxu0, dyxu1, dyxv0, dyxv1, dyxw0, dyxw1
+                     list(struct.unpack('ddi', fid.read(20))))  # sleft, sright, level
+                struct.unpack('i', fid.read(4))
+                return r
+            r = []
+            while fid.tell() < eof:
+                if fid.tell() == 467124:
+                    print(fid.tell())
+                r.append(read_level())
+
+        return xr.Dataset({**{k: (dims, np.array(v)) for (k, dims), v in zip([
+            ('Yleft', ['i', 'j', 'k']),
+            ('Rleft', ['i', 'j', 'k']),
+            ('Rright', ['i', 'j', 'k']),
+            ('dyxu0', ['i', 'j']),
+            ('dyxu1', ['i', 'j']),
+            ('dyxv0', ['i', 'j']),
+            ('dyxv1', ['i', 'j']),
+            ('dyxw0', ['i', 'j']),
+            ('dyxw1', ['i', 'j']),
+            ('sleft', ['i']),
+            ('sright', ['i']),
+            ('level', ['i'])],
+            zip(*r))}, 'zeta0': zeta0, 'beta': beta, 'kz0': kz0}, attrs={'ds': ds, 'kzmax': kzmax})
+
+    @staticmethod
+    def make_prelut(zeta0, kz0, beta, kzmax, ds, accgoal):
+        if zeta0 == 0:
+            return NeutralPreLUTGenerator(zeta0, kz0, beta, kzmax, ds, accgoal).make_prelut()
+        else:
+            raise NotImplementedError()
+
+
+ref = PreLUT.from_pre_file(tfp + '0.0000-09.0000.pre', zeta0=0, beta=0, kz0=0, kzmax=0, ds=0.05)
 
 
 def prelut(lut_path, prelutname, zeta0, nkz0, kz0min, kz0max, nbeta, mbeta, ds, kzmax, accgoal):
@@ -523,7 +555,7 @@ def prelut(lut_path, prelutname, zeta0, nkz0, kz0min, kz0max, nbeta, mbeta, ds, 
 
     for i, kz0 in enumerate(tqdm(kz0_lst)):
 
-        res = xr.concat([NeutralPreLUT(zeta0, kz0, beta, kzmax, accgoal, ds).make_prelut() for beta in betatab],
+        res = xr.concat([NeutralPreLUT(zeta0, kz0, beta, kzmax, ds).make_prelut(accgoal) for beta in betatab],
                         pd.Index(betatab, name='beta'))
         res['kz0'] = kz0
         save_complex(res, Path(lut_path) / prelutname / f'ikz0={i:03.0f}.nc')

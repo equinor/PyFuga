@@ -1,47 +1,16 @@
 from PyPreludium.utils import get_beta
-from PyPreludium.preluts import NeutralPreLUT
+from PyPreludium.preluts import PreLUT
 import numpy as np
-import struct
+
 from PyPreludium.tests.test_files import tfp
 from numpy import newaxis as na
 import numpy.testing as npt
-
-
-def load_prelut_file(f):
-    with open(f, 'rb') as fid:
-        fid.seek(-1, 2)     # go to the file end.
-        eof = fid.tell()   # get the end of file location
-        fid.seek(0, 0)      # go back to file beginning
-
-        def read_complex(shape):
-            n = np.prod(shape)
-            v = np.reshape(struct.unpack('d' * 2 * n, fid.read(16 * n)), shape + (2,))
-            return np.sum(v * np.array([1, 1j]), -1)
-
-        def read_level():
-            r = ([read_complex((6, 6)) for _ in range(3)] +   # Yleft, Rleft, Rright
-                 [read_complex((6,)) for _ in range(6)] +   # dyxu0, dyxu1, dyxv0, dyxv1, dyxw0, dyxw1
-                 list(struct.unpack('ddi', fid.read(20))))  # sleft, sright, level
-            struct.unpack('i', fid.read(4))
-            return r
-        r = []
-        while fid.tell() < eof:
-            if fid.tell() == 467124:
-                print(fid.tell())
-            r.append(read_level())
-
-    class Prelut(dict):
-        def __getattr__(self, k):
-            return self[k]
-
-    return Prelut({k: np.array(v) for k, v in zip(['Yleft', 'Rleft', 'Rright',
-                                                            'dyxu0', 'dyxu1', 'dyxv0', 'dyxv1', 'dyxw0', 'dyxw1',
-                                                            'sleft', 'sright', 'level'],
-                                                  zip(*r))})
+import matplotlib.pyplot as plt
 
 
 def test_load_prelut_file():
-    prelut = load_prelut_file(tfp + '0.0000-09.0000.pre')
+
+    prelut = PreLUT.from_pre_file(tfp + '0.0000-09.0000.pre', zeta0=0, beta=0, kz0=0, kzmax=0, ds=0.05)
 
     npt.assert_array_almost_equal(prelut.Yleft[7][0, 3], -0.330350424728106 + 9.114133344026951e-012j, 10)
     npt.assert_array_almost_equal(prelut.Rleft[7][1, 4], -0.139000795854240 - 1.272631906082874E-010j, 10)
@@ -74,67 +43,20 @@ C = np.array([complex(1.047546898171445e-022, -4.101687702293994e-011),
               complex(2.052590442281348e-020, -1.583918971177244e-013),
               complex(1.00000000000000, -1.069408260473665e-035)])
 
-# A = (Yleft[:, j] * np.conj(Yleft[:, j])[:, na])
-# >>> np.dot(A[0], Yleft[:, 5])
-# (2.656407250768623e-22-4.316413399715623e-11j)
-
-#Yleft[:, j + 1:] = Yleft[:, j + 1:] - np.dot((Yleft[:, j] * np.conj(Yleft[:, j])[:, na]), Yleft[:, j + 1:])
-# >>> Yleft[0,5]
-# (-1.6088603525971778e-22+2.1472569742162893e-12j)
-# (-1.611357713210343D-022,-4.298525405212307D-012)
-
-
-# next.dat.Rleft[j, j + 1:] = np.conj(Yleft[:, j])@Yleft[:, j + 1:]
-# >>> next.dat.Rleft[4,5]
-# (-2.8855565613824884e-23-1.500305359989711e-10j)
-#np.sum(np.conj(Yleft[(0,1,5), 4]) * Yleft[(0,1,5), 5])
-#(-2.8920903963399594e-23-1.500305359989711e-10j)
-
-# >>> Yleft[(0,1,5), 4]
-# array([ 4.99376169e-02+8.61709898e-13j,  9.98752339e-01+9.04871026e-13j,
-#        -1.48646439e-23+1.28514955e-10j])
-# (4.993761694389232D-002,7.324665664985942D-017)
-# (0.998752338877845,1.383487270702489D-013)
-# (-1.315350765671031D-023,1.281765071710166D-010)
-# >>> Yleft[(0,1,5), 5]
-# array([-2.19825973e-24+2.14825814e-12j,  3.79741961e-24-2.16498713e-11j,
-#         1.00000000e+00-1.29807574e-33j])
-# (2.339688079440132D-025,3.177741907478460D-012)
-# (-4.597372173620277D-024,1.281777406966873D-010)
-# (1.00000000000000,-1.459739419215753D-034)
-
-
-# B = np.triu(next.dat.Rleft / np.diag(next.dat.Rleft), 1)
-#>>> next.dat.Rleft[4,5]
-#(-2.8855565613824884e-23-1.500305359989711e-10j)
-# (-1.140090232913836D-023,-1.496920878380001D-010)
-
-#self.dat.Rright[i, j] -= np.sum(self.dat.Rright[i, i:j] * B[i:j, j])
-# >>> B[4,5]
-# (-2.8855565613824884e-23-1.500305359989711e-10j)
-# (-1.140090232913836D-023,-1.496920878380001D-010)
-
-# 0 Rright 3.3887095708951127e-13 2.9769347466917524 (4, 5)
-#(2.889161255556684e-23-1.5021795710389924e-10j)
-#(1.1415144561211173e-23-1.4987908614680973e-10j)
 
 def test_prelut():
-    res = NeutralPreLUT(zeta0=0, kz0=1e-9, beta=get_beta(np.array([0]))[0],
-                        kzmax=300, accgoal=0.0001, ds=0.05).make_prelut()
-    prelut = load_prelut_file(tfp + '0.0000-09.0000.pre')
-    for l in range(369):
-        for v in res:
-            A, B = np.atleast_2d(res[v][l].values), np.atleast_2d(prelut[v][l])
-            err = np.abs(A - B)
-            rerr = np.abs(err / np.mean([A, B], 0))
-            i, j = np.unravel_index(np.argmax(err), A.shape)
-            print(l, v, err.max(), np.nanmax(rerr), (i, j))
-            if np.nanmax(rerr) > .1:
-                print(A[i, j])
-                print(B[i, j])
-            #npt.assert_array_almost_equal(res[v][l], prelut[v][l])
-        # for l, l in enumerate(res[v].level):
-        #     print(l, np.abs(res[v][l] - prelut[v][l]).max().item())
-        #     #npt.assert_array_almost_equal(res[v][l], prelut[v][l], 4, err_msg=f'{v}, {l}')
-
-    print()
+    res = PreLUT.make_prelut(zeta0=0, kz0=1e-9, beta=get_beta(np.array([0]))[0],
+                             kzmax=300, ds=0.05, accgoal=0.0001)
+    prelut = PreLUT.from_pre_file(tfp + '0.0000-09.0000.pre', zeta0=0, beta=0, kz0=1e-9, kzmax=0, ds=0.05)
+    npt.assert_array_equal(res.level, prelut.level)
+    for k in prelut:
+        print(k)
+        max_dims = ('j', 'k')[:len(prelut[k].shape) - 1]
+        if 1:
+            np.abs(prelut[k].real - res[k].real).max(max_dims).plot()
+            np.abs(prelut[k].imag - res[k].imag).max(max_dims).plot()
+            plt.show()
+        if k[0] != 'd':
+            npt.assert_allclose(res[k], prelut[k], atol=1e-10, rtol=1e-6, err_msg=k)
+        else:
+            npt.assert_allclose(res[k], prelut[k], atol=5e-3, rtol=1e-4, err_msg=k)
