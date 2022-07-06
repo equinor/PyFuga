@@ -11,7 +11,7 @@ from PyPreludium.tests.test_files import tfp
 #np.set_printoptions(precision=2, linewidth=200)
 
 
-# left: (sub)station (lower height)
+#left: (sub)station (lower height)
 # right: (sub)station + 1 (higher height)
 # (Y+).x = b is a set of boundary condition equations.
 # R is a Gram-Smidt (or QR) transformation of Y
@@ -529,7 +529,7 @@ class PreLUT():
             raise NotImplementedError()
 
 
-ref = PreLUT.from_pre_file(tfp + '0.0000-09.0000.pre', zeta0=0, beta=0, kz0=0, kzmax=0, ds=0.05)
+# ref = PreLUT.from_pre_file(tfp + '0.0000-09.0000.pre', zeta0=0, beta=0, kz0=0, kzmax=0, ds=0.05)
 
 
 def prelut(lut_path, prelutname, zeta0, nkz0, kz0min, kz0max, nbeta, mbeta, ds, kzmax, accgoal):
@@ -555,7 +555,7 @@ def prelut(lut_path, prelutname, zeta0, nkz0, kz0min, kz0max, nbeta, mbeta, ds, 
 
     for i, kz0 in enumerate(tqdm(kz0_lst)):
 
-        res = xr.concat([NeutralPreLUT(zeta0, kz0, beta, kzmax, ds).make_prelut(accgoal) for beta in betatab],
+        res = xr.concat([PreLUT.make_prelut(zeta0, kz0, beta, kzmax, ds, accgoal) for beta in betatab],
                         pd.Index(betatab, name='beta'))
         res['kz0'] = kz0
         save_complex(res, Path(lut_path) / prelutname / f'ikz0={i:03.0f}.nc')
