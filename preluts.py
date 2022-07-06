@@ -8,10 +8,10 @@ from py_wake.utils.profiling import timeit
 import struct
 import xarray as xr
 from PyPreludium.tests.test_files import tfp
-#np.set_printoptions(precision=2, linewidth=200)
+# np.set_printoptions(precision=2, linewidth=200)
 
 
-#left: (sub)station (lower height)
+# left: (sub)station (lower height)
 # right: (sub)station + 1 (higher height)
 # (Y+).x = b is a set of boundary condition equations.
 # R is a Gram-Smidt (or QR) transformation of Y
@@ -87,7 +87,7 @@ class PrelutNodeNext(PrelutNode):
             aux = np.linalg.norm(Yleft[:, j])
             Yleft[:, j] = Yleft[:, j] / aux
             self.Rleft[j, j] = aux
-            self.Rleft[j, j + 1:] = np.conj(Yleft[:, j])@Yleft[:, j + 1:]
+            self.Rleft[j, j + 1:] = np.conj(Yleft[:, j]) @ Yleft[:, j + 1:]
             Yleft[:, j + 1:] = Yleft[:, j + 1:] - \
                 np.dot((Yleft[:, j] * np.conj(Yleft[:, j])[:, na]).T, Yleft[:, j + 1:])
 
@@ -212,15 +212,15 @@ class PreLUTGenerator():
         c4 = 2.0 / 6.0
 
         def rk2step(t1, h, Ay, y1, j):
-            #compare(Ay, 'rk2step_Ay')
-            #compare(y1, 'rk2step_y1')
+            # compare(Ay, 'rk2step_Ay')
+            # compare(y1, 'rk2step_y1')
             ym = y1 + h * Ay / 2
-            #compare(ym, 'rk2step_ym')
+            # compare(ym, 'rk2step_ym')
             A = self.getM(t1 + h * 0.5, j)
-            #compare(A, 'rk2step_A')
+            # compare(A, 'rk2step_A')
             compare(np.dot(A, ym), 'rk2step_Aym')
             y2 = y1 + h * np.dot(A, ym)
-            #compare(y2, 'rk2step_y2')
+            # compare(y2, 'rk2step_y2')
             return y2
 
         A = self.getM(x, j)
@@ -238,7 +238,7 @@ class PreLUTGenerator():
         A = self.getM(x + h * 0.5, j)
         # compare(A, 'rk2_A2')
 
-        Ay = A @y3
+        Ay = A @ y3
         # compare(Ay, 'rk2_Ay2')
 
         y4 = rk2step(x + h * 0.5, h * 0.5, Ay, y3, j)
@@ -456,8 +456,8 @@ class PreLUTGenerator():
 
 class NeutralPreLUTGenerator(PreLUTGenerator):
 
-        # type(Tprelutdata) :: dat
-        # type(Tprelutnode), pointer :: first,last
+    # type(Tprelutdata) :: dat
+    # type(Tprelutnode), pointer :: first,last
 
     def __init__(self, zeta0, kz0, beta, kzmax, ds, accgoal):
         PreLUTGenerator.__init__(self, zeta0, kz0, beta, kzmax, ds, accgoal)

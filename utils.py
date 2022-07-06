@@ -78,31 +78,31 @@ def read_complex(*args, **kwargs):
 
 
 def GMRES(prev, next):
-        # use params, only: mykind,n
-        # use contr, only: Tprelutnode
-        # use vector_functions, only: outer
-        # implicit none
+    # use params, only: mykind,n
+    # use contr, only: Tprelutnode
+    # use vector_functions, only: outer
+    # implicit none
 
-        # Modified Gram-Schmidt ortonormalization
-        # Y, V, R and invR are nxn matrices
-        # Columns of Y are linearly independent vectors (the input)
-        # Columns of V form an orthonormal basis (V is unitary)
-        # R and invR are lower triangular
-        # invR is the inverse of R
-        # Y=V R*  where R* is the conjugate transpose of R
+    # Modified Gram-Schmidt ortonormalization
+    # Y, V, R and invR are nxn matrices
+    # Columns of Y are linearly independent vectors (the input)
+    # Columns of V form an orthonormal basis (V is unitary)
+    # R and invR are lower triangular
+    # invR is the inverse of R
+    # Y=V R*  where R* is the conjugate transpose of R
 
-        # type(Tprelutnode),pointer :: p
-        # complex(mykind), dimension(n,n) :: B
-        # real(mykind) aux
-        # integer(4) i,j,k
-        # real(mykind) norm
+    # type(Tprelutnode),pointer :: p
+    # complex(mykind), dimension(n,n) :: B
+    # real(mykind) aux
+    # integer(4) i,j,k
+    # real(mykind) norm
 
-        # aux = np.linalg.norm(prev.Yright, axis=0)
-        # next.dat.Yleft = Yleft = prev.Yright / aux
-        # next.dat.Rleft = np.diag(aux)
-        # for j in range(5):
-        #     next.dat.Rleft[j, j + 1:] = np.conj(Yleft[:, j]) @ Yleft[:, j + 1:]
-        #     Yleft[:, j + 1:] = Yleft[:, j + 1:] - (Yleft[:, j] * np.conj(Yleft[:, j])[:, na]) @ Yleft[:, j + 1:]
+    # aux = np.linalg.norm(prev.Yright, axis=0)
+    # next.dat.Yleft = Yleft = prev.Yright / aux
+    # next.dat.Rleft = np.diag(aux)
+    # for j in range(5):
+    #     next.dat.Rleft[j, j + 1:] = np.conj(Yleft[:, j]) @ Yleft[:, j + 1:]
+    #     Yleft[:, j + 1:] = Yleft[:, j + 1:] - (Yleft[:, j] * np.conj(Yleft[:, j])[:, na]) @ Yleft[:, j + 1:]
 
     next.Yleft = Yleft = prev.Yright
     next.Rleft = np.zeros_like(Yleft)
@@ -110,7 +110,7 @@ def GMRES(prev, next):
         aux = np.linalg.norm(Yleft[:, j])
         Yleft[:, j] = Yleft[:, j] / aux
         next.Rleft[j, j] = aux
-        next.Rleft[j, j + 1:] = np.conj(Yleft[:, j])@Yleft[:, j + 1:]
+        next.Rleft[j, j + 1:] = np.conj(Yleft[:, j]) @ Yleft[:, j + 1:]
         Yleft[:, j + 1:] = Yleft[:, j + 1:] - \
             np.dot((Yleft[:, j] * np.conj(Yleft[:, j])[:, na]).T, Yleft[:, j + 1:])
 

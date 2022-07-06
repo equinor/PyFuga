@@ -37,7 +37,7 @@ def test_prelut(zeta0):
                                   zeta0=zeta0, beta=0, kz0=1e-9, kzmax=0, ds=0.05)
     npt.assert_array_equal(res.level, prelut.level)
     for k in prelut:
-        print(k)
+        # print(k)
         max_dims = ('j', 'k')[:len(prelut[k].shape) - 1]
         if 0 and len(prelut[k].shape):
             np.abs(prelut[k].real - res[k].real).max(max_dims).plot()
