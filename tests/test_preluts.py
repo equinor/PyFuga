@@ -1,8 +1,8 @@
-from PyPreludium.utils import get_beta
-from PyPreludium.preluts import PreLUT
+from ..utils import get_beta
+from ..preluts import PreLUT
 import numpy as np
 
-from PyPreludium.tests.test_files import tfp
+from .test_files import tfp
 from numpy import newaxis as na
 import numpy.testing as npt
 import matplotlib.pyplot as plt
