@@ -161,11 +161,8 @@ class PreLUTGenerator():
         first.dyxu1 = 0
         first.dyxv1 = 0
         first.dyxw1 = 0
-        
         h = get_new_h2(h, self.acc, yerr, first.Yright) # get_new_h2(h, acc, Yerr, Y)
-        
         sm = np.minimum(self.smaxx, self.smaxx) #?????????????
-        
         first.sleft = 0
         first.sright = self.ds
         s1 = 0.0

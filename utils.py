@@ -41,24 +41,25 @@ def dphiu(kz, cdivkl):
     return (1.0 + cdivkl * kz)**0.25
 
 
-def psi(zeta0, kz):
+def psi(zeta0, kz, cdivkl):
 
     # Stability function -psi_m
-    if zeta0 < 0:  # Unstable: -psi_m=-ln(1/8*(1+phi_m**-2)*(1+phi_m**-1)**2)+2*atan(phi_m**-1)-pi/2
-        raise NotImplementedError()
-        # aux=dphiu(kz)
-        # aux2=(1.0D0+aux)**2*(1+aux**2)
-        # psi=log(8.0/aux2)+2.0D0*atan(cdivkl*kz/aux2)
+    if zeta0 < 0:
+        # Unstable: -psi_m=-ln(1/8*(1+phi_m**-2)*(1+phi_m**-1)**2)+2*atan(phi_m**-1)-pi/2
+
+        aux = dphiu(kz, cdivkl)
+        aux2 = (1.0 + aux)**2 * (1 + aux**2)
+        return np.log(8.0 / aux2) + 2.0 * np.arctan(cdivkl * kz / aux2)
     else:  # Stable: -psi_m=Cm2*z/L
         return cdivkL(zeta0, kz) * kz
 
 
-def phi(zeta0, kz, cdivkl):
-    # Stability function phi_m
-    if zeta0 < 0:  # Unstable: phi_m=(1+Cm1*z/L)**(-1/4)
-        return (1.0 + cdivkl * kz)**(-0.25)
-    else:  # Stable: phi_m=1+Cm2*z/L
-        return 1.0 + cdivkl * kz
+# def phi(zeta0, kz, cdivkl):
+#     # Stability function phi_m
+#     if zeta0 < 0:  # Unstable: phi_m=(1+Cm1*z/L)**(-1/4)
+#         return (1.0 + cdivkl * kz)**(-0.25)
+#     else:  # Stable: phi_m=1+Cm2*z/L
+#         return 1.0 + cdivkl * kz
 
 
 def get_new_h2(h, acc, Yerr, Y):
@@ -137,32 +138,46 @@ def GMRES(prev, next):
     prev.Rright = np.conj(prev.Rright.T)
 
 
-def compare(A, n):
-    return
+def equal(A, n):
+    ref = np.fromfile(n + '.dat', dtype=np.complex128).reshape(6, -1).T
+    a = np.reshape(A, ref.shape)
+
+    err = np.abs(a - ref)
+
+    try:
+        assert np.all(a == ref)
+    except Exception:
+        i, j = np.unravel_index(np.argmax(err), ref.shape)
+        print(f'Max error: {np.nanmax(err)} at {(i, j)}')
+        print("fortran", ref[i, j])
+        print("python ", a[i, j])
+        print()
+        raise
+
+
+def compare(A, n, tol=1e-9):
     B = np.fromfile(n + '.dat', dtype=np.complex128).reshape(6, -1).T
     A = np.reshape(A, B.shape)
 
-    def comp(a, b):
-        aerr = np.abs(a - b)
-        rerr = np.abs(aerr / np.mean([a, b], 0))
-        rerr[aerr == 0] = 0
-        assert np.abs(a[b == 0]).max() < 1e-50
-        assert np.abs(a[b == 0]).max() < 1e-50
-        rerr[(a == 0) | (b == 0)] = 0
-        err = aerr
-        i, j = np.unravel_index(np.argmax(err), b.shape)
-        import numpy.testing as npt
-        try:
-            assert np.abs(rerr).max() < 1e-10
-        except Exception:
-            print(err.max(), (i, j))
-            print("fortran", B[i, j])
-            print("python", A[i, j])
-            print()
-            raise
+    def comp(a, ref, real_imag, tol):
+        aerr = np.abs(a - ref)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            rerr = np.abs(aerr / ref)
+        rerr[(ref < tol**3)] = np.nan
 
-    comp(A.real, B.real)
-    comp(A.imag, B.imag)
+        for err, abs_rel in[(aerr, 'Abs'), (rerr, 'Rel')]:
+            try:
+                assert np.nanmax(np.abs(err)) < tol
+            except Exception:
+                i, j = np.unravel_index(np.argmax(err), ref.shape)
+                print(f'Max {abs_rel} error of {real_imag}: {np.nanmax(err)} at {(i, j)}')
+                print("fortran", B[i, j])
+                print("python", A[i, j])
+                print()
+                raise
+
+    comp(A.real, B.real, 'real', tol)
+    comp(A.imag, B.imag, 'imag', tol)
 
 
 def rel_err(A, B):
