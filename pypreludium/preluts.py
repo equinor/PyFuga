@@ -1,18 +1,18 @@
-import numpy as np
 from pathlib import Path
-from PyPreludium.pypreludium.utils import get_beta, psi, dphiu, get_new_h2, save_complex, cdivkL, read_complex
-from PyPreludium.pypreludium.constants import Cm1, Cm2, n_eq, kappa, kappa2, pscale, max_recs, Ythreshold
+import struct
+
 from numpy import newaxis as na
 from tqdm import tqdm
 
-import struct
+import numpy as np
 import xarray as xr
-from PyPreludium.pypreludium.file_readers import Parameters, read_prelut_list, read_pre_file
+
+from .constants import Cm1, Cm2, n_eq, kappa, kappa2, pscale, max_recs, Ythreshold
+from .file_readers import Parameters, read_prelut_list, read_pre_file
+from .utils import get_beta, psi, dphiu, get_new_h2, save_complex, cdivkL, read_complex
 
 
 # np.set_printoptions(precision=2, linewidth=200)
-
-
 # left: (sub)station (lower height)
 # right: (sub)station + 1 (higher height)
 # (Y+).x = b is a set of boundary condition equations.
@@ -26,7 +26,6 @@ from PyPreludium.pypreludium.file_readers import Parameters, read_prelut_list, r
 #  dyxw1 = Delta_b for vertical forcing proportional to kz
 # Delta_b = integral of (Y+).f between two  (sub)stations
 # where f is the wind turbine forcing.
-
 def dot(A, B):
     return np.dot(A, B)
     # return np.array([[np.sum(a * b) for b in B.T] for a in A])

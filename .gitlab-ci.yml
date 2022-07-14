@@ -9,6 +9,7 @@ test_PyWake:  # name the job what we like
     test
   script:
   # - pip install -e .
+  - pip install pytest-cov
   - pytest --cov-report term-missing:skip-covered --cov=pypreludium --cov-config .coveragerc pypreludium
   tags:  # only runners with this tag can do the job [3]
   - ci-ubuntu
