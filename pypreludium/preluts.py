@@ -7,6 +7,7 @@ from tqdm import tqdm
 
 import struct
 import xarray as xr
+from PyPreludium.pypreludium.file_readers import Parameters, read_prelut_list
 
 
 # np.set_printoptions(precision=2, linewidth=200)
@@ -674,7 +675,11 @@ class PreLUTGenerator():
 class PreLUT():
 
     @staticmethod
-    def from_pre_file(filename, zeta0, kz0, beta, kzmax, ds):
+    def from_pre_file(filename, zeta0, kz0=None, beta=None, kzmax=None, ds=None):
+        filename = Path(filename)
+        if None in [kz0, beta, kzmax, ds]:
+            ds, smaxx, kz0, beta, kzmax, accgoal = read_prelut_list(filename.parent)[filename.name]
+
         with open(filename, 'rb') as fid:
             fid.seek(-1, 2)     # go to the file end.
             eof = fid.tell()   # get the end of file location
@@ -715,7 +720,17 @@ class PreLUT():
         return PreLUTGenerator(zeta0, kz0, beta, kzmax, ds, accgoal, h_dict).make_prelut()
 
 
-class Preluts():
+class PreLUTs():
     @staticmethod
-    def from_pre_folder(folder):
-        print()
+    def from_pre_files(folder, zeta0):
+
+        folder = Path(folder)
+        pre_files = [f for f in folder.iterdir() if f.suffix == '.pre']
+        d = read_prelut_list(folder)
+        # ds, smaxx, kz0, beta, kzmax, accgoal
+        kwargs_lst = [dict(filename=f, zeta0=zeta0, ds=d[f.name][0], kz0=d[f.name][2],
+                           beta=d[f.name][3], kzmax=d[f.name][4])
+                      for f in pre_files]
+        ds_lst = [PreLUT.from_pre_file(**kwargs) for kwargs in kwargs_lst]
+        return xr.merge([ds.assign_coords(i=ds.i, kz0=ds.kz0, beta=ds.beta).expand_dims(('kz0', 'beta'))
+                         for ds in ds_lst])

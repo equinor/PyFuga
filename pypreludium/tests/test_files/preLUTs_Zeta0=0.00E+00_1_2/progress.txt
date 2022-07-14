@@ -1,0 +1,30 @@
+ preLUTs_Zeta0=0.00E+00_1_2                                                     
+                                                            6 %  
+ preLUTs_Zeta0=0.00E+00_1_2                                                     
+                                                           13 %  
+ preLUTs_Zeta0=0.00E+00_1_2                                                     
+                                                           20 %  
+ preLUTs_Zeta0=0.00E+00_1_2                                                     
+                                                           26 %  
+ preLUTs_Zeta0=0.00E+00_1_2                                                     
+                                                           33 %  
+ preLUTs_Zeta0=0.00E+00_1_2                                                     
+                                                           40 %  
+ preLUTs_Zeta0=0.00E+00_1_2                                                     
+                                                           46 %  
+ preLUTs_Zeta0=0.00E+00_1_2                                                     
+                                                           53 %  
+ preLUTs_Zeta0=0.00E+00_1_2                                                     
+                                                           60 %  
+ preLUTs_Zeta0=0.00E+00_1_2                                                     
+                                                           66 %  
+ preLUTs_Zeta0=0.00E+00_1_2                                                     
+                                                           73 %  
+ preLUTs_Zeta0=0.00E+00_1_2                                                     
+                                                           80 %  
+ preLUTs_Zeta0=0.00E+00_1_2                                                     
+                                                           86 %  
+ preLUTs_Zeta0=0.00E+00_1_2                                                     
+                                                           93 %  
+ preLUTs_Zeta0=0.00E+00_1_2                                                     
+                                                          100 %  
