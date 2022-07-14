@@ -27,8 +27,8 @@ from PyPreludium.tests.test_files import tfp
 # where f is the wind turbine forcing.
 
 def dot(A, B):
-    # return np.dot(A, B)
-    return np.array([[np.sum(a * b) for b in B.T] for a in A])
+    return np.dot(A, B)
+    # return np.array([[np.sum(a * b) for b in B.T] for a in A])
 
 
 class PrelutNode():
@@ -141,7 +141,7 @@ class PreLUTGenerator():
     # Level incrementeres ved stationer med s=j*ds
     # Der orthonormaliseres ved hver station og gemmes i en hægtet liste.
     # Bruger anden ordens R-K
-    def __init__(self, zeta0, kz0, beta, kzmax, ds, accgoal):
+    def __init__(self, zeta0, kz0, beta, kzmax, ds, accgoal, h_dict):
         self.nodes = []
 
         self.zeta0 = zeta0
@@ -170,9 +170,10 @@ class PreLUTGenerator():
                 self.cdivkL = zeta0 / kz0 * Cm2
 
         self.psi0 = psi(zeta0, kz0, self.cdivkL)
+        self.h_dict = h_dict
 
     def sm(self):
-        #! Determine max s (sm) and max kz (kzm)?
+        # Determine max s (sm) and max kz (kzm)?
         if self.zeta0 < 0:
             # Unstable
             if self.cdivkL > 1:
@@ -185,7 +186,7 @@ class PreLUTGenerator():
                 x = x + dx
                 if (abs(dx / x) < 1.0e-14):
                     break
-            #kzm = x
+            # kzm = x
             sm = np.log(x / self.kz0)
         else:
             # Stable and neutral
@@ -194,7 +195,7 @@ class PreLUTGenerator():
                 sm = np.log(kzm / self.kz0)
             else:
                 sm = self.smaxx
-                #kzm = self.kz0 * np.exp(sm)
+                # kzm = self.kz0 * np.exp(sm)
 
         sm = min(self.smaxx, sm)
         return sm
@@ -212,34 +213,25 @@ class PreLUTGenerator():
         # cumsum gives slightly different results than arange (more equal to fortran implementation)
         s_lst = np.sort(np.r_[0, np.cumsum(np.full(int(self.smaxx // self.ds) + 1, self.ds)), sm])
 
-        #equal(first.Yleft, f'yleft{0:6.3f}')
+        # equal(first.Yleft, f'yleft{0:6.3f}')
         segment, h = self.solve2(first, h, yerr, self.acc, 1)
-        #equal(segment.Yright, f'yright{0:6.3f}')
+        # equal(segment.Yright, f'yright{0:6.3f}')
         for (s1, s2) in tqdm(list(zip(s_lst[1:], s_lst[2:]))):
             self.nodes.append(segment)
             segment = segment.get_next(s1, s2)
             j = 1 + (s1 >= sm)
-            # if s1 > 18.4:
-            #     h = 5.628518632962573e-003
-            # elif s1 > 18.35:
-            #     h = 4.939093592985300e-003
-            # elif s1 > 18.3:
-            #     h = 3.782360731789152e-003
-            # elif s1 > 18.25:
-            #     h = 3.700851964819220e-003
-            # elif s1 > 18.2:
-            #     h = 9.834541888231090e-004
-            # elif s1 >= 18.15:
-            #     h = 5.065748103785779e-003
+            h = self.h_dict.get(np.round(s1, 2), h)
 
             segment, h = self.solve2(segment, h, yerr, self.acc, j)
-            #equal(segment.Yright, f'yright{s1:6.3f}')
-
-        if sm < self.smaxx:
-            self.nodes.append(segment)
-            segment.get_next(s2, s2)
-            segment.Yright = segment.Yleft
-            #compare(segment.Yright, 'yright%6.3f' % s1)
+            # equal(segment.Yright, f'yright{s1:6.3f}')
+            if len(self.nodes) > max_recs:
+                break
+        else:  # max_recs not reached
+            if sm < self.smaxx:
+                self.nodes.append(segment)
+                segment.get_next(s2, s2)
+                segment.Yright = segment.Yleft
+            # compare(segment.Yright, 'yright%6.3f' % s1)
             # if s2 < self.smaxx:
             #     self.nodes.append(segment)
 
@@ -292,15 +284,15 @@ class PreLUTGenerator():
 
         def rk2step(t1, h, Ay, y1, j):
 
-            #equal(Ay, 'rk2step_Ay')
-            #equal(y1, 'rk2step_y1')
+            # equal(Ay, 'rk2step_Ay')
+            # equal(y1, 'rk2step_y1')
             ym = y1 + h * Ay / 2
-            #equal(ym, 'rk2step_ym')
+            # equal(ym, 'rk2step_ym')
             A = self.getM(t1 + h * 0.5, j)
-            #equal(A, 'rk2step_A')
-            #equal(dot(A, ym), 'rk2step_Aym')
+            # equal(A, 'rk2step_A')
+            # equal(dot(A, ym), 'rk2step_Aym')
             y2 = y1 + h * dot(A, ym)
-            #equal(y2, 'rk2step_y2')
+            # equal(y2, 'rk2step_y2')
             return y2
 
         A = self.getM(x, j)
@@ -323,10 +315,10 @@ class PreLUTGenerator():
 #        equal(Ay, 'rk2_Ay2')
 
         y4 = rk2step(x + h * 0.5, h * 0.5, Ay, y3, j)
-        #equal(y4, 'rk2_y4')
+        # equal(y4, 'rk2_y4')
 
         yout = B1 * y4 + B2 * y2
-        #equal(yout, 'rk2_yout')
+        # equal(yout, 'rk2_yout')
         yerr = yout - y4
         node.Yright = yout
 
@@ -442,7 +434,7 @@ class PreLUTGenerator():
                 norm_lst.append(Ynorm)
                 # If Ynorm is too large, then we make a "sublevel" or "substation"
                 # One can have multiple sublevels between two levels if necessary.
-                #print(t, Ynorm)
+                # print(t, Ynorm)
                 if Ynorm > Ythreshold:
                     s2 = p.sright
                     if j == 1:
@@ -720,8 +712,8 @@ class PreLUT():
             zip(*r))}, 'zeta0': zeta0, 'beta': beta, 'kz0': kz0}, attrs={'ds': ds, 'kzmax': kzmax})
 
     @staticmethod
-    def make_prelut(zeta0, kz0, beta, kzmax, ds, accgoal):
-        return PreLUTGenerator(zeta0, kz0, beta, kzmax, ds, accgoal).make_prelut()
+    def make_prelut(zeta0, kz0, beta, kzmax, ds, accgoal, h_dict={}):
+        return PreLUTGenerator(zeta0, kz0, beta, kzmax, ds, accgoal, h_dict).make_prelut()
 
 
 ref = PreLUT.from_pre_file(tfp + 'preLUTs_Zeta0=0.00E+00_1_2/0.0000-06.0000.pre',

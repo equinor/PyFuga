@@ -165,7 +165,7 @@ def compare(A, n, tol=1e-9):
             rerr = np.abs(aerr / ref)
         rerr[(ref < tol**3)] = np.nan
 
-        for err, abs_rel in[(aerr, 'Abs'), (rerr, 'Rel')]:
+        for err, abs_rel in [(aerr, 'Abs'), (rerr, 'Rel')]:
             try:
                 assert np.nanmax(np.abs(err)) < tol
             except Exception:

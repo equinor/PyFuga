@@ -30,15 +30,14 @@ def test_load_prelut_file():
     npt.assert_array_almost_equal(prelut.level[7], 7, 10)
 
 
-
-def compare(res, ref, atol=1e-13):
+def compare(res, ref, atol=1e-13, rtol=1e-9):
     npt.assert_array_equal(res.level, ref.level)
     for k in ref:
         # print(k)
         max_dims = ('j', 'k')[:len(ref[k].shape) - 1]
         max_idx = (0, 1, 2)[1:len(ref[k].shape)]
         try:
-            npt.assert_allclose(res[k], ref[k], atol=atol, rtol=1e-9, err_msg=k)
+            npt.assert_allclose(res[k], ref[k], atol=atol, rtol=rtol, err_msg=k)
         except AssertionError:
             err = (ref[k] - res[k])
 
@@ -48,10 +47,11 @@ def compare(res, ref, atol=1e-13):
             plt.title(k)
             ax1.plot(np.abs(err.real).max(max_dims).values, label='Real, abs')
             ax2.plot(np.nanmax(np.abs(rerr_real), max_idx), label='Real, rel')
-            # ax1.set_xlim([360, 375])
+            ax1.set_xlim([360, 375])
 
             ax1.plot(np.abs(err.imag).max(max_dims).values, label='Imag, abs')
             ax2.plot(np.nanmax(np.abs(rerr_imag), max_idx), label='Imag, rel')
+            ax1.set_xlim([360, 375])
 
             plt.legend()
             plt.ylabel = 'Error'
@@ -78,8 +78,15 @@ def test_prelut_with_above_sm():
 
 
 def test_prelut_with_substations():
+    h_dict = {18.4: 5.628518632962573e-003,
+              18.35: 4.939093592985300e-003,
+              18.3: 3.782360731789152e-003,
+              18.25: 3.700851964819220e-003,
+              18.2: 9.834541888231090e-004,
+              18.15: 5.065748103785779e-003}
+
     res = PreLUT.make_prelut(zeta0=0, kz0=1e-6, beta=get_beta(np.array([0]))[0],
-                             kzmax=300, ds=0.05, accgoal=0.0001)
+                             kzmax=300, ds=0.05, accgoal=0.0001, h_dict=h_dict)
     prelut = PreLUT.from_pre_file(tfp + 'preLUTs_Zeta0=0.00E+00_1_2/0.0000-06.0000.pre',
                                   zeta0=0, beta=0, kz0=1e-6, kzmax=0, ds=0.05)
-    compare(res, prelut)
+    compare(res, prelut, rtol=1e-7)
