@@ -1,13 +1,10 @@
 from ..utils import get_beta
 from ..preluts import PreLUT
 import numpy as np
-
 from .test_files import tfp
-from numpy import newaxis as na
 import numpy.testing as npt
 import matplotlib.pyplot as plt
 import pytest
-from PyPreludium.preluts import PreLUTGenerator
 
 
 def test_load_prelut_file():
