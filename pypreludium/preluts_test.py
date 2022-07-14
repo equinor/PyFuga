@@ -1,14 +1,23 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Jun 16 10:21:06 2022
+
+@author: lalc
+"""
+
 import numpy as np
 from pathlib import Path
-from PyPreludium.utils import get_beta, psi, dphiu, get_new_h2, save_complex, compare, GMRES, rel_err, equal
+from PyPreludium.utils import get_beta, psi, dphiu, get_new_h2, save_complex, compare, GMRES, rel_err
 from PyPreludium.constants import Cm1, Cm2, n_eq, kappa, kappa2, pscale, max_recs, Ythreshold
 from numpy import newaxis as na
 from tqdm import tqdm
-from py_wake.utils.profiling import timeit
+# from py_wake.utils.profiling import timeit
 import struct
 import xarray as xr
 from PyPreludium.tests.test_files import tfp
-
+import matplotlib.pyplot as plt
+import xarray as xr
+import pandas as pd
 # np.set_printoptions(precision=2, linewidth=200)
 
 
@@ -26,20 +35,9 @@ from PyPreludium.tests.test_files import tfp
 # Delta_b = integral of (Y+).f between two  (sub)stations
 # where f is the wind turbine forcing.
 
-def dot(A, B):
-    return np.dot(A, B)
-    # return np.array([[np.sum(a * b) for b in B.T] for a in A])
-
 
 class PrelutNode():
     def __init__(self):
-        self.reset_dyx()
-
-    def set_s(self, sleft, sright):
-        self.sleft = sleft
-        self.sright = sright
-
-    def reset_dyx(self):
         self.dyxu0 = np.zeros(n_eq, dtype=np.complex128)
         self.dyxv0 = np.zeros(n_eq, dtype=np.complex128)
         self.dyxw0 = np.zeros(n_eq, dtype=np.complex128)
@@ -47,12 +45,26 @@ class PrelutNode():
         self.dyxv1 = np.zeros(n_eq, dtype=np.complex128)
         self.dyxw1 = np.zeros(n_eq, dtype=np.complex128)
 
-    def get_next(self, sleft, sright):
-        next_node = self.GMRES()
-        next_node.set_s(sleft, sright)
-        return next_node
 
-    def GMRES(self):
+class PrelutNodeFirst(PrelutNode):
+    def __init__(self, beta):
+        PrelutNode.__init__(self)
+        sinbeta, cosbeta = np.sin(beta), np.cos(beta)
+        self.Yleft = np.array([[-sinbeta, 0, cosbeta, 0, 0, 0],
+                               [cosbeta, 0, sinbeta, 0, 0, 0],
+                               [0, 0, 0, 0, 1, 0],
+                               [0, -sinbeta, 0, cosbeta, 0, 0],
+                               [0, cosbeta, 0, sinbeta, 0, 0],
+                               [0, 0, 0, 0, 0, 1]], dtype=np.complex128).T
+        self.Rleft = np.eye(6, dtype=np.complex128)
+
+
+class PrelutNodeNext(PrelutNode):
+    def __init__(self, previuos_node):
+        PrelutNode.__init__(self)
+        self.GMRES(previuos_node)
+
+    def GMRES(self, prev):
         # use params, only: mykind,n
         # use contr, only: Tprelutnode
         # use vector_functions, only: outer
@@ -72,63 +84,47 @@ class PrelutNode():
         # integer(4) i,j,k
         # real(mykind) norm
 
-        # aux = np.linalg.norm(self.Yright, axis=0)
-        # node.dat.Yleft = Yleft = self.Yright / aux
-        # node.dat.Rleft = np.diag(aux)
+        # aux = np.linalg.norm(prev.Yright, axis=0)
+        # next.dat.Yleft = Yleft = prev.Yright / aux
+        # next.dat.Rleft = np.diag(aux)
         # for j in range(5):
-        #     node.dat.Rleft[j, j + 1:] = np.conj(Yleft[:, j]) @ Yleft[:, j + 1:]
+        #     next.dat.Rleft[j, j + 1:] = np.conj(Yleft[:, j]) @ Yleft[:, j + 1:]
         #     Yleft[:, j + 1:] = Yleft[:, j + 1:] - (Yleft[:, j] * np.conj(Yleft[:, j])[:, na]) @ Yleft[:, j + 1:]
 
-        Yleft = self.Yright.copy()
-        node = PrelutNode()
-        node.Rleft = np.zeros_like(Yleft)
+        Yleft = prev.Yright.copy()  # change in level from Yright to Yleft
+        self.Rleft = np.zeros_like(Yleft)
         for j in range(5):
             aux = np.linalg.norm(Yleft[:, j])
             Yleft[:, j] = Yleft[:, j] / aux
-            node.Rleft[j, j] = aux
-            node.Rleft[j, j + 1:] = np.dot(np.conj(Yleft[:, j]), Yleft[:, j + 1:])
+            self.Rleft[j, j] = aux
+            self.Rleft[j, j + 1:] = np.conj(Yleft[:, j]) @ Yleft[:, j + 1:]
             Yleft[:, j + 1:] = Yleft[:, j + 1:] - \
                 np.dot((Yleft[:, j] * np.conj(Yleft[:, j])[:, na]).T, Yleft[:, j + 1:])
 
         aux = np.linalg.norm(Yleft[:, -1])
         Yleft[:, -1] = Yleft[:, -1] / aux
-        node.Rleft[-1, -1] = aux
+        self.Rleft[-1, -1] = aux
 
         # B = np.zeros_like(Yleft)
         # for j in range(1, 6):
-        #     B[:j, j] = node.dat.Rleft[:j, j] / node.dat.Rleft[j, j]
-        B = np.triu(node.Rleft / np.diag(node.Rleft), 1)  # upper triangle without diagonal
-        # self.dat.Rright = np.diag(1 / np.diag(node.dat.Rleft))
+        #     B[:j, j] = self.dat.Rleft[:j, j] / self.dat.Rleft[j, j]
+        B = np.triu(self.Rleft / np.diag(self.Rleft), 1)  # upper triangle without diagonal
+        # prev.dat.Rright = np.diag(1 / np.diag(self.dat.Rleft))
         # for i in range(6):
         #     for j in range(i + 1, 6):
         #         for k in range(i, j):
-        #             self.dat.Rright[i, j] = self.dat.Rright[i, j] - self.dat.Rright[i, k] * B[k, j]
+        #             prev.dat.Rright[i, j] = prev.dat.Rright[i, j] - prev.dat.Rright[i, k] * B[k, j]
 
-        self.Rright = np.diag(1 / np.diag(node.Rleft))
+        prev.Rright = np.diag(1 / np.diag(self.Rleft))
         for i in range(6):
             for j in range(i + 1, 6):
-                self.Rright[i, j] -= np.sum(self.Rright[i, i:j] * B[i:j, j])
+                prev.Rright[i, j] -= np.sum(prev.Rright[i, i:j] * B[i:j, j])
 
-        node.Rleft = np.conj(node.Rleft.T)
-        self.Rright = np.conj(self.Rright.T)
-        node.Yleft = Yleft
-        return node
+        self.Rleft = np.conj(self.Rleft.T)  # Y left
+        prev.Rright = np.conj(prev.Rright.T)
+        self.Yleft = Yleft
 
-        # rel_err(ref.sel(i=self.level + 1).Yleft.T.values, node.Yleft)
-
-
-class PrelutNodeFirst(PrelutNode):
-    def __init__(self, beta, ds):
-        PrelutNode.__init__(self)
-        self.set_s(sleft=0, sright=ds)
-        sinbeta, cosbeta = np.sin(beta), np.cos(beta)
-        self.Yleft = np.array([[-sinbeta, 0, cosbeta, 0, 0, 0],
-                               [cosbeta, 0, sinbeta, 0, 0, 0],
-                               [0, 0, 0, 0, 1, 0],
-                               [0, -sinbeta, 0, cosbeta, 0, 0],
-                               [0, cosbeta, 0, sinbeta, 0, 0],
-                               [0, 0, 0, 0, 0, 1]], dtype=np.complex128).T
-        self.Rleft = np.eye(6, dtype=np.complex128)
+        # rel_err(ref.sel(i=prev.level + 1).Yleft.T.values, self.Yleft)
 
 
 class PreLUTGenerator():
@@ -141,8 +137,8 @@ class PreLUTGenerator():
     # Level incrementeres ved stationer med s=j*ds
     # Der orthonormaliseres ved hver station og gemmes i en hægtet liste.
     # Bruger anden ordens R-K
-    def __init__(self, zeta0, kz0, beta, kzmax, ds, accgoal, h_dict):
-        self.nodes = []
+    def __init__(self, zeta0, kz0, beta, kzmax, ds, accgoal):
+        self.nodes = [PrelutNodeFirst(beta)]
 
         self.zeta0 = zeta0
         self.kz0 = kz0
@@ -151,127 +147,72 @@ class PreLUTGenerator():
         self.cosbeta = np.cos(beta)
         self.sinbeta = np.sin(beta)
         self.accgoal = accgoal
-
-        if zeta0 > 0:
-            # Stable
-            # smaxx is reduced for very stable conditions
-            self.smaxx = np.log(np.min([kzmax / kz0, 1.0e8, 10 / zeta0]))
-        else:
-            # Neutral and unstable
-            self.smaxx = np.log(np.minimum(kzmax / kz0, 1e8))
+        self.smaxx = np.log(np.minimum(kzmax / kz0, 1e8))
         self.acc = accgoal / self.smaxx
 
-        if abs(zeta0) < 1e-10:  # Neutral
-            self.cdivkL = 0.0
-        else:
-            if zeta0 < 0:  # Unstable
-                self.cdivkL = zeta0 / kz0 * Cm1
-            else:  # Stable
-                self.cdivkL = zeta0 / kz0 * Cm2
-
-        self.psi0 = psi(zeta0, kz0, self.cdivkL)
-        self.h_dict = h_dict
-
-    def sm(self):
-        # Determine max s (sm) and max kz (kzm)?
-        if self.zeta0 < 0:
-            # Unstable
-            if self.cdivkL > 1:
-                x = 1
-            else:
-                x = self.cdivkL**0.2
-
-            while True:
-                dx = (1.0 - x**4 - self.cdivkL * x**5) / (4.0 * x**3 + self.cdivkL * 5.0 * x**4)
-                x = x + dx
-                if (abs(dx / x) < 1.0e-14):
-                    break
-            # kzm = x
-            sm = np.log(x / self.kz0)
-        else:
-            # Stable and neutral
-            if self.cdivkL < 1:
-                kzm = 1 / (1 - self.cdivkL)
-                sm = np.log(kzm / self.kz0)
-            else:
-                sm = self.smaxx
-                # kzm = self.kz0 * np.exp(sm)
-
-        sm = min(self.smaxx, sm)
-        return sm
-
     def make_prelut(self):
-        first = PrelutNodeFirst(self.beta, self.ds)
+        first = self.nodes[0]
         h = np.sqrt(self.acc * 6 / 3.125)
         self.lastkz = self.kz0
+        self.psi0 = self.psi(self.kz0)
+        yerr = self.rk2(first, first.Yleft, 0, h, j=1)  # rk2(self, node, y, x, h, j)
+        first.dyxu0 = 0
+        first.dyxv0 = 0
+        first.dyxw0 = 0
+        first.dyxu1 = 0
+        first.dyxv1 = 0
+        first.dyxw1 = 0
+        h = get_new_h2(h, self.acc, yerr, first.Yright)  # get_new_h2(h, acc, Yerr, Y)
+        sm = np.minimum(self.smaxx, self.smaxx)  # ?????????????
+        first.sleft = 0
+        first.sright = self.ds
+        s1 = 0.0
+        s2 = self.ds
+        s_lst = np.r_[np.arange(0, sm, self.ds), sm, np.arange(sm, self.smaxx)]  # ????????
 
-        yerr = self.rk2(first, first.Yleft, 0, h, j=1)
-        first.reset_dyx()
-        h = get_new_h2(h, self.acc, yerr, first.Yright)
-        sm = self.sm()
+        i = 0
 
-        # cumsum gives slightly different results than arange (more equal to fortran implementation)
-        s_lst = np.sort(np.r_[0, np.cumsum(np.full(int(self.smaxx // self.ds) + 1, self.ds)), sm])
+        # ks = []
+        # ss = []
 
-        # equal(first.Yleft, f'yleft{0:6.3f}')
-        segment, h = self.solve2(first, h, yerr, self.acc, 1)
-        # equal(segment.Yright, f'yright{0:6.3f}')
-        for (s1, s2) in tqdm(list(zip(s_lst[1:], s_lst[2:]))):
-            self.nodes.append(segment)
-            segment = segment.get_next(s1, s2)
-            j = 1 + (s1 >= sm)
-            h = self.h_dict.get(np.round(s1, 2), h)
+        for k, (s1, s2) in enumerate(zip(s_lst, s_lst[1:][:max_recs])):
 
-            segment, h = self.solve2(segment, h, yerr, self.acc, j)
-            # equal(segment.Yright, f'yright{s1:6.3f}')
-            if len(self.nodes) > max_recs:
-                break
-        else:  # max_recs not reached
-            if sm < self.smaxx:
-                self.nodes.append(segment)
-                segment.get_next(s2, s2)
-                segment.Yright = segment.Yleft
-            # compare(segment.Yright, 'yright%6.3f' % s1)
-            # if s2 < self.smaxx:
-            #     self.nodes.append(segment)
+            # print(i)
+            # ks.append(i)
+            # ss.append(s1)
+            segment = self.nodes[-1]
+            segment.level = i
 
-            # allocate(segment%next)
-            # segment%next%prev=>segment
-            # call GMRES(segment)
-            # segment=>segment%next
+            segment.sleft = s1
+            segment.sright = s2
+            # !!!!!!!!!!!!!!! solve2(self, p, h, yerr, acc, j) here we modify Yright and Rright and deltaBs
+            h, i = self.solve2(segment, h, yerr, self.acc, i, 1)
+            if s2 < self.smaxx:
+                self.nodes.append(PrelutNodeNext(segment))  # append node but modified by GMRES
 
-        # if s2 == self.smaxx:
-        #     self.nodes.pop(-1)
-        # else:
-        #     last.sright = last.sleft
-        #     last.yright = last.Yleft
-        #     last.Rright = self.nodes[0].Rleft
-        #
+        # ks = np.array(ks)
+        # ss = np.array(ss)
 
-        # segment.dat.level = i
-        # segment.dat.sleft = s1
-        # segment.dat.sright = segment.dat.sleft = s1
-        # segment.Yright = segment.dat.Yleft
+        # print(dir(self.nodes[-1]))
 
-        # segment.dat.Rright = np.zeros_like(segment.dat.Yleft)
-        # self.last = segment
+        PrelutNodeNext(self.nodes[-1])
 
-        # def get_res(node, k):
-        #     if node.next is None:
-        #         return [getattr(node.dat, k)]
-        #     else:
-        #         return [getattr(node.dat, k)] + get_res(node.next, k)
+        # return self.nodes
 
         var_names = ['Yleft', 'Rleft', 'Rright',
                      'dyxu0', 'dyxu1', 'dyxv0', 'dyxv1', 'dyxw0', 'dyxw1',
-                     'sleft', 'sright']
+                     'sleft', 'sright', 'level']
         var_values = ([np.moveaxis([getattr(n, k) for n in self.nodes], 1, 2) for k in var_names[:3]] +
                       [np.array([getattr(n, k) for n in self.nodes]) for k in var_names[3:]])
         return xr.Dataset({**{n: (('i', 'j', 'k')[:len(v.shape)], v)
                               for n, v in zip(var_names, var_values)},
-                           'zeta0': self.zeta0, 'beta': self.beta, 'kz0': self.kz0,
-                           **{'level': (('i',), np.round(var_values[-2] / self.ds, 3).astype(int))}},
+                           'zeta0': self.zeta0, 'beta': self.beta, 'kz0': self.kz0},
                           attrs={'ds': 0.05, 'accgoal': self.accgoal, })
+
+        # plt.scatter(aux.level.values,aux.sleft.values,s = 100)
+        # plt.scatter(ks, ss, s = 10)
+
+        # return aux
 
     def rk2(self, node, y, x, h, j):
 
@@ -283,44 +224,35 @@ class PreLUTGenerator():
         c4 = 2.0 / 6.0
 
         def rk2step(t1, h, Ay, y1, j):
-
-            # equal(Ay, 'rk2step_Ay')
-            # equal(y1, 'rk2step_y1')
+            # compare(Ay, 'rk2step_Ay')
+            # compare(y1, 'rk2step_y1')
             ym = y1 + h * Ay / 2
-            # equal(ym, 'rk2step_ym')
+            # compare(ym, 'rk2step_ym')
             A = self.getM(t1 + h * 0.5, j)
-            # equal(A, 'rk2step_A')
-            # equal(dot(A, ym), 'rk2step_Aym')
-            y2 = y1 + h * dot(A, ym)
-            # equal(y2, 'rk2step_y2')
+            # compare(A, 'rk2step_A')
+            # compare(np.dot(A, ym), 'rk2step_Aym')
+            y2 = y1 + h * np.dot(A, ym)
+            # compare(y2, 'rk2step_y2')
             return y2
 
         A = self.getM(x, j)
-
-        # equal(A, 'rk2_A')
-
-        Ay = dot(A, y)
-        # equal(Ay, 'rk2_Ay')
-
+        # compare(A, 'rk2_A')
+        Ay = A @ y
+        # compare(Ay, 'rk2_Ay')
         y2 = rk2step(x, h, Ay, y, j)
-        # equal(y2, 'rk2_y2')
-
+        # compare(y2, 'rk2_y2')
         y3 = rk2step(x, h * 0.5, Ay, y, j)
-        # equal(y3, 'rk2_y3')
-
+        # compare(y3, 'rk2_y3')
         A = self.getM(x + h * 0.5, j)
-        # equal(A, 'rk2_A2')
-
-        Ay = dot(A, y3)
-#        equal(Ay, 'rk2_Ay2')
-
+        # compare(A, 'rk2_A2')
+        Ay = A @ y3
+        # compare(Ay, 'rk2_Ay2')
         y4 = rk2step(x + h * 0.5, h * 0.5, Ay, y3, j)
-        # equal(y4, 'rk2_y4')
-
+        # compare(y4, 'rk2_y4')
         yout = B1 * y4 + B2 * y2
-        # equal(yout, 'rk2_yout')
+        # compare(yout, 'rk2_yout')
         yerr = yout - y4
-        node.Yright = yout
+        node.Yright = yout   # Y2 STORAGE !!!!!!!
 
         if j == 1:
             kz1 = self.lastkz
@@ -341,118 +273,87 @@ class PreLUTGenerator():
                 a1 = 1 / (1 / kz1 + self.cdivkL)
                 am = 1 / (1 / kzm + self.cdivkL)
                 a2 = 1 / (1 / kz2 + self.cdivkL)
-            # dyxu0=dyxu0+h*(conjg(a1*c1*y(2,:)+am*c3*y3(2,:)+a2*(c4*y4(2,:)+c2*y2(2,:))))
-            # dyxv0=dyxv0+h*(conjg(a1*c1*y(4,:)+am*c3*y3(4,:)+a2*(c4*y4(4,:)+c2*y2(4,:))))
-            # dyxw0=dyxw0+h*(conjg(a1*c1*y(6,:)+am*c3*y3(6,:)+a2*(c4*y4(6,:)+c2*y2(6,:))))*kappa
-            # dyxu1=dyxu1+h*(conjg(kz1*a1*c1*y(2,:)+kzm*am*c3*y3(2,:)+kz2*a2*(c4*y4(2,:)+c2*y2(2,:))))
-            # dyxv1=dyxv1+h*(conjg(kz1*a1*c1*y(4,:)+kzm*am*c3*y3(4,:)+kz2*a2*(c4*y4(4,:)+c2*y2(4,:))))
-            # dyxw1=dyxw1+h*(conjg(kz1*a1*c1*y(6,:)+kzm*am*c3*y3(6,:)+kz2*a2*(c4*y4(6,:)+c2*y2(6,:))))*kappa
             node.dyxu0 += h * (np.conj(a1 * c1 * y[1, :] + am * c3 * y3[1, :] + a2 * (c4 * y4[1, :] + c2 * y2[1, :])))
             node.dyxv0 += h * (np.conj(a1 * c1 * y[3, :] + am * c3 * y3[3, :] + a2 * (c4 * y4[3, :] + c2 * y2[3, :])))
             node.dyxw0 += h * (np.conj(a1 * c1 * y[5, :] + am * c3 * y3[5, :] +
                                        a2 * (c4 * y4[5, :] + c2 * y2[5, :]))) * kappa
-            node.dyxu1 += h * (np.conj(kz1 * a1 * c1 * y[1, :] + kzm * am *
+            node.dyxu1 += h * (np.conj(kz1 * a1 * c1 * y[2, :] + kzm * am *
                                        c3 * y3[1, :] + kz2 * a2 * (c4 * y4[1, :] + c2 * y2[1, :])))
             node.dyxv1 += h * (np.conj(kz1 * a1 * c1 * y[3, :] + kzm * am *
                                        c3 * y3[3, :] + kz2 * a2 * (c4 * y4[3, :] + c2 * y2[3, :])))
             node.dyxw1 += h * (np.conj(kz1 * a1 * c1 * y[5, :] + kzm * am * c3 *
                                        y3[5, :] + kz2 * a2 * (c4 * y4[5, :] + c2 * y2[5, :]))) * kappa
         else:
-            xm = x + 0.5 * h
-            x2 = x + h
-            a1 = self.phi(x)
-            am = self.phi(xm)
-            a2 = self.phi(x2)
-            node.dyxu0 = node.dyxu0 + h * \
-                np.conj(a1 * c1 * y[1, :] / x + am * c3 * y3[1, :] / xm + a2 * (c4 * y4[1, :] + c2 * y2[1, :]) / x2)
-            node.dyxv0 = node.dyxv0 + h * \
-                np.conj(a1 * c1 * y[3, :] / x + am * c3 * y3[3, :] / xm + a2 * (c4 * y4[3, :] + c2 * y2[3, :]) / x2)
-            node.dyxw0 = node.dyxw0 + kappa * h * \
-                np.conj(c1 * y[5, :] + c3 * y3[5, :] + c4 * y4[5, :] + c2 * y2[5, :]) * kappa
-            node.dyxu1 = node.dyxu1 + h * \
-                np.conj((a1 * c1 * y[1, :] + am * c3 * y3[1, :]) + a2 * (c4 * y4[1, :] + c2 * y2[1, :]))
-            node.dyxv1 = node.dyxv1 + h * \
-                np.conj((a1 * c1 * y[3, :] + am * c3 * y3[3, :]) + a2 * (c4 * y4[3, :] + c2 * y2[3, :]))
-            node.dyxw1 = node.dyxw1 + kappa * h * \
-                np.conj((x * c1 * y[5, :] + xm * c3 * y3[5, :]) + x2 * (c4 * y4[5, :] + a2 * c2 * y2[5, :])) * kappa
+            raise NotImplementedError()
         return yerr
 
-    def solve2(self, p, h, yerr, acc, j):
-        # use params, only: mykind,n,kz0,Ythreshold,kappa,reccount
-        # use contr, only: Tprelutnode
-        # use GMRES_interface
-        # implicit none
-        # type(Tprelutnode), pointer :: p
-        # integer(4) j
-        # real(mykind), intent(inout) :: h
-        # real(mykind), intent(in) :: acc
-        # complex(mykind), dimension(n,n), intent(out) :: Yerr
-        # complex(mykind), dimension(n,n) :: Y1,Y2,dYerr,A
-        # real(mykind) t,t1,t2,hh,err,Ynorm,Ynorm1,kz1,kz2,s1,s2
-        # integer(4) i
-        # real(mykind) u0,norm
+    def solve2(self, p, h, yerr, acc, i, j):
         kz1 = self.kz0 * np.exp(p.sleft)
         kz2 = self.kz0 * np.exp(p.sright)
-
         if (j == 1):
             t1 = kappa * self.u0(kz1)
             t2 = kappa * self.u0(kz2)
         else:
             t1 = kz1
             t2 = kz2
-
         t = t1
-
         Ynorm1 = np.linalg.norm(p.Yleft[:, 0])
         Y1 = p.Yleft
-        norm_lst = []
-        # print(f'{p.sleft:.3f}, {h:0.5f}')
-        # if p.sleft >= 18.15:
-        #     print()
+        sublevel = 0
+        # p.level.sublevel = i
         while True:
             if (1.1 * h + t > t2):
-                # step, h, big enough to reach t2 -> take the final step
                 h = t2 - t
-                dyerr = self.rk2(p, Y1, t, h, j)
-                yerr = yerr + dyerr
-                h = get_new_h2(h, self.acc, dyerr, p.Yright)
-
-                # if p.sleft > 18:
-                #     import matplotlib.pyplot as plt
-                #     plt.title(p.sleft)
-                #     plt.plot(norm_lst)
-                #     plt.show()
-                return p, h
-            else:
-                # take step, h
                 dyerr = self.rk2(p, Y1, t, h, j)  # here Yright is updated, only Yright and deltaBs
-                yerr = yerr + dyerr  # TODO: +=
+                yerr = yerr + dyerr
+                #     p%Yright=Y2
+                h = get_new_h2(h, self.acc, dyerr, p.Yright)
+                i = i + 1
+                # p.sublevel = sublevel
+                #     t=t2
+                return h, i
+            else:
+
+                dyerr = self.rk2(p, Y1, t, h, j)  # here Yright is updated, only Yright and deltaBs
+                # print(sublevel, np.linalg.norm(p.Yright[:, 0]) / Ynorm1)
+                yerr = yerr + dyerr
                 Y1 = p.Yright.copy()
                 t = t + h
                 h = get_new_h2(h, self.acc, dyerr, p.Yright)
                 Ynorm = np.linalg.norm(p.Yright[:, 0]) / Ynorm1
-                norm_lst.append(Ynorm)
                 # If Ynorm is too large, then we make a "sublevel" or "substation"
                 # One can have multiple sublevels between two levels if necessary.
-                # print(t, Ynorm)
+                # print(t)
                 if Ynorm > Ythreshold:
+
+                    kzm = self.get_kz(t)
+                    sm = np.log(kzm / self.kz0)
                     s2 = p.sright
-                    if j == 1:
-                        kz1 = self.get_kz(t)
-                        s1 = np.log(kz1 / self.kz0)
-                    else:
-                        # This might be a mistake according to sqot, but it is used.
-                        s1 = np.log(t / self.kz0)
-                        s1 = ref.sleft[np.searchsorted(ref.sleft, s2) - 1].item()
+                    p.sright = sm
 
-                    p.sright = s1
+                    aux = PrelutNodeNext(p)
+
+                    # sublevel = sublevel + 1
+                    # p.sublevel = sublevel
+                    if sublevel == 0:
+                        self.nodes.pop()
+                        sublevel = 1
                     self.nodes.append(p)
-                    p = p.get_next(s1, s2)
-                    Ynorm1 = np.linalg.norm(p.Yleft[:, 0])
-                    Y1 = p.Yleft
-                    #       Y1=p%dat%Yleft
-            #       Ynorm1=norm(Y1(:,1))
+                    p = aux
 
+                    # p = self.nodes[-1]
+                    i = i + 1
+                    p.level = i
+                    p.sleft = sm
+                    p.sright = s2
+                    Y1 = p.Yleft  # !!!!!!!!!!!!!!!!!!
+                    if (j == 1):
+                        t1 = kappa * self.u0(kzm)
+                    else:
+                        t1 = kzm
+                    t = t1
+
+###############################################################################
     def getM(self, t, j):
         # ! This version includes stability in the eddy diffusivity.
         # ! Parameter zeta0=z0/L
@@ -469,16 +370,9 @@ class PreLUTGenerator():
         if j == 1:
 
             kz = self.get_kz(t)
-
-            if self.zeta0 < 0:
-                # Unstable
-                kK = kappa * kz * self.dphiu(kz)
-                dKdz = kK * (1.0 / kz + 0.25 / (1.0 / self.cdivkL + kz))
-            else:
-                # Stable and neutral
-                aux = self.phi(kz)
-                kK = kappa * kz / aux
-                dKdz = kappa / aux**2
+            aux = self.phi(kz)
+            kK = kappa * kz / aux
+            dKdz = kappa / aux**2
 
             kKcos = kK * self.cosbeta
             kKsin = kK * self.sinbeta
@@ -516,58 +410,46 @@ class PreLUTGenerator():
                 [0, complex(0, kKcos / kappa2 * pscale), 0,
                  complex(0, kKsin / kappa2 * pscale), 0, 0]])
 
-        elif j == 2:
-            kz = t
-            if self.zeta0 < 0:
-                # Unstable
-                kK = kappa * kz * self.dphiu(kz)
-                dKdz = kK * (1.0 / kz + 0.25 / (1.0 / self.cdivkL + kz))
-            else:
-                # Stable and neutral
-                aux = self.phi(kz)
-                kK = kappa * kz / aux
-                dKdz = kappa / aux**2
-
-            cosbeta, sinbeta = np.cos(self.beta), np.sin(self.beta)
-            kKcos = kK * cosbeta
-            kKsin = kK * sinbeta
-            u = self.u0(kz)
             return np.array([
-                # M(1,2)=dcmplx(-1.0D0,cosbeta*u/kK)
-                # M(1,5)=dcmplx(0.0D0,-cosbeta)
-                # M(1,6)=dcmplx(0.0D0,-2.0D0*dKdz*cosbeta/pscale)
-                [0, complex(-1, cosbeta * u / kK), 0, 0,
-                 complex(0, -cosbeta),
-                 complex(0, -2 * dKdz * cosbeta / pscale)],
+                # M(1,2)=cmplx(-kK**2,kKcos*u)/kappa2
+                # M(1,5)=cmplx(0.0E0,-kKcos/kappa)
+                # M(1,6)=cmplx(0.0E0,-2.0E0*dKdz*kKcos/kappa/pscale)
+                [0, (-kK**2 + 1j * kKcos * u) / kappa2, 0, 0, -1j * \
+                 kKcos / kappa, -1j * 2 * dKdz * kKcos / kappa / pscale],
+                # M(2,1)=cmplx(-1.0E0,0.0E0)
+                # M(2,6)=cmplx(0.0E0,-kKcos/pscale)
+                [-1, 0, 0, 0, 0, -1j * kKcos / pscale],
+                # M(3,4)=M(1,2)
+                # M(3,5)=cmplx(0.0E0,-kKsin/kappa)
+                # M(3,6)=cmplx(0.0E0,-2.0E0*dKdz*kKsin/kappa/pscale)
+                [0, 0, 0, (-kK**2 + 1j * kKcos * u) / kappa2, -1j * kKsin / \
+                 kappa, -1j * 2 * dKdz * kKsin / kappa / pscale],
+                # M(4,3)=cmplx(-1.0E0,0.0E0)
+                # M(4,6)=cmplx(0.0E0,-kKsin/pscale)
+                [0, 0, -1, 0, 0, -1j * kKsin / pscale],
+                # M(5,2)=cmplx(-1.0E0,-dKdz*kKcos)/kappa2
+                # M(5,4)=cmplx(0.0E0,-dKdz*kKsin/kappa2)
+                # M(5,6)=cmplx(kK**2,-kKcos*u)/(pscale*kappa)
+                [0, (-1 - 1j * dKdz * kKcos) / kappa2, 0,
+                 -1j * dKdz * kKsin / kappa2, 0, (kK**2 - 1j * kKcos * u) / (pscale * kappa)],
+                # M(6,2)=cmplx(0.0E0,kKcos/kappa2*pscale)
+                # M(6,4)=cmplx(0.0E0,kKsin/kappa2*pscale)
+                [0, 1j * kKcos / kappa2 * pscale, 0, 1j * kKsin / kappa2 * pscale, 0, 0]])
+        elif j == 2:
+            raise NotImplementedError()
 
-                # M(2,1)=-1.0D0
-                # M(2,2)=dKdz/kK
-                # M(2,6)=dcmplx(0.0D0,-kK*cosbeta/pscale)
-                [-1, dKdz / kK, 0, 0, 0,
-                 complex(0, -kK * cosbeta / pscale)],
 
-                # M(3,4)=dcmplx(-1.0D0,cosbeta*u/kK)
-                # M(3,5)=dcmplx(0.0D0,-sinbeta)
-                # M(3,6)=dcmplx(0.0D0,-2.0D0*dKdz*sinbeta/pscale)
-                [0, 0, 0, complex(-1, cosbeta * u / kK),
-                 complex(0, - sinbeta),
-                 complex(0, - 2 * dKdz * sinbeta / pscale)],
-                # M(4,3)=-1.0D0
-                # M(4,4)=M(2,2)
-                # M(4,6)=dcmplx(0.0D0,-kK*sinbeta/pscale)
-                [0, 0, -1, dKdz / kK, 0,
-                 complex(0, -kK * sinbeta / pscale)],
+class AllPreLUTGenerator(PreLUTGenerator):
 
-                # M(5,2)=dcmplx(-1.0D0/kK**2,dKdz/kK*cosbeta)
-                # M(5,4)=dcmplx(0.0D0,-dKdz/kK*sinbeta)
-                # M(5,6)=dcmplx(kK,-cosbeta*u)
-                [0, complex(-1 / kK**2, dKdz / kK * cosbeta), 0,
-                 complex(0, -dKdz / kK * sinbeta), 0,
-                 complex(kK, - cosbeta * u)],
-                # M(6,2)=dcmplx(0.0D0,cosbeta*pscale/kK)
-                # M(6,4)=dcmplx(0.0D0,sinbeta*pscale/kK)
-                [0, complex(0, cosbeta * pscale / kK), 0,
-                 complex(0, sinbeta / pscale / kK), 0, 0]])
+    def __init__(self, zeta0, kz0, beta, kzmax, ds, accgoal):
+        PreLUTGenerator.__init__(self, zeta0, kz0, beta, kzmax, ds, accgoal)
+        if abs(self.zeta0) < 1e-10:  # Neutral
+            self.cdivkL = 0.0
+        else:
+            if self.zeta0 < 0:  # Unstable
+                self.cdivkL = self.zeta0 / self.kz0 * Cm1
+            else:  # Stable
+                self.cdivkL = self.zeta0 / self.kz0 * Cm2
 
     def get_kz(self, t):
         zeta0 = self.zeta0
@@ -599,11 +481,10 @@ class PreLUTGenerator():
                     ax = b
                 else:
                     ax = a * self.lastkz / kz0
-                while True:
+                    dax = (b - ax - np.log(ax)) / (1 + 1 / ax)
+                while abs(dax / ax) < 1e-14:
                     dax = (b - ax - np.log(ax)) / (1 + 1 / ax)
                     ax = ax + dax
-                    if (abs(dax / ax) < 1e-14):
-                        break
             kz = kz0 * ax / a
         else:
             # Unstable
@@ -672,6 +553,32 @@ class PreLUTGenerator():
         return (np.log(kz / self.kz0) + self.psi(kz) - self.psi0) / kappa
 
 
+class NeutralPreLUTGenerator(PreLUTGenerator):
+
+    # type(Tprelutdata) :: dat
+    # type(Tprelutnode), pointer :: first,last
+
+    def __init__(self, zeta0, kz0, beta, kzmax, ds, accgoal):
+        PreLUTGenerator.__init__(self, zeta0, kz0, beta, kzmax, ds, accgoal)
+        self.cdivkL = 0.0
+        self.psi0 = self.psi(kz0)
+
+    def get_kz(self, t):
+        kz = self.kz0 * np.exp(t)
+        self.lastkz = kz
+        return kz
+
+    def phi(self, kz):
+        return 1
+
+    def psi(self, kz):
+        return 0
+
+    def u0(self, kz):
+        # Wind speed from MOST normalized by uStar
+        return (np.log(kz / self.kz0)) / kappa
+
+
 class PreLUT():
 
     @staticmethod
@@ -694,6 +601,8 @@ class PreLUT():
                 return r
             r = []
             while fid.tell() < eof:
+                if fid.tell() == 467124:
+                    print(fid.tell())
                 r.append(read_level())
 
         return xr.Dataset({**{k: (dims, np.array(v)) for (k, dims), v in zip([
@@ -712,12 +621,14 @@ class PreLUT():
             zip(*r))}, 'zeta0': zeta0, 'beta': beta, 'kz0': kz0}, attrs={'ds': ds, 'kzmax': kzmax})
 
     @staticmethod
-    def make_prelut(zeta0, kz0, beta, kzmax, ds, accgoal, h_dict={}):
-        return PreLUTGenerator(zeta0, kz0, beta, kzmax, ds, accgoal, h_dict).make_prelut()
+    def make_prelut(zeta0, kz0, beta, kzmax, ds, accgoal):
+        if zeta0 == 0:
+            return NeutralPreLUTGenerator(zeta0, kz0, beta, kzmax, ds, accgoal).make_prelut()
+        else:
+            raise NotImplementedError()
 
 
-ref = PreLUT.from_pre_file(tfp + 'preLUTs_Zeta0=0.00E+00_1_2/0.0000-06.0000.pre',
-                           zeta0=0, beta=0, kz0=1e-6, kzmax=0, ds=0.05)
+# ref = PreLUT.from_pre_file(tfp + '0.0000-09.0000.pre', zeta0=0, beta=0, kz0=0, kzmax=0, ds=0.05)
 
 
 def prelut(lut_path, prelutname, zeta0, nkz0, kz0min, kz0max, nbeta, mbeta, ds, kzmax, accgoal):
@@ -743,11 +654,106 @@ def prelut(lut_path, prelutname, zeta0, nkz0, kz0min, kz0max, nbeta, mbeta, ds, 
 
     for i, kz0 in enumerate(tqdm(kz0_lst)):
 
-        res = xr.concat([PreLUT.make_prelut(zeta0, kz0, beta, kzmax, ds, accgoal) for beta in betatab],
+        res = xr.concat([NeutralPreLUT(zeta0, kz0, beta, kzmax, ds).make_prelut(accgoal) for beta in betatab],
                         pd.Index(betatab, name='beta'))
         res['kz0'] = kz0
         save_complex(res, Path(lut_path) / prelutname / f'ikz0={i:03.0f}.nc')
 
+
+# In[Check this with the fortran test file]
+nbeta = 20
+mbeta = 0
+nkz0 = 1
+kz0min = 1e-09
+kz0max = 0.1
+jmin = np.floor(0.5 + np.log10(kz0min) * nkz0)
+jmax = np.floor(0.5 + np.log10(kz0max) * nkz0)
+xx = np.linspace(0, np.pi / 2, nbeta + mbeta + 1)
+betatab = get_beta(xx)
+j_lst = np.arange(jmin, jmax + 1)
+kz0_lst = 10**(j_lst / nkz0)
+
+test = AllPreLUTGenerator(zeta0=0.0,
+                          kz0=.02,
+                          beta=betatab[10],
+                          kzmax=300,
+                          ds=0.05,
+                          accgoal=0.0001
+                          )
+
+# test = AllPreLUTGenerator(zeta0 = 0.0,
+#                        kz0 = .002,
+#                        beta = betatab[10],
+#                        kzmax=300,
+#                        ds = 0.05,
+#                        accgoal = 0.0001
+#                        )
+
+
+# test = PreLUTGenerator(zeta0 = -0.1,
+#                        kz0 = .1,
+#                        beta = betatab[0],
+#                        kzmax=300,
+#                        ds = 0.05,
+#                        accgoal = 0.0001
+#                        )
+
+aux = test.make_prelut()
+# aux2 = test.make_prelut()
+
+
+# In[]
+
+nbeta = 5
+mbeta = 0
+nkz0 = 1
+kz0min = 1e-09
+kz0max = 0.1
+jmin = np.floor(0.5 + np.log10(kz0min) * nkz0)
+jmax = np.floor(0.5 + np.log10(kz0max) * nkz0)
+xx = np.linspace(0, np.pi / 2, nbeta + mbeta + 1)
+betatab = get_beta(xx)
+j_lst = np.arange(jmin, jmax + 1)
+kz0_lst = 10**(j_lst / nkz0)
+
+zeta0 = 0.0
+kzmax = 300
+ds = 0.05
+accgoal = 0.0001
+
+
+for i, kz0 in enumerate(tqdm(kz0_lst)):
+
+    res = xr.concat([AllPreLUTGenerator(zeta0, kz0, beta, kzmax, ds, accgoal).make_prelut() for beta in betatab],
+                    pd.Index(betatab, name='beta'))
+    res['kz0'] = kz0
+
+
+# In[]
+
+# var_names = ['Yleft', 'Rleft', 'Rright',
+#               'dyxu0', 'dyxu1', 'dyxv0', 'dyxv1', 'dyxw0', 'dyxw1',
+#               'sleft', 'sright', 'level']
+# var_values = ([np.moveaxis([getattr(n, k) for n in aux], 1, 2) for k in var_names[:3]] +
+#               [np.array([getattr(n, k) for n in aux]) for k in var_names[3:]])
+
+# aux = xr.Dataset({**{n: (('i', 'j', 'k')[:len(v.shape)], v)
+#                       for n, v in zip(var_names, var_values)},
+#                     'zeta0': self.zeta0, 'beta': self.beta, 'kz0': self.kz0},
+#                   attrs={'ds': 0.05, 'accgoal': self.accgoal, })
+
+levels = []
+for i, n in enumerate(aux):
+    levels.append([n.level, n.sleft])
+    levels = np.array(levels)
+    try:
+        getattr(n, 'sublevel')
+        print(n.sublevel, n.level, n.sleft)
+    except Exception:
+        print('no sublevel')
+
+
+# In[]
 
 if __name__ == '__main__':
     prelut(r'C:\mmpe\programming\python\Topfarm\CuttingEdge\Fuga\Easylut/lut',
@@ -758,7 +764,7 @@ if __name__ == '__main__':
            kz0max=0.1,
            nbeta=2,
            mbeta=0,
-           ds=0.05,
+           ds=0.01,
            kzmax=300,
            accgoal=0.0001  # ! Level of accuracy
            )

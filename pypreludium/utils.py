@@ -1,5 +1,5 @@
 import numpy as np
-from .constants import Cm1, Cm2
+from PyPreludium.pypreludium.constants import Cm1, Cm2
 import xarray as xr
 from numpy import newaxis as na
 
