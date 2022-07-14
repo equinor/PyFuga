@@ -1,13 +1,13 @@
 import numpy as np
 from pathlib import Path
-from PyPreludium.pypreludium.utils import get_beta, psi, dphiu, get_new_h2, save_complex
+from PyPreludium.pypreludium.utils import get_beta, psi, dphiu, get_new_h2, save_complex, cdivkL, read_complex
 from PyPreludium.pypreludium.constants import Cm1, Cm2, n_eq, kappa, kappa2, pscale, max_recs, Ythreshold
 from numpy import newaxis as na
 from tqdm import tqdm
 
 import struct
 import xarray as xr
-from PyPreludium.pypreludium.file_readers import Parameters, read_prelut_list
+from PyPreludium.pypreludium.file_readers import Parameters, read_prelut_list, read_pre_file
 
 
 # np.set_printoptions(precision=2, linewidth=200)
@@ -161,15 +161,7 @@ class PreLUTGenerator():
             # Neutral and unstable
             self.smaxx = np.log(np.minimum(kzmax / kz0, 1e8))
         self.acc = accgoal / self.smaxx
-
-        if abs(zeta0) < 1e-10:  # Neutral
-            self.cdivkL = 0.0
-        else:
-            if zeta0 < 0:  # Unstable
-                self.cdivkL = zeta0 / kz0 * Cm1
-            else:  # Stable
-                self.cdivkL = zeta0 / kz0 * Cm2
-
+        self.cdivkL = cdivkL(zeta0, kz0)
         self.psi0 = psi(zeta0, kz0, self.cdivkL)
         self.h_dict = h_dict
 
@@ -179,7 +171,7 @@ class PreLUTGenerator():
             # Unstable
             if self.cdivkL > 1:
                 x = 1
-            else:
+            else:  # pragma: no cover
                 x = self.cdivkL**0.2
 
             while True:
@@ -225,7 +217,7 @@ class PreLUTGenerator():
 
             segment, h = self.solve2(segment, h, yerr, self.acc, j)
             # equal(segment.Yright, f'yright{s1:6.3f}')
-            if len(self.nodes) > max_recs:
+            if len(self.nodes) > max_recs:  # pragma: no cover
                 break
         else:  # max_recs not reached
             if sm < self.smaxx:
@@ -268,11 +260,11 @@ class PreLUTGenerator():
                      'sleft', 'sright']
         var_values = ([np.moveaxis([getattr(n, k) for n in self.nodes], 1, 2) for k in var_names[:3]] +
                       [np.array([getattr(n, k) for n in self.nodes]) for k in var_names[3:]])
-        return xr.Dataset({**{n: (('i', 'j', 'k')[:len(v.shape)], v)
-                              for n, v in zip(var_names, var_values)},
-                           'zeta0': self.zeta0, 'beta': self.beta, 'kz0': self.kz0,
-                           **{'level': (('i',), np.round(var_values[-2] / self.ds, 3).astype(int))}},
-                          attrs={'ds': 0.05, 'accgoal': self.accgoal, })
+        return PreLUT({**{n: (('i', 'j', 'k')[:len(v.shape)], v)
+                          for n, v in zip(var_names, var_values)},
+                       'zeta0': self.zeta0, 'beta': self.beta, 'kz0': self.kz0,
+                       **{'level': (('i',), np.round(var_values[-2] / self.ds, 3).astype(int))}},
+                      attrs={'ds': 0.05, 'accgoal': self.accgoal, })
 
     def rk2(self, node, y, x, h, j):
 
@@ -438,7 +430,7 @@ class PreLUTGenerator():
                 # print(t, Ynorm)
                 if Ynorm > Ythreshold:
                     s2 = p.sright
-                    if j == 1:
+                    if j == 1:  # pragma: no cover
                         kz1 = self.get_kz(t)
                         s1 = np.log(kz1 / self.kz0)
                     else:
@@ -585,7 +577,7 @@ class PreLUTGenerator():
             # Stable
             a = Cm2 * zeta0
             b = t + a + np.log(a)
-            if b < 1:
+            if b < 1:  # pragma: no cover
                 if kz < 0:
                     ax = np.exp(b)
                 else:
@@ -595,7 +587,7 @@ class PreLUTGenerator():
                     dax = (np.exp(b - ax) - ax) / (1 + ax)
                     ax = ax + dax
             else:
-                if kz < 0:
+                if kz < 0:  # pragma: no cover
                     ax = b
                 else:
                     ax = a * self.lastkz / kz0
@@ -608,7 +600,7 @@ class PreLUTGenerator():
         else:
             # Unstable
             b = t + b0
-            if kz < 0:
+            if kz < 0:  # pragma: no cover
                 x = np.exp(b)
             else:
                 aux = self.dphiu(self.lastkz)
@@ -618,7 +610,7 @@ class PreLUTGenerator():
                 # print(dx)
                 dx = -(2 * np.arctan(x) + np.log(x) - b) * x * (1 + x**2) / (x + 1)**2
                 x = x + dx
-                if x < 0:
+                if x < 0:  # pragma: no cover
                     x = np.exp(b)
                     dx = x
             kz = 8 * x * (1 + x**2) / (self.cdivkL * (1 - x)**4)
@@ -672,7 +664,7 @@ class PreLUTGenerator():
         return (np.log(kz / self.kz0) + self.psi(kz) - self.psi0) / kappa
 
 
-class PreLUT():
+class PreLUT(xr.Dataset):
 
     @staticmethod
     def from_pre_file(filename, zeta0, kz0=None, beta=None, kzmax=None, ds=None):
@@ -680,44 +672,19 @@ class PreLUT():
         if None in [kz0, beta, kzmax, ds]:
             ds, smaxx, kz0, beta, kzmax, accgoal = read_prelut_list(filename.parent)[filename.name]
 
-        with open(filename, 'rb') as fid:
-            fid.seek(-1, 2)     # go to the file end.
-            eof = fid.tell()   # get the end of file location
-            fid.seek(0, 0)      # go back to file beginning
-
-            def read_complex(shape):
-                n = np.prod(shape)
-                v = np.reshape(struct.unpack('d' * 2 * n, fid.read(16 * n)), shape + (2,))
-                return np.sum(v * np.array([1, 1j]), -1)
-
-            def read_level():
-                r = ([read_complex((6, 6)) for _ in range(3)] +   # Yleft, Rleft, Rright
-                     [read_complex((6,)) for _ in range(6)] +   # dyxu0, dyxu1, dyxv0, dyxv1, dyxw0, dyxw1
-                     list(struct.unpack('ddi', fid.read(20))))  # sleft, sright, level
-                struct.unpack('i', fid.read(4))
-                return r
-            r = []
-            while fid.tell() < eof:
-                r.append(read_level())
-
-        return xr.Dataset({**{k: (dims, np.array(v)) for (k, dims), v in zip([
-            ('Yleft', ['i', 'j', 'k']),
-            ('Rleft', ['i', 'j', 'k']),
-            ('Rright', ['i', 'j', 'k']),
-            ('dyxu0', ['i', 'j']),
-            ('dyxu1', ['i', 'j']),
-            ('dyxv0', ['i', 'j']),
-            ('dyxv1', ['i', 'j']),
-            ('dyxw0', ['i', 'j']),
-            ('dyxw1', ['i', 'j']),
-            ('sleft', ['i']),
-            ('sright', ['i']),
-            ('level', ['i'])],
-            zip(*r))}, 'zeta0': zeta0, 'beta': beta, 'kz0': kz0}, attrs={'ds': ds, 'kzmax': kzmax})
+        pre_file = read_pre_file(filename)
+        return PreLUT({**pre_file, 'zeta0': zeta0, 'beta': beta, 'kz0': kz0}, attrs={'ds': ds, 'kzmax': kzmax})
 
     @staticmethod
     def make_prelut(zeta0, kz0, beta, kzmax, ds, accgoal, h_dict={}):
         return PreLUTGenerator(zeta0, kz0, beta, kzmax, ds, accgoal, h_dict).make_prelut()
+
+    @staticmethod
+    def from_netcdf(filename):
+        return PreLUT(read_complex(filename))
+
+    def save(self, filename):
+        save_complex(self, filename)
 
 
 class PreLUTs():

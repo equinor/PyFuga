@@ -6,6 +6,8 @@ import numpy.testing as npt
 import matplotlib.pyplot as plt
 import pytest
 from ..preluts import PreLUTs
+import xarray as xr
+import os
 
 
 def test_load_prelut_file():
@@ -111,6 +113,18 @@ def test_prelut_with_substations():
     prelut = PreLUT.from_pre_file(tfp + 'preLUTs_Zeta0=0.00E+00_1_2/0.0000-06.0000.pre',
                                   zeta0=0, beta=0, kz0=1e-6, kzmax=0, ds=0.05)
     compare(res, prelut, rtol=1e-7)
+
+
+def test_prelut_save_load():
+
+    if os.path.isfile('tmp.nc'):
+        os.remove('tmp.nc')
+    PreLUT.make_prelut(zeta0=0, kz0=1e-9, beta=get_beta(np.array([0]))[0],
+                       kzmax=300, ds=0.05, accgoal=0.0001).save('tmp.nc')
+    res = PreLUT.from_netcdf('tmp.nc')
+    prelut = PreLUT.from_pre_file(tfp + f'preLUTs_Zeta0=0.00E+00_1_2/0.0000-09.0000.pre',
+                                  zeta0=0, beta=0, kz0=1e-9, kzmax=0, ds=0.05)
+    compare(res, prelut)
 
 
 def test_preluts():

@@ -1,0 +1,6 @@
+[run]
+omit = 
+	pypreludium/tests/*
+	tmp/*
+[report]
+fail_under = 100

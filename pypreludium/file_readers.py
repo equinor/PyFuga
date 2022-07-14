@@ -52,10 +52,6 @@ def read_prelut_list(folder, dict=True):
 
 def read_pre_file(filename):
     with open(filename, 'rb') as fid:
-        fid.seek(-1, 2)     # go to the file end.
-        eof = fid.tell()   # get the end of file location
-        fid.seek(0, 0)      # go back to file beginning
-
         def read_complex(shape):
             n = np.prod(shape)
             v = np.reshape(struct.unpack('d' * 2 * n, fid.read(16 * n)), shape + (2,))
@@ -68,7 +64,8 @@ def read_pre_file(filename):
             struct.unpack('i', fid.read(4))
             return r
         r = []
-        while fid.tell() < eof(fid):
+        n = eof(fid)
+        while fid.tell() < n:
             r.append(read_level())
 
     return {k: (dims, np.array(v)) for (k, dims), v in zip([

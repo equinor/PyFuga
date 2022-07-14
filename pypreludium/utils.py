@@ -78,67 +78,7 @@ def read_complex(*args, **kwargs):
     return ds.isel(ReIm=0) + 1j * ds.isel(ReIm=1)
 
 
-def GMRES(prev, next):
-    # use params, only: mykind,n
-    # use contr, only: Tprelutnode
-    # use vector_functions, only: outer
-    # implicit none
-
-    # Modified Gram-Schmidt ortonormalization
-    # Y, V, R and invR are nxn matrices
-    # Columns of Y are linearly independent vectors (the input)
-    # Columns of V form an orthonormal basis (V is unitary)
-    # R and invR are lower triangular
-    # invR is the inverse of R
-    # Y=V R*  where R* is the conjugate transpose of R
-
-    # type(Tprelutnode),pointer :: p
-    # complex(mykind), dimension(n,n) :: B
-    # real(mykind) aux
-    # integer(4) i,j,k
-    # real(mykind) norm
-
-    # aux = np.linalg.norm(prev.Yright, axis=0)
-    # next.dat.Yleft = Yleft = prev.Yright / aux
-    # next.dat.Rleft = np.diag(aux)
-    # for j in range(5):
-    #     next.dat.Rleft[j, j + 1:] = np.conj(Yleft[:, j]) @ Yleft[:, j + 1:]
-    #     Yleft[:, j + 1:] = Yleft[:, j + 1:] - (Yleft[:, j] * np.conj(Yleft[:, j])[:, na]) @ Yleft[:, j + 1:]
-
-    next.Yleft = Yleft = prev.Yright
-    next.Rleft = np.zeros_like(Yleft)
-    for j in range(5):
-        aux = np.linalg.norm(Yleft[:, j])
-        Yleft[:, j] = Yleft[:, j] / aux
-        next.Rleft[j, j] = aux
-        next.Rleft[j, j + 1:] = np.conj(Yleft[:, j]) @ Yleft[:, j + 1:]
-        Yleft[:, j + 1:] = Yleft[:, j + 1:] - \
-            np.dot((Yleft[:, j] * np.conj(Yleft[:, j])[:, na]).T, Yleft[:, j + 1:])
-
-    aux = np.linalg.norm(Yleft[:, -1])
-    Yleft[:, -1] = Yleft[:, -1] / aux
-    next.Rleft[-1, -1] = aux
-
-    # B = np.zeros_like(Yleft)
-    # for j in range(1, 6):
-    #     B[:j, j] = next.dat.Rleft[:j, j] / next.dat.Rleft[j, j]
-    B = np.triu(next.Rleft / np.diag(next.Rleft), 1)  # upper triangle without diagonal
-    # prev.dat.Rright = np.diag(1 / np.diag(next.dat.Rleft))
-    # for i in range(6):
-    #     for j in range(i + 1, 6):
-    #         for k in range(i, j):
-    #             prev.dat.Rright[i, j] = prev.dat.Rright[i, j] - prev.dat.Rright[i, k] * B[k, j]
-
-    prev.Rright = np.diag(1 / np.diag(next.Rleft))
-    for i in range(6):
-        for j in range(i + 1, 6):
-            prev.Rright[i, j] -= np.sum(prev.Rright[i, i:j] * B[i:j, j])
-
-    next.Rleft = np.conj(next.Rleft.T)
-    prev.Rright = np.conj(prev.Rright.T)
-
-
-def equal(A, n):
+def equal(A, n):  # pragma: no cover
     ref = np.fromfile(n + '.dat', dtype=np.complex128).reshape(6, -1).T
     a = np.reshape(A, ref.shape)
 
@@ -155,7 +95,7 @@ def equal(A, n):
         raise
 
 
-def compare(A, n, tol=1e-9):
+def compare(A, n, tol=1e-9):  # pragma: no cover
     B = np.fromfile(n + '.dat', dtype=np.complex128).reshape(6, -1).T
     A = np.reshape(A, B.shape)
 
@@ -180,7 +120,7 @@ def compare(A, n, tol=1e-9):
     comp(A.imag, B.imag, 'imag', tol)
 
 
-def rel_err(A, B):
+def rel_err(A, B):  # pragma: no cover
     def comp(a, b):
         aerr = np.abs(a - b)
         rerr = np.abs(aerr / np.mean([a, b], 0))
