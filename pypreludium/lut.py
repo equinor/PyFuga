@@ -26,11 +26,11 @@ class LUT():
         ji = maxlevel
 
         if self.LolevelOut > minlevel:  # pragma: no cover
-            print(f'LoLevelOut ({self.LoLevelOut}) raised to MinLevel ({minlevel}).')
+            print(f'LoLevelOut ({self.LolevelOut}) raised to MinLevel ({minlevel}).')
             self.LolevelOut = minlevel
 
         if self.HilevelOut > maxlevel:  # pragma: no cover
-            print(f'HiLevelOut ({self.HiLevelOut}) lowered to MaxLevel ({maxlevel}).')
+            print(f'HiLevelOut ({self.HilevelOut}) lowered to MaxLevel ({maxlevel}).')
             self.HilevelOut = maxlevel
 
         jmin = self.prelut.kz0.min()
