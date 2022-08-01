@@ -698,5 +698,16 @@ class PreLUTs():
                            beta=d[f.name][3], kzmax=d[f.name][4])
                       for f in pre_files]
         ds_lst = [PreLUT.from_pre_file(**kwargs) for kwargs in kwargs_lst]
-        return xr.merge([ds.assign_coords(i=ds.i, kz0=ds.kz0, beta=ds.beta).expand_dims(('kz0', 'beta'))
-                         for ds in ds_lst])
+        preluts = xr.merge([ds.assign_coords(i=ds.i, kz0=ds.kz0, beta=ds.beta).expand_dims(('kz0', 'beta'))
+                            for ds in ds_lst])
+        preluts['zeta0'] = zeta0
+        return preluts
+
+    @staticmethod
+    def make_preluts(zeta0, kz0_lst, beta_lst, kzmax, ds, accgoal):
+        kz0_beta_lst = [(kz0, beta) for kz0 in kz0_lst for beta in beta_lst]
+        ds_lst = [PreLUT.make_prelut(zeta0, kz0, beta, kzmax, ds, accgoal) for kz0, beta in tqdm(kz0_beta_lst)]
+        preluts = xr.merge([ds.assign_coords(i=ds.i, kz0=ds.kz0, beta=ds.beta).expand_dims(('kz0', 'beta'))
+                            for ds in ds_lst])
+        preluts['zeta0'] = zeta0
+        return preluts

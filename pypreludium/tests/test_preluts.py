@@ -140,3 +140,19 @@ def test_preluts():
     npt.assert_array_equal(prelut.sleft, 0.35)
     npt.assert_array_almost_equal(prelut.sright, 0.4, 15)
     npt.assert_array_equal(prelut.level, 7)
+
+
+def test_make_preluts():
+    preluts_ref = PreLUTs.from_pre_files(tfp + 'preLUTs_Zeta0=0.00E+00_1_2/', zeta0=0)
+    preluts = PreLUTs.make_preluts(zeta0=0, kz0_lst=[1e-9, 1e-8], beta_lst=preluts_ref.beta[:2],
+                                   kzmax=0.0000001, ds=0.05, accgoal=0.0001)
+    prelut = preluts.isel(beta=1, kz0=1, i=7)
+
+    npt.assert_array_almost_equal(prelut.Yleft[0, 3], -3.818665046221538e-002 - 4.092601925385363e-011j, 10)
+    npt.assert_array_almost_equal(prelut.Rleft[1, 4], -4.185413090968856e-002 - 1.707412114366788e-010j, 10)
+    npt.assert_array_almost_equal(prelut.Rright[0, 3], 0.133639331140749 + 1.683220576275511e-010j, 10)
+    npt.assert_array_almost_equal(prelut.dyxu0[1], -2.801213847640760e-011 - 1.811265791216862e-019j, 10)
+    npt.assert_array_almost_equal(prelut.dyxu1[1], -4.079279718323910e-019 - 2.637711084697475e-027j, 10)
+    npt.assert_array_equal(prelut.sleft, 0.35)
+    npt.assert_array_almost_equal(prelut.sright, 0.4, 15)
+    npt.assert_array_equal(prelut.level, 7)
