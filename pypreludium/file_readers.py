@@ -1,20 +1,28 @@
 from pathlib import Path
 import struct
 import numpy as np
+import sys
+import os
+import xarray as xr
+from numpy import newaxis as na
 
 
-class Parameters():
+class BinaryReader():
+    def s(self, n):
+        return self.fid.read(n).decode().strip()
+
+    def i(self):
+        return struct.unpack('i', self.fid.read(4))[0]
+
+    def d(self):
+        return struct.unpack('d', self.fid.read(8))[0]
+
+
+class Parameters(BinaryReader):
     def __init__(self, folder):
-        folder = Path(folder)
-
-        def i():
-            return struct.unpack('i', fid.read(4))[0]
-
-        def d():
-            return struct.unpack('d', fid.read(8))[0]
-
-        with open(folder / "parameters.bin", 'rb') as fid:
-            self.prelutname = fid.read(127).decode().strip()
+        i, d, s = self.i, self.d, self.s
+        with open(Path(folder) / "parameters.bin", 'rb') as self.fid:
+            self.prelutname = s(127)
             self.closure = i()
             self.kz0min = d()
             self.kz0max = d()
@@ -26,6 +34,25 @@ class Parameters():
             self.dummy2 = d()
             self.ds = d()
             self.kzmax = d()
+            self.accgoal = d()
+            self.beta_lst = np.fromfile(self.fid, float, self.nbeta + self.mbeta + 1)
+            self.kz0_lst = np.fromfile(self.fid, float, self.jmax - self.jmin + 1)
+
+
+class CaseData(BinaryReader):
+    def __init__(self, folder):
+        i, d, s = self.i, self.d, self.s
+
+        with open(Path(folder) / "CaseData.bin", 'rb') as self.fid:
+            self.case_name = s(127)
+            self.radius = d()
+            self.zhub = d()
+            self.low_level_out = i()
+            self.high_level_out = i()
+            self.z0 = d()
+            self.zi = d()
+            self.ds = d()
+            self.closure = i()
 
 
 def eof(fid):
@@ -82,3 +109,26 @@ def read_pre_file(filename):
         ('sright', ['i']),
         ('level', ['i'])],
         zip(*r))}
+
+
+def read_fourier_lut(filename, prelut_folder):
+    parameters = Parameters(prelut_folder)
+    casedata = CaseData(os.path.dirname(filename))
+    var = os.path.basename(filename)[:2]
+    level = int(filename[-8:-4])
+    if level == 9999:
+        z = 9999
+    else:
+        z = casedata.z0 * np.exp(casedata.ds * level)
+    if var in ["UL", "VT", "WL", "PL"]:
+        sign = 1
+    elif var in ["UT", "VL", "WT", "PT"]:
+        sign = -1
+    else:
+        print("ERROR - illegal variable ")
+        sys.exit()
+
+    lut = sign * np.fromfile(filename, complex, -1).reshape((len(parameters.kz0_lst) + 1, len(parameters.beta_lst)))
+    lut = lut[1:].T
+    return xr.Dataset({var: (('beta', 'kz0', 'level'), lut[:, :, na]), 'z': (('level'), [z])},
+                      coords={'kz0': parameters.kz0_lst, 'beta': parameters.beta_lst, 'level': [level]})

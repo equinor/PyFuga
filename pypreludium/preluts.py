@@ -665,6 +665,8 @@ class PreLUTGenerator():
 
 class PreLUT(xr.Dataset):
 
+    __slots__ = []
+
     @staticmethod
     def from_pre_file(filename, zeta0, kz0=None, beta=None, kzmax=None, ds=None):
         filename = Path(filename)
