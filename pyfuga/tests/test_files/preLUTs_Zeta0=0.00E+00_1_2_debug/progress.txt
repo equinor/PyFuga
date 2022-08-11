@@ -1,0 +1,30 @@
+ preLUTs_Zeta0=0.00E+00_1_2_debug                                               
+                                                            6 %  
+ preLUTs_Zeta0=0.00E+00_1_2_debug                                               
+                                                           13 %  
+ preLUTs_Zeta0=0.00E+00_1_2_debug                                               
+                                                           20 %  
+ preLUTs_Zeta0=0.00E+00_1_2_debug                                               
+                                                           26 %  
+ preLUTs_Zeta0=0.00E+00_1_2_debug                                               
+                                                           33 %  
+ preLUTs_Zeta0=0.00E+00_1_2_debug                                               
+                                                           40 %  
+ preLUTs_Zeta0=0.00E+00_1_2_debug                                               
+                                                           46 %  
+ preLUTs_Zeta0=0.00E+00_1_2_debug                                               
+                                                           53 %  
+ preLUTs_Zeta0=0.00E+00_1_2_debug                                               
+                                                           60 %  
+ preLUTs_Zeta0=0.00E+00_1_2_debug                                               
+                                                           66 %  
+ preLUTs_Zeta0=0.00E+00_1_2_debug                                               
+                                                           73 %  
+ preLUTs_Zeta0=0.00E+00_1_2_debug                                               
+                                                           80 %  
+ preLUTs_Zeta0=0.00E+00_1_2_debug                                               
+                                                           86 %  
+ preLUTs_Zeta0=0.00E+00_1_2_debug                                               
+                                                           93 %  
+ preLUTs_Zeta0=0.00E+00_1_2_debug                                               
+                                                          100 %  

@@ -1,0 +1,11 @@
+mode 1
+zeta0 0.00E+00
+prelutname preLUTs_Zeta0=0.00E+00_1_2
+kz0min 1e-09
+kz0max 1e-05
+nkz0 1
+nbeta 2
+mbeta 0
+ds 0.05
+kzmax 300
+accgoal 0.0001

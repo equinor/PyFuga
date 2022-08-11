@@ -8,9 +8,9 @@ test_PyWake:  # name the job what we like
   stage:  # build, test, deploy defined by default [2]
     test
   script:
-  # - pip install -e .
+  - pip install -e . --user
   - pip install pytest-cov
-  - pytest --cov-report term-missing:skip-covered --cov=pypreludium --cov-config .coveragerc pypreludium
+  - pytest --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc pyfuga
   tags:  # only runners with this tag can do the job [3]
   - ci-ubuntu
 
@@ -21,7 +21,7 @@ check_code_style:  # name the job what we like
   stage:  # build, test, deploy defined by default [2]
     test
   script:
-  # - pip install -e . --user
+  - pip install -e . --user
   - pycodestyle --ignore=E501,W504,E741 .
   tags:  # only runners with this tag can do the job [3]
   - python

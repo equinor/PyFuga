@@ -1,6 +1,6 @@
 [run]
 omit = 
-	pypreludium/tests/*
+	pyfuga/tests/*
 	tmp/*
 [report]
 fail_under = 100
