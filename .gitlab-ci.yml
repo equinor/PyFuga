@@ -10,6 +10,8 @@ test_PyWake:  # name the job what we like
   script:
   - pip install -e . --user
   - pip install pytest-cov --user
+  - pwd
+  - ls
   - pytest --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc
   tags:  # only runners with this tag can do the job [3]
   - ci-ubuntu
