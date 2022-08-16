@@ -7,7 +7,17 @@ import numpy as np
 import numpy.testing as npt
 from fuga.preluts import PreLUT, PreLUTs
 from fuga.tests.test_files import tfp
-from fuga.utils import get_beta
+from fuga.utils import get_beta, get_beta_lst, get_kz0_lst
+
+
+def test_get_beta_lst():
+    ref = PreLUTs.from_netcdf(tfp + 'preLUTs_Zeta0=0.00E+00_2_5.nc')
+    npt.assert_array_almost_equal(ref.beta, get_beta_lst(nbeta=5))
+
+
+def test_get_kz0_lst():
+    ref = PreLUTs.from_netcdf(tfp + 'preLUTs_Zeta0=0.00E+00_2_5.nc')
+    npt.assert_array_almost_equal(ref.kz0, get_kz0_lst(nkz0=2))
 
 
 def test_load_prelut_file():
@@ -119,10 +129,9 @@ def test_prelut_save_load():
 
 
 def test_preluts():
-    preluts = PreLUTs.from_pre_files(tfp + 'preLUTs_Zeta0=0.00E+00_1_2/', zeta0=0, all_vars=False)
+    preluts = PreLUTs.from_pre_files(tfp + 'preLUTs_Zeta0=0.00E+00_1_2/', zeta0=0)
     ref = PreLUTs.from_netcdf(tfp + 'preLUTs_Zeta0=0.00E+00_1_2.nc')
-    ref.drop(['sleft', 'sright', 'dyxw0', 'dyxw1']).equals(preluts)
-
+    ref.equals(preluts)
     prelut = preluts.isel(beta=1, kz0=1, i=7)
 
     npt.assert_array_almost_equal(prelut.Yleft[0, 3], -3.818665046221538e-002 - 4.092601925385363e-011j, 10)
@@ -137,9 +146,9 @@ def test_preluts():
 
 def test_preluts_from_pre_files():
     zeta0 = -1
-    preluts = PreLUTs.from_pre_files(tfp + f'preLUTs_Zeta0={zeta0}.00E+00_1_2/', zeta0=zeta0)
+    preluts = PreLUTs.from_pre_files(tfp + f'preLUTs_Zeta0={zeta0}.00E+00_1_2/', zeta0=zeta0, all_vars=False)
     preluts_nc = PreLUTs.from_netcdf(tfp + f'preLUTs_Zeta0={zeta0}.00E+00_1_2.nc')
-    assert preluts.equals(preluts_nc)
+    assert preluts_nc.drop_vars(['sleft', 'sright', 'dyxw0', 'dyxw1']).equals(preluts)
     ref = PreLUT.from_pre_file(tfp + f'preLUTs_Zeta0={zeta0}.00E+00_1_2/0.0000-09.0000.pre', zeta0)
     prelut = preluts.isel(beta=0, kz0=0)
     for k in prelut:

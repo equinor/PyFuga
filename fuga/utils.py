@@ -22,6 +22,16 @@ def get_beta(x):
     return beta
 
 
+def get_beta_lst(nbeta):
+    return get_beta(np.pi * np.arange(nbeta + 1) / (2 * nbeta))
+
+
+def get_kz0_lst(nkz0, kz0min=1e-9, kz0max=0.1):
+    jmin = np.floor(0.5 + np.log10(kz0min) * nkz0)
+    jmax = np.floor(0.5 + np.log10(kz0max) * nkz0)
+    return 10**(np.arange(jmin, jmax + 1) / nkz0)
+
+
 def cdivkL(zeta0, kz0):
     # c/(k*L), c is a stability constant: depending on the stability (0, Cm1, Cm2)
 
