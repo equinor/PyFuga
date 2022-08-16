@@ -119,9 +119,9 @@ def test_prelut_save_load():
 
 
 def test_preluts():
-    preluts = PreLUTs.from_pre_files(tfp + 'preLUTs_Zeta0=0.00E+00_1_2/', zeta0=0)
+    preluts = PreLUTs.from_pre_files(tfp + 'preLUTs_Zeta0=0.00E+00_1_2/', zeta0=0, all_vars=False)
     ref = PreLUTs.from_netcdf(tfp + 'preLUTs_Zeta0=0.00E+00_1_2.nc')
-    assert ref.equals(preluts)
+    ref.drop(['sleft', 'sright', 'dyxw0', 'dyxw1']).equals(preluts)
 
     prelut = preluts.isel(beta=1, kz0=1, i=7)
 

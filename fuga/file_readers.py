@@ -105,7 +105,7 @@ def read_pre_file(filename):
         Yleft, Rleft, Rright, dy = np.moveaxis((d[:, :288:2] + d[:, 1:288:2] * 1j).reshape((-1, 4, 6, 6)), 1, 0)
         sleft, sright = d[:, 288:290].T
         fid.seek(0, 0)
-        level = np.fromfile(fid, int, -1).reshape((-1, 291 * 2))[:, -2]
+        level = np.fromfile(fid, np.int32, -1).reshape((-1, 291 * 2))[:, -2]
     return {'Yleft': (['i', 'j', 'k'], Yleft),
             'Rleft': (['i', 'j', 'k'], Rleft),
             'Rright': (['i', 'j', 'k'], Rright),
