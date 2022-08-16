@@ -25,7 +25,7 @@ def test_parameters():
 
 
 def test_casedata():
-    c = CaseData(tfp + r'D080.0000_zH070.0000_2_5\Z0=0.00001000Zi=00400Zeta0=0.00E+00')
+    c = CaseData(tfp + r'D080.0000_zH070.0000_2_5/Z0=0.00001000Zi=00400Zeta0=0.00E+00')
 
     assert c.case_name == "Z0=0.00001000Zi=00400Zeta0=0.00E+00"
     assert c.radius == 40
@@ -72,19 +72,19 @@ def test_read_prelut_list_dict():
 
 
 def test_read_fourier_lut():
-    lut = read_lut_file(tfp + r"D080.0000_zH070.0000_2_5\Z0=0.00001000Zi=00400Zeta0=0.00E+00\UL0314.lut",
+    lut = read_lut_file(tfp + "D080.0000_zH070.0000_2_5/Z0=0.00001000Zi=00400Zeta0=0.00E+00/UL0314.lut",
                         prelut_folder=tfp + "preLUTs_Zeta0=0.00E+00_2_5")
     npt.assert_almost_equal(lut.UL.isel(beta=0, kz0=0, level=0), -1642.12402757 + 569.48780155j)
 
 
 def test_read_fourier_9999():
-    lut = read_lut_file(tfp + r"D080.0000_zH070.0000_1_2_9999\Z0=0.00001000Zi=00400Zeta0=1.00E+00\UL9999.lut",
+    lut = read_lut_file(tfp + "D080.0000_zH070.0000_1_2_9999/Z0=0.00001000Zi=00400Zeta0=1.00E+00/UL9999.lut",
                         prelut_folder=tfp + "preLUTs_Zeta0=1.00E+00_1_2")
     assert lut.z == 70
 
 
 def test_read_lut_dat():
-    fn = tfp + r"D080.0000_zH070.0000_2_5\Z0=0.00001000Zi=00400Zeta0=0.00E+00\D080.0000_zH070.0000_2_5_FIT0314UL.dat"
+    fn = tfp + "D080.0000_zH070.0000_2_5/Z0=0.00001000Zi=00400Zeta0=0.00E+00/D080.0000_zH070.0000_2_5_FIT0314UL.dat"
     lut = read_lut_dat_file(fn, nx=512, ny=128, dx=20, dy=5)
     assert lut.shape == (64, 512)
     if 0:
