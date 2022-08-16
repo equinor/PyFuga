@@ -7,7 +7,7 @@ test_PyWake:  # name the job what we like
   image: continuumio/anaconda3
   stage:  # build, test, deploy defined by default [2]
     test
-  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/''
+  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
   script:
   - pip install -e . --user
   - pip install pytest-cov --user
