@@ -2,7 +2,7 @@ import numpy as np
 from numpy import newaxis as na, linalg
 import xarray as xr
 from tqdm import tqdm
-from pyfuga.constants import zminlevel, kappa
+from fuga.constants import zminlevel, kappa
 
 
 class FourierLUTGenerator():

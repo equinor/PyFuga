@@ -5,9 +5,9 @@ import pytest
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.testing as npt
-from pyfuga.preluts import PreLUT, PreLUTs
-from pyfuga.tests.test_files import tfp
-from pyfuga.utils import get_beta
+from fuga.preluts import PreLUT, PreLUTs
+from fuga.tests.test_files import tfp
+from fuga.utils import get_beta
 
 
 def test_load_prelut_file():

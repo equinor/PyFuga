@@ -1,9 +1,9 @@
-from pyfuga.tests import npt
-from pyfuga.file_readers import read_lut_file
+from fuga.tests import npt
+from fuga.file_readers import read_lut_file
 
-from pyfuga.preluts import PreLUTs
-from pyfuga.lut import FourierLUTGenerator
-from pyfuga.tests.test_files import tfp
+from fuga.preluts import PreLUTs
+from fuga.lut import FourierLUTGenerator
+from fuga.tests.test_files import tfp
 import pytest
 
 

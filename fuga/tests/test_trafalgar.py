@@ -1,8 +1,8 @@
-from pyfuga.file_readers import read_lut_file, read_lut_dat_file
-from pyfuga.tests.test_files import tfp
-from pyfuga.trafalgar import Trafalgar
+from fuga.file_readers import read_lut_file, read_lut_dat_file
+from fuga.tests.test_files import tfp
+from fuga.trafalgar import Trafalgar
 import matplotlib.pyplot as plt
-from pyfuga.tests import npt
+from fuga.tests import npt
 import pytest
 
 

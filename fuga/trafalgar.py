@@ -1,7 +1,7 @@
 import numpy as np
 from numpy import newaxis as na
 from scipy.interpolate import RectBivariateSpline
-from pyfuga.constants import kappa
+from fuga.constants import kappa
 import xarray as xr
 M_PI = 3.141592653589793
 
