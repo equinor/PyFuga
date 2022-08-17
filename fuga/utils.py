@@ -96,6 +96,21 @@ def read_complex(*args, **kwargs):
     return ds_new
 
 
+class ComplexXRDataset(xr.Dataset):
+    __slots__ = []
+
+    def to_netcdf(self, filename):
+        save_complex(self, filename)
+
+    def save(self, filename):
+        return self.to_netcdf(filename)
+
+    @classmethod
+    def from_netcdf(cls, filename):
+        ds = read_complex(filename)
+        return cls(ds, attrs=ds.attrs)
+
+
 def equal(A, n):  # pragma: no cover
     ref = np.fromfile(n + '.dat', dtype=np.complex128).reshape(6, -1).T
     a = np.reshape(A, ref.shape)

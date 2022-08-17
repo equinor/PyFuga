@@ -1,5 +1,4 @@
 from pathlib import Path
-import struct
 
 from numpy import newaxis as na
 from tqdm import tqdm
@@ -8,8 +7,8 @@ import numpy as np
 import xarray as xr
 
 from .constants import Cm1, Cm2, n_eq, kappa, kappa2, pscale, max_recs, Ythreshold
-from .file_readers import Parameters, read_prelut_list, read_pre_file
-from .utils import get_beta, psi, dphiu, get_new_h2, save_complex, cdivkL, read_complex
+from .file_readers import read_prelut_list, read_pre_file
+from .utils import psi, dphiu, get_new_h2, cdivkL, ComplexXRDataset
 
 
 # np.set_printoptions(precision=2, linewidth=200)
@@ -26,6 +25,8 @@ from .utils import get_beta, psi, dphiu, get_new_h2, save_complex, cdivkL, read_
 #  dyxw1 = Delta_b for vertical forcing proportional to kz
 # Delta_b = integral of (Y+).f between two  (sub)stations
 # where f is the wind turbine forcing.
+
+
 def dot(A, B):
     return np.dot(A, B)
     # return np.array([[np.sum(a * b) for b in B.T] for a in A])
@@ -53,68 +54,21 @@ class PrelutNode():
         return next_node
 
     def GMRES(self):
-        # use params, only: mykind,n
-        # use contr, only: Tprelutnode
-        # use vector_functions, only: outer
-        # implicit none
-
         # Modified Gram-Schmidt ortonormalization
-        # Y, V, R and invR are nxn matrices
-        # Columns of Y are linearly independent vectors (the input)
-        # Columns of V form an orthonormal basis (V is unitary)
-        # R and invR are lower triangular
-        # invR is the inverse of R
-        # Y=V R*  where R* is the conjugate transpose of R
+        # Yright, Yleft, Rleft and Rright are nxn matrices
+        # Columns of Yright are linearly independent vectors (the input)
+        # Columns of Yleft form an orthonormal basis (Yleft is unitary)
+        # Rleft and Rright are lower triangular
+        # Rright is the inverse of Rleft
+        # Yright=Yleft Rleft.T*  where Rleft.T* is the conjugate transpose of Rleft
 
-        # type(Tprelutnode),pointer :: p
-        # complex(mykind), dimension(n,n) :: B
-        # real(mykind) aux
-        # integer(4) i,j,k
-        # real(mykind) norm
-
-        # aux = np.linalg.norm(self.Yright, axis=0)
-        # node.dat.Yleft = Yleft = self.Yright / aux
-        # node.dat.Rleft = np.diag(aux)
-        # for j in range(5):
-        #     node.dat.Rleft[j, j + 1:] = np.conj(Yleft[:, j]) @ Yleft[:, j + 1:]
-        #     Yleft[:, j + 1:] = Yleft[:, j + 1:] - (Yleft[:, j] * np.conj(Yleft[:, j])[:, na]) @ Yleft[:, j + 1:]
-
-        Yleft = self.Yright.copy()
         node = PrelutNode()
-        node.Rleft = np.zeros_like(Yleft)
-        for j in range(5):
-            aux = np.linalg.norm(Yleft[:, j])
-            Yleft[:, j] = Yleft[:, j] / aux
-            node.Rleft[j, j] = aux
-            node.Rleft[j, j + 1:] = np.dot(np.conj(Yleft[:, j]), Yleft[:, j + 1:])
-            Yleft[:, j + 1:] = Yleft[:, j + 1:] - \
-                np.dot((Yleft[:, j] * np.conj(Yleft[:, j])[:, na]).T, Yleft[:, j + 1:])
+        Yleft, Rleft = np.linalg.qr(self.Yright.copy())
 
-        aux = np.linalg.norm(Yleft[:, -1])
-        Yleft[:, -1] = Yleft[:, -1] / aux
-        node.Rleft[-1, -1] = aux
-
-        # B = np.zeros_like(Yleft)
-        # for j in range(1, 6):
-        #     B[:j, j] = node.dat.Rleft[:j, j] / node.dat.Rleft[j, j]
-        B = np.triu(node.Rleft / np.diag(node.Rleft), 1)  # upper triangle without diagonal
-        # self.dat.Rright = np.diag(1 / np.diag(node.dat.Rleft))
-        # for i in range(6):
-        #     for j in range(i + 1, 6):
-        #         for k in range(i, j):
-        #             self.dat.Rright[i, j] = self.dat.Rright[i, j] - self.dat.Rright[i, k] * B[k, j]
-
-        self.Rright = np.diag(1 / np.diag(node.Rleft))
-        for i in range(6):
-            for j in range(i + 1, 6):
-                self.Rright[i, j] -= np.sum(self.Rright[i, i:j] * B[i:j, j])
-
-        node.Rleft = np.conj(node.Rleft.T)
-        self.Rright = np.conj(self.Rright.T)
+        node.Rleft = np.conj(Rleft.T)
         node.Yleft = Yleft
+        self.Rright = np.linalg.inv(node.Rleft)
         return node
-
-        # rel_err(ref.sel(i=self.level + 1).Yleft.T.values, node.Yleft)
 
 
 class PrelutNodeFirst(PrelutNode):
@@ -141,7 +95,7 @@ class PreLUTGenerator():
     # Level incrementeres ved stationer med s=j*ds
     # Der orthonormaliseres ved hver station og gemmes i en hægtet liste.
     # Bruger anden ordens R-K
-    def __init__(self, zeta0, kz0, beta, kzmax, ds, accgoal, h_dict):
+    def __init__(self, zeta0, kz0, beta, kzmax, ds, accgoal):
         self.nodes = []
 
         self.zeta0 = zeta0
@@ -164,7 +118,6 @@ class PreLUTGenerator():
         self.acc = accgoal / self.smaxx
         self.cdivkL = cdivkL(zeta0, kz0)
         self.psi0 = psi(zeta0, kz0, self.cdivkL)
-        self.h_dict = h_dict
 
     def sm(self):
         # Determine max s (sm) and max kz (kzm)?
@@ -210,11 +163,10 @@ class PreLUTGenerator():
         # equal(first.Yleft, f'yleft{0:6.3f}')
         segment, h = self.solve2(first, h, yerr, self.acc, 1)
         # equal(segment.Yright, f'yright{0:6.3f}')
-        for (s1, s2) in tqdm(list(zip(s_lst[1:], s_lst[2:]))):
+        for (s1, s2) in tqdm(list(zip(s_lst[1:], s_lst[2:])), disable=1):
             self.nodes.append(segment)
             segment = segment.get_next(s1, s2)
             j = 1 + (s1 >= sm)
-            h = self.h_dict.get(np.round(s1, 2), h)
 
             segment, h = self.solve2(segment, h, yerr, self.acc, j)
             # equal(segment.Yright, f'yright{s1:6.3f}')
@@ -263,9 +215,9 @@ class PreLUTGenerator():
                       [np.array([getattr(n, k) for n in self.nodes]) for k in var_names[3:]])
         return PreLUT({**{n: (('i', 'j', 'k')[:len(v.shape)], v)
                           for n, v in zip(var_names, var_values)},
-                       'zeta0': self.zeta0, 'beta': self.beta, 'kz0': self.kz0,
+                       'beta': self.beta, 'kz0': self.kz0,
                        **{'level': (('i',), np.round(var_values[-2] / self.ds, 3).astype(int))}},
-                      attrs={'ds': self.ds, 'kzmax': self.kzmax, 'accgoal': self.accgoal, })
+                      attrs={'ds': self.ds, 'kzmax': self.kzmax, 'zeta0': self.zeta0, 'accgoal': self.accgoal})
 
     def rk2(self, node, y, x, h, j):
         self.counter += 1
@@ -666,36 +618,22 @@ class PreLUTGenerator():
         return (np.log(kz / self.kz0) + self.psi(kz) - self.psi0) / kappa
 
 
-class ComplexXRDataset(xr.Dataset):
-    __slots__ = []
-
-    def to_netcdf(self, filename):
-        save_complex(self, filename)
-
-    def save(self, filename):
-        return self.to_netcdf(filename)
-
-    @classmethod
-    def from_netcdf(cls, filename):
-        ds = read_complex(filename)
-        return cls(ds, attrs=ds.attrs)
-
-
 class PreLUT(ComplexXRDataset):
     __slots__ = []
 
     @staticmethod
-    def from_pre_file(filename, zeta0, kz0=None, beta=None, kzmax=None, ds=None):
+    def from_pre_file(filename, zeta0, kz0=None, beta=None, kzmax=None, ds=None, accgoal=None):
         filename = Path(filename)
-        if None in [kz0, beta, kzmax, ds]:
+        if None in [kz0, beta, kzmax, ds, accgoal]:
             ds, smaxx, kz0, beta, kzmax, accgoal = read_prelut_list(filename.parent)[filename.name]
 
         pre_file = read_pre_file(filename)
-        return PreLUT({**pre_file, 'beta': beta, 'kz0': kz0}, attrs={'ds': ds, 'kzmax': kzmax, 'zeta0': zeta0, })
+        return PreLUT({**pre_file, 'beta': beta, 'kz0': kz0},
+                      attrs={'ds': ds, 'kzmax': kzmax, 'zeta0': zeta0, 'accgoal': accgoal})
 
     @staticmethod
-    def make_prelut(zeta0, kz0, beta, kzmax, ds, accgoal, h_dict={}):
-        return PreLUTGenerator(zeta0, kz0, beta, kzmax, ds, accgoal, h_dict).make_prelut()
+    def make_prelut(zeta0, kz0, beta, kzmax, ds, accgoal):
+        return PreLUTGenerator(zeta0, kz0, beta, kzmax, ds, accgoal).make_prelut()
 
 
 class PreLUTs(ComplexXRDataset):
@@ -732,7 +670,7 @@ class PreLUTs(ComplexXRDataset):
         dim_dat_dict = {k: get_var(k) for k in var_name_lst}
         return PreLUTs({**dim_dat_dict},
                        coords={'kz0': kz0_lst, 'beta': beta_lst, 'i': range(max_nodes)},
-                       attrs={'ds': ds[0], 'kzmax': kzmax[0], 'zeta0': zeta0})
+                       attrs={'ds': ds[0], 'kzmax': kzmax[0], 'zeta0': zeta0, 'accgoal': accgoal})
 
     @staticmethod
     def make_preluts(zeta0, kz0_lst, beta_lst, kzmax, ds, accgoal):
@@ -740,5 +678,7 @@ class PreLUTs(ComplexXRDataset):
         ds_lst = [PreLUT.make_prelut(zeta0, kz0, beta, kzmax, ds, accgoal) for kz0, beta in tqdm(kz0_beta_lst)]
         preluts = xr.merge([ds.assign_coords(i=ds.i, kz0=ds.kz0, beta=ds.beta).expand_dims(('kz0', 'beta'))
                             for ds in ds_lst])
-        preluts['zeta0'] = zeta0
-        return PreLUTs(preluts)
+        f = ds_lst[0]  # first
+        for k in ['ds', 'kzmax', 'zeta0']:
+            assert all(f.attrs[k] == np.array([ds.attrs[k] for ds in ds_lst]))
+        return PreLUTs(preluts, attrs={'ds': f.ds, 'kzmax': f.kzmax, 'zeta0': f.zeta0, 'accgoal': f.accgoal})

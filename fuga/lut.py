@@ -2,7 +2,8 @@ import numpy as np
 from numpy import newaxis as na, linalg
 import xarray as xr
 from tqdm import tqdm
-from fuga.constants import zminlevel, kappa
+from fuga.constants import zminlevel, kappa, UVW_LT
+from fuga.utils import ComplexXRDataset
 
 
 class FourierLUTGenerator():
@@ -12,13 +13,13 @@ class FourierLUTGenerator():
         self.radius = diameter / 2
         self.zi = zi  # Domain height
 
-    def make_rotor_luts(self, z0, luts=['UL', 'UT', 'VL', 'VT', 'WL', 'WT', 'PL', 'PT']):
+    def make_rotor_luts(self, z0, luts=UVW_LT):
         ds = self.preluts.ds
         low_level_out = int(np.floor(np.log((self.zhub - self.radius) / z0) / ds))
         high_level_out = int(np.ceil(np.log((self.zhub + self.radius) / z0) / ds))
         return self.make_lut(z0, low_level_out, high_level_out, luts)
 
-    def make_hubheight_luts(self, z0, luts=['UL', 'UT', 'VL', 'VT', 'WL', 'WT', 'PL', 'PT']):
+    def make_hubheight_luts(self, z0, luts=UVW_LT):
         ds = self.preluts.ds
         low_level_out = int(np.floor(np.log((self.zhub) / z0) / ds))
         high_level_out = int(np.ceil(np.log((self.zhub) / z0) / ds))
@@ -33,14 +34,17 @@ class FourierLUTGenerator():
                           coords={'beta': luts.beta, 'kz0': luts.kz0, 'level': [9999]})
 
     def make_lut(self, z0, low_level_out, high_level_out,
-                 luts=['UL', 'UT', 'VL', 'VT', 'WL', 'WT', 'PL', 'PT']):
-        assert all([l in ['UL', 'UT', 'VL', 'VT', 'WL', 'WT', 'PL', 'PT'] for l in luts])
+                 luts=UVW_LT):
+        assert all([l in UVW_LT for l in luts])
         zh = self.zhub
         R = self.radius
         ds, kzmax, zeta0 = [self.preluts.attrs[k] for k in ['ds', 'kzmax', 'zeta0']]
 
-        kz0_lst = self.preluts.kz0.values
-        nkz0 = int(np.round(1 / np.diff(np.log10(kz0_lst))[0]))
+        kz0_lst = np.atleast_1d(self.preluts.kz0.values)
+        if len(kz0_lst) > 1:
+            nkz0 = int(np.round(1 / np.diff(np.log10(kz0_lst))[0]))
+        else:
+            nkz0 = 1
         aux = z0 * np.pi * 8.0 / R
         kz0limit = 10.0**(np.ceil(np.log10(aux) * nkz0) / nkz0)
 
@@ -60,7 +64,7 @@ class FourierLUTGenerator():
             high_level_out = maxlevel
 
         logZiZ0 = np.log(self.zi / z0)
-        beta_lst = self.preluts.beta.values
+        beta_lst = np.atleast_1d(self.preluts.beta.values)
         ktab = kz0_lst / z0
 
         # assert smaxx>self.preluts.ds * upperjf # TODO: smaxx not available here
@@ -91,15 +95,16 @@ class FourierLUTGenerator():
 
         level = np.arange(low_level_out, high_level_out + 1)
         z = z0 * np.exp(ds * level)
-        return xr.Dataset({'z': (('level'), z), 'k': (('kz0'), ktab),
-                           'diameter': R * 2, 'hubheight': zh, 'z0': z0,
-                           ** {k: (('beta', 'kz0', 'level'), get_var(k))
-                               for k in luts}}, coords={'beta': beta_lst, 'kz0': kz0_lst, 'level': level})
+        return ComplexXRDataset({'z': (('level'), z), 'k': (('kz0'), ktab),
+                                 'diameter': R * 2, 'hubheight': zh, 'z0': z0,
+                                 ** {k: (('beta', 'kz0', 'level'), get_var(k))
+                                     for k in luts}}, coords={'beta': beta_lst, 'kz0': kz0_lst, 'level': level},
+                                attrs=self.preluts.attrs)
 
     def solve_layers(self, beta, kz0, z0, forcing, lowerjf, upperjf, minlevel, maxlevel, low_level_out, high_level_out):
         assert forcing in 'LT'
         forcing = forcing.replace('L', 'u').replace('T', 'v')
-        ds = self.preluts.ds.item()
+        ds = self.preluts.ds
         jf_l = np.arange(lowerjf + 1, upperjf)
 
         z = z0 * np.exp(ds * (jf_l + np.array([-1, 0, 1])[:, na]))  # height blow, at and above current layer

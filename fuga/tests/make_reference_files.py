@@ -1,8 +1,8 @@
 import os
 from pathlib import Path
-from pyfuga.tests.test_files import tfp
+from fuga.tests.test_files import tfp
 import sys
-from pyfuga.preluts import PreLUTs
+from fuga.preluts import PreLUTs
 sys.path.append(r'C:\mmpe\programming\python\Topfarm\CuttingEdge\Fuga\Easylut')  # nopep8
 from run import run
 os.chdir(r'C:\mmpe\programming\python\Topfarm\CuttingEdge\Fuga\Easylut')

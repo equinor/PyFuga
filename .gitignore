@@ -2,3 +2,14 @@
 *.pyc
 /.pytest_cache/
 /pypreludium/.coverage
+/PyFuga.egg-info
+/*.project
+/fuga/tests/test_files/D080.0000_zH070.0000_16_32
+/fuga/tests/test_files/preLUTs_Zeta0=0.00E+00_16_32
+/*.nc
+finito
+snyd.txt
+WTdata.txt
+CaseData.txt
+levels.txt
+progress.txt

@@ -78,29 +78,6 @@ def read_prelut_list(folder, dict=True):
 
 def read_pre_file(filename):
     with open(filename, 'rb') as fid:
-
-        # def read_complex(shape):
-        #     n = np.prod(shape)
-        #     v = np.reshape(struct.unpack('d' * 2 * n, fid.read(16 * n)), shape + (2,))
-        #     return np.sum(v * np.array([1, 1j]), -1)
-        #
-        # def read_level():
-        #     r = ([read_complex((6, 6)) for _ in range(3)] +   # Yleft, Rleft, Rright
-        #          [read_complex((6,)) for _ in range(6)] +   # dyxu0, dyxu1, dyxv0, dyxv1, dyxw0, dyxw1
-        #          list(struct.unpack('ddi', fid.read(20))))  # sleft, sright, level
-        #     struct.unpack('i', fid.read(4))
-        #     return r
-        #
-        # def read_level2():
-        #     # Yleft,Rleft,Rright,(dyxu0, dyxu1, dyxv0, dyxv1, dyxw0, dyxw1),sleft, sright, level
-        #     r = np.fromfile(fid, np.complex128, 144).reshape((4, 6, 6)), list(struct.unpack('ddi', fid.read(20)))
-        #     struct.unpack('i', fid.read(4))
-        #     return r
-        # r = []
-        # n = eof(fid)
-        # # while fid.tell() < n:
-        # #     r.append(read_level())
-
         d = np.fromfile(fid, float, -1).reshape((-1, 291))
         Yleft, Rleft, Rright, dy = np.moveaxis((d[:, :288:2] + d[:, 1:288:2] * 1j).reshape((-1, 4, 6, 6)), 1, 0)
         sleft, sright = d[:, 288:290].T
@@ -119,22 +96,6 @@ def read_pre_file(filename):
             'sright': (['i'], sright),
             'level': (['i'], level),
             }
-    # return r
-    #
-    # return {k: (dims, np.array(v)) for (k, dims), v in zip([
-    #     ('Yleft', ['i', 'j', 'k']),
-    #     ('Rleft', ['i', 'j', 'k']),
-    #     ('Rright', ['i', 'j', 'k']),
-    #     ('dyxu0', ['i', 'j']),
-    #     ('dyxu1', ['i', 'j']),
-    #     ('dyxv0', ['i', 'j']),
-    #     ('dyxv1', ['i', 'j']),
-    #     ('dyxw0', ['i', 'j']),
-    #     ('dyxw1', ['i', 'j']),
-    #     ('sleft', ['i']),
-    #     ('sright', ['i']),
-    #     ('level', ['i'])],
-    #     zip(*r))}
 
 
 def read_lut_file(filename, prelut_folder):
@@ -146,15 +107,7 @@ def read_lut_file(filename, prelut_folder):
         z = casedata.zhub
     else:
         z = casedata.z0 * np.exp(casedata.ds * level)
-    # if var in ["UL", "VT", "WL", "PL"]:
-    #     sign = 1
-    # elif var in ["UT", "VL", "WT", "PT"]:
-    #     sign = -1
-    # else:
-    #     print("ERROR - illegal variable ")
-    #     sys.exit()
 
-    # lut = sign * np.fromfile(filename, complex, -1).reshape((len(parameters.kz0_lst) + 1, len(parameters.beta_lst)))
     lut = np.fromfile(filename, complex, -1).reshape((len(parameters.kz0_lst) + 1, len(parameters.beta_lst)))
     lut = lut[1:].T
     return xr.Dataset({var: (('beta', 'kz0', 'level'), lut[:, :, na]), 'z': (('level'), [z]),

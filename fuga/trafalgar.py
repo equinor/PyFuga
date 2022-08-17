@@ -3,6 +3,7 @@ from numpy import newaxis as na
 from scipy.interpolate import RectBivariateSpline
 from fuga.constants import kappa
 import xarray as xr
+from tqdm import tqdm
 M_PI = 3.141592653589793
 
 
@@ -78,7 +79,7 @@ class Trafalgar():
         sign_dict = {"UL": 1, "VL": -1, "WL": 1, "PL": 1, "UT": -1, "VT": 1, "WT": -1, "PT": -1}
         D, zhub, z0 = fluts.diameter.item(), fluts.hubheight.item(), fluts.z0.item()
         luts_dict = {}
-        for var, sign in sign_dict.items():
+        for var, sign in tqdm(sign_dict.items(), desc='Trafalgar'):
             if var in fluts:
 
                 kx = self.doKvectorFIT(self.nx, self.dx, 4)
@@ -112,7 +113,8 @@ class Trafalgar():
                     luts.append(self.FITFIT(field, sign, kx, ky).real)
                 luts_dict[var] = (('level', 'x', 'y'), luts)
                 self.ny0 = self.ny // 2
-        return xr.Dataset({**luts_dict, 'z': fluts.z}, coords={'x': self.x_lst, 'y': self.y_lst, 'level': fluts.level})
+        return xr.Dataset({**luts_dict, 'z': fluts.z}, coords={'x': self.x_lst, 'y': self.y_lst, 'level': fluts.level},
+                          attrs=self.fourier_luts.attrs)
 
     def doKvectorFIT(self, n, delta, NNN):
         c = M_PI / (n * delta) / NNN  # n*delta =nx*dx
