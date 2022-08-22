@@ -6,9 +6,10 @@ from tqdm import tqdm
 import numpy as np
 import xarray as xr
 
-from .constants import Cm1, Cm2, n_eq, kappa, kappa2, pscale, max_recs, Ythreshold
+from .constants import Cm1, Cm2, n_eq, kappa, kappa2, max_recs, Ythreshold
 from .file_readers import read_prelut_list, read_pre_file
 from .utils import psi, dphiu, get_new_h2, cdivkL, ComplexXRDataset
+from fuga.utils import phi
 
 
 # np.set_printoptions(precision=2, linewidth=200)
@@ -63,7 +64,7 @@ class PrelutNode():
         # Yright=Yleft Rleft.T*  where Rleft.T* is the conjugate transpose of Rleft
 
         node = PrelutNode()
-        Yleft, Rleft = np.linalg.qr(self.Yright.copy())
+        Yleft, Rleft = np.linalg.qr(self.Yright)
 
         node.Rleft = np.conj(Rleft.T)
         node.Yleft = Yleft
@@ -231,53 +232,26 @@ class PreLUTGenerator():
 
         def rk2step(t1, h, Ay, y1, j):
 
-            # equal(Ay, 'rk2step_Ay')
-            # equal(y1, 'rk2step_y1')
             ym = y1 + h * Ay / 2
-            # equal(ym, 'rk2step_ym')
             A = self.getM(t1 + h * 0.5, j)
-            # equal(A, 'rk2step_A')
-            # equal(dot(A, ym), 'rk2step_Aym')
             y2 = y1 + h * dot(A, ym)
-            # equal(y2, 'rk2step_y2')
             return y2
 
         A = self.getM(x, j)
-
-        # equal(A, 'rk2_A')
-
         Ay = dot(A, y)
-        # equal(Ay, 'rk2_Ay')
-
         y2 = rk2step(x, h, Ay, y, j)
-        # equal(y2, 'rk2_y2')
-
         y3 = rk2step(x, h * 0.5, Ay, y, j)
-        # equal(y3, 'rk2_y3')
-
         A = self.getM(x + h * 0.5, j)
-        # equal(A, 'rk2_A2')
-
         Ay = dot(A, y3)
-#        equal(Ay, 'rk2_Ay2')
-
         y4 = rk2step(x + h * 0.5, h * 0.5, Ay, y3, j)
-        # equal(y4, 'rk2_y4')
-
         yout = B1 * y4 + B2 * y2
-        # equal(yout, 'rk2_yout')
         yerr = yout - y4
         node.Yright = yout
 
         if j == 1:
-            kz1 = self.lastkz
-            kz1 = self.get_kz(x)
-            t = (x + h * 0.5)
-            kzm = kz1
-            kzm = self.get_kz(t)
-            t = (x + h)
-            kz2 = kz1
-            kz2 = self.get_kz(t)
+            # kz1, kzm, kz2 = self.get_kz(x + np.array([0, .5, 1]) * h)
+            kz1, kzm, kz2 = [self.get_kz(x + s * h) for s in [0, .5, 1]]
+
             if self.zeta0 < 0:
                 # Unstable
                 a1 = kz1 * dphiu(kz1, self.cdivkL)
@@ -412,23 +386,29 @@ class PreLUTGenerator():
         # ! Only simple closure
         # use params, only: mykind,n,cdivkL,cosbeta,sinbeta,kappa,kappa2,lastkz, &
         #                   pscale,zeta0,lidt
+
         if j == 1:
-
             kz = self.get_kz(t)
-
-            if self.zeta0 < 0:
-                # Unstable
-                kK = kappa * kz * self.dphiu(kz)
-                dKdz = kK * (1.0 / kz + 0.25 / (1.0 / self.cdivkL + kz))
-            else:
-                # Stable and neutral
-                aux = self.phi(kz)
-                kK = kappa * kz / aux
-                dKdz = kappa / aux**2
-
-            kKcos = kK * self.cosbeta
-            kKsin = kK * self.sinbeta
             u = t / kappa
+        elif j == 2:
+            kz = t
+            u = self.u0(kz)
+
+        if self.zeta0 < 0:
+            # Unstable
+            kK = kappa * kz * self.dphiu(kz)
+            dKdz = kK * (1.0 / kz + 0.25 / (1.0 / self.cdivkL + kz))
+        else:
+            # Stable and neutral
+            aux = self.phi(kz)
+            kK = kappa * kz / aux
+            dKdz = kappa / aux**2
+
+        cosbeta, sinbeta = self.cosbeta, self.sinbeta
+        kKcos = kK * cosbeta
+        kKsin = kK * sinbeta
+
+        if j == 1:
 
             return np.array([
                 # M(1,2)=cmplx(-kK**2,kKcos*u)/kappa2
@@ -436,73 +416,58 @@ class PreLUTGenerator():
                 # M(1,6)=cmplx(0.0E0,-2.0E0*dKdz*kKcos/kappa/pscale)
                 [0, complex(-kK**2, kKcos * u) / kappa2, 0, 0,
                  complex(0, -kKcos / kappa),
-                 complex(0, -2 * dKdz * kKcos / kappa / pscale)],
+                 complex(0, -2 * dKdz * kKcos / kappa)],
                 # M(2,1)=cmplx(-1.0E0,0.0E0)
                 # M(2,6)=cmplx(0.0E0,-kKcos/pscale)
                 [-1, 0, 0, 0, 0,
-                 complex(0, -kKcos / pscale)],
+                 complex(0, -kKcos)],
                 # M(3,4)=M(1,2)
                 # M(3,5)=cmplx(0.0E0,-kKsin/kappa)
                 # M(3,6)=cmplx(0.0E0,-2.0E0*dKdz*kKsin/kappa/pscale)
                 [0, 0, 0, complex(-kK**2, kKcos * u) / kappa2,
                  complex(0, - kKsin / kappa),
-                 complex(0, - 2 * dKdz * kKsin / kappa / pscale)],
+                 complex(0, - 2 * dKdz * kKsin / kappa)],
                 # M(4,3)=cmplx(-1.0E0,0.0E0)
                 # M(4,6)=cmplx(0.0E0,-kKsin/pscale)
                 [0, 0, -1, 0, 0,
-                 complex(0, -kKsin / pscale)],
+                 complex(0, -kKsin)],
                 # M(5,2)=cmplx(-1.0E0,-dKdz*kKcos)/kappa2
                 # M(5,4)=cmplx(0.0E0,-dKdz*kKsin/kappa2)
                 # M(5,6)=cmplx(kK**2,-kKcos*u)/(pscale*kappa)
                 [0, complex(-1, - dKdz * kKcos) / kappa2, 0,
                  complex(0, -dKdz * kKsin / kappa2), 0,
-                 complex(kK**2, - kKcos * u) / (pscale * kappa)],
+                 complex(kK**2, - kKcos * u) / (kappa)],
                 # M(6,2)=cmplx(0.0E0,kKcos/kappa2*pscale)
                 # M(6,4)=cmplx(0.0E0,kKsin/kappa2*pscale)
-                [0, complex(0, kKcos / kappa2 * pscale), 0,
-                 complex(0, kKsin / kappa2 * pscale), 0, 0]])
+                [0, complex(0, kKcos / kappa2), 0,
+                 complex(0, kKsin / kappa2), 0, 0]])
 
         elif j == 2:
-            kz = t
-            if self.zeta0 < 0:
-                # Unstable
-                kK = kappa * kz * self.dphiu(kz)
-                dKdz = kK * (1.0 / kz + 0.25 / (1.0 / self.cdivkL + kz))
-            else:
-                # Stable and neutral
-                aux = self.phi(kz)
-                kK = kappa * kz / aux
-                dKdz = kappa / aux**2
-
-            cosbeta, sinbeta = np.cos(self.beta), np.sin(self.beta)
-            kKcos = kK * cosbeta
-            kKsin = kK * sinbeta
-            u = self.u0(kz)
             return np.array([
                 # M(1,2)=dcmplx(-1.0D0,cosbeta*u/kK)
                 # M(1,5)=dcmplx(0.0D0,-cosbeta)
                 # M(1,6)=dcmplx(0.0D0,-2.0D0*dKdz*cosbeta/pscale)
                 [0, complex(-1, cosbeta * u / kK), 0, 0,
                  complex(0, -cosbeta),
-                 complex(0, -2 * dKdz * cosbeta / pscale)],
+                 complex(0, -2 * dKdz * cosbeta)],
 
                 # M(2,1)=-1.0D0
                 # M(2,2)=dKdz/kK
                 # M(2,6)=dcmplx(0.0D0,-kK*cosbeta/pscale)
                 [-1, dKdz / kK, 0, 0, 0,
-                 complex(0, -kK * cosbeta / pscale)],
+                 complex(0, -kK * cosbeta)],
 
                 # M(3,4)=dcmplx(-1.0D0,cosbeta*u/kK)
                 # M(3,5)=dcmplx(0.0D0,-sinbeta)
                 # M(3,6)=dcmplx(0.0D0,-2.0D0*dKdz*sinbeta/pscale)
                 [0, 0, 0, complex(-1, cosbeta * u / kK),
                  complex(0, - sinbeta),
-                 complex(0, - 2 * dKdz * sinbeta / pscale)],
+                 complex(0, - 2 * dKdz * sinbeta)],
                 # M(4,3)=-1.0D0
                 # M(4,4)=M(2,2)
                 # M(4,6)=dcmplx(0.0D0,-kK*sinbeta/pscale)
                 [0, 0, -1, dKdz / kK, 0,
-                 complex(0, -kK * sinbeta / pscale)],
+                 complex(0, -kK * sinbeta)],
 
                 # M(5,2)=dcmplx(-1.0D0/kK**2,dKdz/kK*cosbeta)
                 # M(5,4)=dcmplx(0.0D0,-dKdz/kK*sinbeta)
@@ -512,8 +477,8 @@ class PreLUTGenerator():
                  complex(kK, - cosbeta * u)],
                 # M(6,2)=dcmplx(0.0D0,cosbeta*pscale/kK)
                 # M(6,4)=dcmplx(0.0D0,sinbeta*pscale/kK)
-                [0, complex(0, cosbeta * pscale / kK), 0,
-                 complex(0, sinbeta / pscale / kK), 0, 0]])
+                [0, complex(0, cosbeta / kK), 0,
+                 complex(0, sinbeta / kK), 0, 0]])
 
     def get_kz(self, t):
         zeta0 = self.zeta0
@@ -536,10 +501,11 @@ class PreLUTGenerator():
                     ax = np.exp(b)
                 else:
                     ax = a * self.lastkz / kz0
-                    dax = (np.exp(b - ax) - ax) / (1 + ax)
-                while abs(dax / ax) > 1e-14:
+                while True:
                     dax = (np.exp(b - ax) - ax) / (1 + ax)
                     ax = ax + dax
+                    if abs(dax / ax) < 1e-14:
+                        break
             else:
                 if kz < 0:  # pragma: no cover
                     ax = b
@@ -548,7 +514,7 @@ class PreLUTGenerator():
                 while True:
                     dax = (b - ax - np.log(ax)) / (1 + 1 / ax)
                     ax = ax + dax
-                    if (abs(dax / ax) < 1e-14):
+                    if abs(dax / ax) < 1e-14:
                         break
             kz = kz0 * ax / a
         else:
@@ -571,44 +537,17 @@ class PreLUTGenerator():
         self.lastkz = kz
         return kz
 
-    # def cdivkL(self, kz0):
-    #     # c/(k*L), c is a stability constant: depending on the stability (0, Cm1, Cm2)
-    #     zeta0 = self.zeta0
-    #     kz0 = self.kz0
-    #     if abs(zeta0) < 1e-10:  # Neutral
-    #         return 0.0
-    #     else:
-    #         if zeta0 < 0:  # Unstable
-    #             return zeta0 / kz0 * Cm1
-    #         else:  # Stable
-    #             return zeta0 / kz0 * Cm2
-
     def dphiu(self, kz):
         # Inverse of stability function phi_m
         # for unstable conditions
         # ! phi_m=(1+Cm1*z/L)**(1/4)
-
-        return (1.0 + self.cdivkL * kz)**0.25
+        return dphiu(kz, self.cdivkL)
 
     def psi(self, kz):
-        # Stability function -psi_m
-        zeta0 = self.zeta0
-        if zeta0 < 0:
-            # Unstable: -psi_m=-ln(1/8*(1+phi_m**-2)*(1+phi_m**-1)**2)+2*atan(phi_m**-1)-pi/
-            aux = self.dphiu(kz)
-            aux2 = (1.0 + aux)**2 * (1 + aux**2)
-            psi = np.log(8.0 / aux2) + 2 * np.arctan(self.cdivkL * kz / aux2)
-        else:  # Stable: -psi_m=Cm2*z/L
-            psi = self.cdivkL * kz
-        return psi
+        return psi(self.zeta0, kz, self.cdivkL)
 
     def phi(self, kz):
-        zeta0 = self.zeta0
-        # Stability function phi_m
-        if zeta0 < 0:  # Unstable: phi_m=(1+Cm1*z/L)**(-1/4)
-            return (1.0 + self.cdivkL * kz)**(-0.25)
-        else:  # Stable: phi_m=1+Cm2*z/L
-            return 1.0 + self.cdivkL * kz
+        return phi(self.zeta0, kz, self.cdivkL)
 
     def u0(self, kz):
         # Wind speed from MOST normalized by uStar

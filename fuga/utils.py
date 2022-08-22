@@ -64,12 +64,12 @@ def psi(zeta0, kz, cdivkl):
         return cdivkL(zeta0, kz) * kz
 
 
-# def phi(zeta0, kz, cdivkl):
-#     # Stability function phi_m
-#     if zeta0 < 0:  # Unstable: phi_m=(1+Cm1*z/L)**(-1/4)
-#         return (1.0 + cdivkl * kz)**(-0.25)
-#     else:  # Stable: phi_m=1+Cm2*z/L
-#         return 1.0 + cdivkl * kz
+def phi(zeta0, kz, cdivkl):
+    # Stability function phi_m
+    if zeta0 < 0:  # Unstable: phi_m=(1+Cm1*z/L)**(-1/4)
+        return (1.0 + cdivkl * kz)**(-0.25)
+    else:  # Stable: phi_m=1+Cm2*z/L
+        return 1.0 + cdivkl * kz
 
 
 def get_new_h2(h, acc, Yerr, Y):

@@ -142,7 +142,7 @@ class FourierLUTGenerator():
         layer_halfwidth = np.sqrt(self.radius**2 - (zf - self.zhub)**2)
         ky = k * np.sin(beta)
         with np.warnings.catch_warnings():
-            np.warnings.filterwarnings('ignore', r'invalid value encountered in divide')
+            np.warnings.filterwarnings('ignore', r'invalid value encountered in true_divide')
             fac = np.where(ky == 0, layer_halfwidth, np.sin(ky * layer_halfwidth) / ky)
 
         area_err_fac = self.radius**2 * np.pi / \
