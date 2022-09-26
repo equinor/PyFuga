@@ -8,7 +8,7 @@ M_PI = 3.141592653589793
 
 
 class Trafalgar():
-    def __init__(self, fourier_luts, nx=2048, ny=512, dx=20, dy=5, sigmax=80, sigmay=20):
+    def __init__(self, fourier_luts, nx=2048, ny=512, dx=20, dy=5, sigmax=80, sigmay=20, verbose=True):
 
         self.fourier_luts = fourier_luts
         self.nx = nx
@@ -20,6 +20,7 @@ class Trafalgar():
 
         self.x_lst = np.arange(-self.nx // 4, self.nx * 3 / 4) * self.dx  # rotor is located 1/4 downstream
         self.y_lst = np.arange(self.ny) * self.dy
+        self.verbose = verbose
 
         # self.load_input(input_filename)
         # self.initializeLUT()
@@ -79,7 +80,7 @@ class Trafalgar():
         sign_dict = {"UL": 1, "VL": -1, "WL": 1, "PL": 1, "UT": -1, "VT": 1, "WT": -1, "PT": -1}
         D, zhub, z0 = fluts.diameter.item(), fluts.hubheight.item(), fluts.z0.item()
         luts_dict = {}
-        for var, sign in tqdm(sign_dict.items(), desc='Trafalgar'):
+        for var, sign in tqdm(sign_dict.items(), desc='Trafalgar', disable=(not self.verbose)):
             if var in fluts:
 
                 kx = self.doKvectorFIT(self.nx, self.dx, 4)

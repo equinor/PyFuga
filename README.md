@@ -9,6 +9,15 @@ This is the python version of the FUGA LUT generator (Previuosly computed by Pre
 [![coverage report](https://gitlab.windenergy.dtu.dk/TOPFARM/cuttingedge/pywake/fuga/pyfuga/badges/main/coverage.svg)](https://gitlab.windenergy.dtu.dk/TOPFARM/cuttingedge/pywake/fuga/pyfuga/-/commits/main)
 
 
+## Difference compared to old fortran / cpp implementation
+
+- Prelut
+  - QR decompostion using np.linalg.qr. This method orthonormalize analogous to the fortran implementation, but the 
+results are not equal. I.e. the prelut data cannot be compared directly
+  - The fortran code has an extra `h`-term in get_new_h2, which makes the step too small. This additional term has been removed
+- Trafalgar
+  - interpolation changed from linear to cubic 
+
 ## Visuals
 Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
 

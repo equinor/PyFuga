@@ -74,7 +74,7 @@ def phi(zeta0, kz, cdivkl):
 
 def get_new_h2(h, acc, Yerr, Y):
     err = np.max(np.linalg.norm(Yerr, axis=0) / np.linalg.norm(Y, axis=0))
-    return np.clip(0.9 * h * (acc * h / err)**(1 / 3), 1.0E-4, 4.0E-1)
+    return np.clip(0.9 * h * (acc / err)**(1 / 3), 1.0E-4, 4.0E-1)
 
 
 def save_complex(dataset, *args, **kwargs):
