@@ -3,7 +3,7 @@ from numpy import newaxis as na, linalg
 import xarray as xr
 from tqdm import tqdm
 from fuga.constants import zminlevel, kappa, UVW_LT
-from fuga.utils import ComplexXRDataset
+from fuga.utils import ComplexXRDataset, jit
 
 
 class FourierLUTGenerator():
@@ -12,6 +12,7 @@ class FourierLUTGenerator():
         self.zhub = zhub
         self.radius = diameter / 2
         self.zi = zi  # Domain height
+        self.verbose = True
 
     def make_rotor_luts(self, z0, luts=UVW_LT):
         ds = self.preluts.ds
@@ -27,11 +28,16 @@ class FourierLUTGenerator():
         a = np.log(self.zhub / z0) / ds - low_level_out
         lut_vars = luts.isel(level=0) * (1 - a) + luts.isel(level=1) * (a)
 
-        return xr.Dataset({'z': (('level'), [self.zhub]), 'k': luts.k,
-                           'diameter': luts.diameter, 'hubheight': self.zhub, 'z0': z0,
-                           ** {k: lut_vars[k].expand_dims('level', 2)
-                               for k in lut_vars if lut_vars[k].dims == ('beta', 'kz0')}},
-                          coords={'beta': luts.beta, 'kz0': luts.kz0, 'level': [9999]})
+        return ComplexXRDataset(data_vars={'z': (('level'), [self.zhub]),
+                                           'k': luts.k,
+                                           'diameter': luts.diameter,
+                                           'hubheight': self.zhub,
+                                           'z0': z0,
+                                           # fourier luts, UL, UT, ...
+                                           ** {k: lut_vars[k].expand_dims('level', 2)
+                                               for k in lut_vars if lut_vars[k].dims == ('beta', 'kz0')}},
+                                coords={'beta': luts.beta, 'kz0': luts.kz0, 'level': [9999]},
+                                attrs=luts.attrs)
 
     def make_lut(self, z0, low_level_out, high_level_out,
                  luts=UVW_LT):
@@ -78,12 +84,12 @@ class FourierLUTGenerator():
             xL = np.array([[self.solve_layers(beta, kz0, z0, 'L', lowerjf, upperjf,
                                               minlevel, maxlevel, low_level_out, high_level_out)
                             for kz0 in kz0_lst]
-                           for beta in tqdm(beta_lst, desc='Solving for longitudinal forcing')])
+                           for beta in tqdm(beta_lst, desc='Solving for longitudinal forcing', disable=not self.verbose)])
         if any([l[1] == 'T' for l in luts]):
             xT = np.array([[self.solve_layers(beta, kz0, z0, 'T', lowerjf, upperjf,
                                               minlevel, maxlevel, low_level_out, high_level_out)
                             for kz0 in kz0_lst]
-                           for beta in tqdm(beta_lst, desc='Solving for transvertal forcing')])
+                           for beta in tqdm(beta_lst, desc='Solving for transvertal forcing', disable=not self.verbose)])
 
         def get_var(s):
             if s[1] == 'L':
@@ -95,11 +101,13 @@ class FourierLUTGenerator():
 
         level = np.arange(low_level_out, high_level_out + 1)
         z = z0 * np.exp(ds * level)
-        return ComplexXRDataset({'z': (('level'), z), 'k': (('kz0'), ktab),
-                                 'diameter': R * 2, 'hubheight': zh, 'z0': z0,
-                                 ** {k: (('beta', 'kz0', 'level'), get_var(k))
-                                     for k in luts}}, coords={'beta': beta_lst, 'kz0': kz0_lst, 'level': level},
-                                attrs=self.preluts.attrs)
+        return ComplexXRDataset(data_vars={'z': (('level'), z), 'k': (('kz0'), ktab),
+                                           'diameter': R * 2, 'hubheight': zh, 'z0': z0,
+
+                                           ** {k: (('beta', 'kz0', 'level'), get_var(k))
+                                               for k in luts}}, coords={'beta': beta_lst, 'kz0': kz0_lst, 'level': level},
+                                attrs={'zi': self.zi,
+                                       **self.preluts.attrs})
 
     def solve_layers(self, beta, kz0, z0, forcing, lowerjf, upperjf, minlevel, maxlevel, low_level_out, high_level_out):
         assert forcing in 'LT'
@@ -131,12 +139,12 @@ class FourierLUTGenerator():
         fac1_1_l = 1 / (kappa * (z[1] - z[0]) * k**2)
         fac0_2_l = z[2] / (kappa * k * (z[1] - z[2]))
         fac1_2_l = 1 / (kappa * (z[1] - z[2]) * k**2)
-        output = [np.r_[self.solve_layer(jf, Rright, Rleft, YL, levels, dYx_0, dYx_1,
-                                         fac0_1, fac1_1, fac0_2, fac1_2,
-                                         ijf0, ijf1, ijf2),
-                        np.zeros((zero_pad_levels, 6))]
-                  for jf, ijf0, ijf1, ijf2, fac0_1, fac1_1, fac0_2, fac1_2 in zip(jf_l, ijf0_l, ijf1_l, ijf2_l,
-                                                                                  fac0_1_l, fac1_1_l, fac0_2_l, fac1_2_l)]
+        output = [np.concatenate([solve_layer(Rright, Rleft, YL, levels, dYx_0, dYx_1,
+                                              fac0_1, fac1_1, fac0_2, fac1_2,
+                                              ijf0, ijf1, ijf2),
+                                  np.zeros((zero_pad_levels, 6))])
+                  for ijf0, ijf1, ijf2, fac0_1, fac1_1, fac0_2, fac1_2 in zip(ijf0_l, ijf1_l, ijf2_l,
+                                                                              fac0_1_l, fac1_1_l, fac0_2_l, fac1_2_l)]
 
         zf = z0 * np.exp(ds * np.arange(lowerjf, upperjf + 1))
         layer_halfwidth = np.sqrt(self.radius**2 - (zf - self.zhub)**2)
@@ -151,67 +159,73 @@ class FourierLUTGenerator():
         output = np.array(output)[:, s]  # dim: (from_level, to_level, uu'vv'wp)
         return np.sum(fac[1:-1][:, na, na] * output, 0) * area_err_fac
 
-    def solve_layer(self, cl, Rright, Rleft, YL, levels, dYx_0, dYx_1,
-                    fac0_1, fac1_1, fac0_2, fac1_2,
-                    icl_m1, icl, icl_p1, ):
-        """
-        maxlevel (z_inversion or table_max_level)
-        cl+1
-        cl (current level)
-        cl-1
-        minlevel (1m)
 
-        'i'-prefix, e.g. icl is the node number of cl (current layer)
+@jit
+def solve_layer(Rright, Rleft, YL, levels, dYx_0, dYx_1,
+                fac0_1, fac1_1, fac0_2, fac1_2,
+                icl_m1, icl, icl_p1, ):  # pragma: no cover
+    """
+    maxlevel (z_inversion or table_max_level)
+    cl+1
+    cl (current level)
+    cl-1
+    minlevel (1m)
 
-        Bottom to top
-        -------------
-        We need to calculate for each layer, cl=lowerjf+1.. upperjf-1
-        YxL[j, :3] =
-        minlevel..cl-1: 0
-        cl-1..cl: RR @ YxL[j-1] - dYxL0 * fac01 + dYxL1 * fac11
-        cl..cl+1: RR @ YxL[j-1] - dYxL0 * fac02 + dYxL1 * fac12
-        cl+1..maxlevel: RR @ YxL[j-1]
+    'i'-prefix, e.g. icl is the node number of cl (current layer)
 
-        top to bottom
-        -------------
-        We need to calculate for each layer, cl=upperjf-1.. lowerjf+1
-        YxL[j, 33] =
-        maxlevel..cl+1: RR @ YxL[j-1]
-        cl..cl+1: RR @ YxL[j-1] - dYxL0 * fac02 + dYxL1 * fac12
-        cl-1..cl: RR @ YxL[j-1] - dYxL0 * fac01 + dYxL1 * fac11
-        minlevel..cl-1: 0
-        """
+    Bottom to top
+    -------------
+    We need to calculate for each layer, cl=lowerjf+1.. upperjf-1
+    YxL[j, :3] =
+    minlevel..cl-1: 0
+    cl-1..cl: RR @ YxL[j-1] - dYxL0 * fac01 + dYxL1 * fac11
+    cl..cl+1: RR @ YxL[j-1] - dYxL0 * fac02 + dYxL1 * fac12
+    cl+1..maxlevel: RR @ YxL[j-1]
 
-        Yx_3 = [np.zeros(3, dtype=np.complex128)] * (icl_m1 + 1)  # minlevel(z=1m) to cl-1
-        Ux_step_lst = [*(-dYx_0[icl_m1:icl, :3] * fac0_1 + dYx_1[icl_m1:icl, :3] * fac1_1),  # cl-1 to cl
-                       *(-dYx_0[icl:icl_p1, :3] * fac0_2 + dYx_1[icl:icl_p1, :3] * fac1_2)]  # cl to cl+1
-        for Ux_step, RR in zip(Ux_step_lst, Rright[icl_m1:icl_p1, :3, :3]):
-            Yx_3.append(np.dot(RR.T, Yx_3[-1] + Ux_step))
+    top to bottom
+    -------------
+    We need to calculate for each layer, cl=upperjf-1.. lowerjf+1
+    YxL[j, 33] =
+    maxlevel..cl+1: RR @ YxL[j-1]
+    cl..cl+1: RR @ YxL[j-1] - dYxL0 * fac02 + dYxL1 * fac12
+    cl-1..cl: RR @ YxL[j-1] - dYxL0 * fac01 + dYxL1 * fac11
+    minlevel..cl-1: 0
+    """
+    icl_m1, icl, icl_p1 = icl_m1.item(), icl.item(), icl_p1.item()
+    Yx_3 = [np.zeros(3, dtype=np.complex128)] * (icl_m1 + 1)  # minlevel(z=1m) to cl-1
 
-        # cl+1 to max level
-        for RR in Rright[icl_p1:-1, :3, :3]:
-            Yx_3.append(np.dot(RR.T, Yx_3[-1]))
+    Ux_step_lst = [*(-dYx_0[icl_m1:icl, :3] * fac0_1 + dYx_1[icl_m1:icl, :3] * fac1_1),  # cl-1 to cl
+                   *(-dYx_0[icl:icl_p1, :3] * fac0_2 + dYx_1[icl:icl_p1, :3] * fac1_2)]  # cl to cl+1
+    for Ux_step, RR in zip(Ux_step_lst, Rright[icl_m1:icl_p1, :3, :3]):
+        Yx_3.append(np.dot(np.ascontiguousarray(RR.T), Yx_3[-1] + Ux_step))
 
-        M = np.r_[np.conj(YL[-1, :3]), [[1, 0, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0], [0, 0, 0, 0, 1, 0]]]
-        b = np.r_[Yx_3[-1][:3], 0, 0, 0]
-        x_ = linalg.solve(M, b)
-        Yct = np.conj(YL[-1, 3:])
-        Yx_6 = [np.r_[Yx_3.pop(), Yct @ x_]]  # YxL row 1-6 in reverse order
+    # cl+1 to max level
+    for RR in Rright[icl_p1:-1, :3, :3]:
+        Yx_3.append(np.dot(np.ascontiguousarray(RR.T), Yx_3[-1]))
 
-        # max level to cl+1
-        for RL in Rleft[-1:icl_p1:-1, :, 3:]:
-            Yx_6.append(np.r_[Yx_3.pop(), np.dot(RL.T, Yx_6[-1])])
+    M = np.concatenate((np.conj(YL[-1, :3]),
+                        np.array([[1, 0, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0], [0, 0, 0, 0, 1, 0]], dtype=np.complex128)))
+    b = np.concatenate((Yx_3[-1][:3], np.asarray([0 + 0j, 0, 0])))
+    x_ = linalg.solve(M, b)
+    Yct = np.conj(YL[-1, 3:])
+    Yx_6 = [np.concatenate((Yx_3.pop(), Yct @ x_))]  # YxL row 1-6 in reverse order
 
-        icl_m1, icl, icl_p1 = icl_m1 - 1, icl - 1, icl_p1 - 1
-        Ux_step_lst = [*(+dYx_0[icl_p1:icl:-1, 3:] * fac0_2 - dYx_1[icl_p1:icl:-1, 3:] * fac1_2),  # cl+1 to cl
-                       *(+dYx_0[icl:icl_m1:-1, 3:] * fac0_1 - dYx_1[icl:icl_m1:-1, 3:] * fac1_1)]  # cl to cl-1
-        for Ux_step, RL in zip(Ux_step_lst, Rleft[icl_p1 + 1:icl_m1 + 1:-1, :, 3:]):
-            Yx_6.append(np.r_[Yx_3.pop(), np.dot(RL.T, Yx_6[-1]) + Ux_step])
+    # max level to cl+1
+    for RL in Rleft[-1:icl_p1:-1, :, 3:]:
+        Yx_6.append(np.concatenate((Yx_3.pop(), np.dot(np.ascontiguousarray(RL.T), Yx_6[-1]))))
 
-        # cl-1 to min_level
-        for RL in Rleft[icl_m1 + 1:0:-1, :, 3:]:
-            Yx_6.append(np.r_[np.zeros(3, dtype=np.complex128), np.dot(RL.T, Yx_6[-1])])
+    icl_m1, icl, icl_p1 = icl_m1 - 1, icl - 1, icl_p1 - 1
+    Ux_step_lst = [*(+dYx_0[icl_p1:icl:-1, 3:] * fac0_2 - dYx_1[icl_p1:icl:-1, 3:] * fac1_2),  # cl+1 to cl
+                   *(+dYx_0[icl:icl_m1:-1, 3:] * fac0_1 - dYx_1[icl:icl_m1:-1, 3:] * fac1_1)]  # cl to cl-1
+    for Ux_step, RL in zip(Ux_step_lst, Rleft[icl_p1 + 1:icl_m1 + 1:-1, :, 3:]):
+        Yx_6.append(np.concatenate((Yx_3.pop(), np.dot(np.ascontiguousarray(RL.T), Yx_6[-1]) + Ux_step)))
 
-        new_level = np.r_[True, levels[1:-1] == levels[:-2] + 1]
-        # np.einsum('...ij,...j') = [YL[i].T@Yx_6[i] for i in ...]
-        return np.einsum('...ji,...j', YL[1:][new_level], np.array(Yx_6[::-1][1:])[new_level])
+    # cl-1 to min_level
+    for RL in Rleft[icl_m1 + 1:0:-1, :, 3:]:
+        Yx_6.append(np.concatenate((np.zeros(3, dtype=np.complex128), np.dot(np.ascontiguousarray(RL.T), Yx_6[-1]))))
+
+    new_level = np.concatenate((np.array([True]), levels[1:-1] == levels[:-2] + 1))
+    return [np.ascontiguousarray(YL.T) @ Yx_6
+            for YL, Yx_6 in list(zip(YL[1:][new_level],
+                                     # same as np.array(Yx_6[::-1][1:])[new_level] which is not working with numba jit
+                                     [v for v, nl in zip(Yx_6[::-1][1:], new_level) if nl]))]

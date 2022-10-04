@@ -101,7 +101,7 @@ class Trafalgar():
                 order = interpolation_order
                 flut = fluts[var].values * sign
                 luts = []
-                for i in range(len(fluts.level)):
+                for i in tqdm(range(len(fluts.level)), leave=False):
                     re, im = flut[:, :, i].real, flut[:, :, i].imag
 
                     field = (RectBivariateSpline(beta_lst, np.log(kz0_lst), re, kx=order, ky=order).ev(angleTab, kz0Tab) +
@@ -112,9 +112,12 @@ class Trafalgar():
                     field[0, 0] = k0 * force[0, 0] * fuzz
 
                     luts.append(self.FITFIT(field, sign, kx, ky).real)
-                luts_dict[var] = (('level', 'x', 'y'), luts)
+                luts_dict[var] = (('z', 'x', 'y'), luts)
                 self.ny0 = self.ny // 2
-        return xr.Dataset({**luts_dict, 'z': fluts.z}, coords={'x': self.x_lst, 'y': self.y_lst, 'level': fluts.level},
+
+        return xr.Dataset({**luts_dict,  # UL, UT, ...
+                           **{k: self.fourier_luts[k] for k in ['diameter', 'hubheight', 'z0']}},
+                          coords={'x': self.x_lst, 'y': self.y_lst, 'z': fluts.z.values},
                           attrs=self.fourier_luts.attrs)
 
     def doKvectorFIT(self, n, delta, NNN):

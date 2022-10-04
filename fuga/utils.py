@@ -3,6 +3,27 @@ from .constants import Cm1, Cm2
 import xarray as xr
 from numpy import newaxis as na
 
+from numba.core.decorators import njit
+
+
+import sys
+
+
+debugging = getattr(sys, 'gettrace')() is not None
+numba_jit = True  # and not debugging
+
+
+def jit(f):
+    def wrap(*args, **kwargs):
+        if numba_jit:
+            if not hasattr(f, 'fjit'):
+                f.fjit = njit(f)  # create new jit function (compiled on first run)
+            res = f.fjit(*args, **kwargs)  # first time: compile and run, second time just run
+            return res
+        else:
+            return f(*args, **kwargs)
+    return wrap
+
 
 def get_beta(x):
     aj = 0.35  # &      ! parameter in beta table function

@@ -6,6 +6,8 @@ from fuga.lut import FourierLUTGenerator
 from fuga.tests.test_files import tfp
 import pytest
 from fuga.constants import UVW_LT
+from fuga import utils
+import time
 
 
 @pytest.mark.parametrize('zeta0', [0, -1, 1])
@@ -36,3 +38,14 @@ def test_rotor_luts():
     luts = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400).make_rotor_luts(z0=0.00001, luts=['UL'])
     assert luts.z[0] < 70 - 40
     assert luts.z[-1 > 70 + 40]
+
+
+def test_jit_luts():
+    preluts = PreLUTs.from_netcdf(tfp + 'preLUTs_Zeta0=0.00E+00_2_5.nc')
+    for jit in [False, True]:
+        utils.numba_jit = jit
+        lut_generator = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400)
+        lut_generator.verbose = False
+        t = time.time()
+        lut_generator.make_lut(z0=0.00001, low_level_out=315, high_level_out=315, luts=['UL'])
+        print(f'Jit: {jit}: {time.time() - t}s')
