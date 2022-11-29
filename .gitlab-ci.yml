@@ -3,7 +3,7 @@ image: continuumio/anaconda3
 
 
 # ===== TEST PyWake debian=====
-test_PyWake:  # name the job what we like
+test_PyFuga:  # name the job what we like
   image: continuumio/anaconda3
   stage:  # build, test, deploy defined by default [2]
     test
