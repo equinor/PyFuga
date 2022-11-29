@@ -2,17 +2,18 @@ import numpy as np
 from numpy import newaxis as na, linalg
 import xarray as xr
 from tqdm import tqdm
-from fuga.constants import zminlevel, kappa, UVW_LT
-from fuga.utils import ComplexXRDataset, jit
+from pyfuga.constants import zminlevel, kappa, UVW_LT
+from pyfuga.utils import ComplexXRDataset, jit
+import numba
 
 
 class FourierLUTGenerator():
-    def __init__(self, preluts, zhub, diameter, zi):
+    def __init__(self, preluts, zhub, diameter, zi, verbose=True):
         self.preluts = preluts
         self.zhub = zhub
         self.radius = diameter / 2
         self.zi = zi  # Domain height
-        self.verbose = True
+        self.verbose = verbose
 
     def make_rotor_luts(self, z0, luts=UVW_LT):
         ds = self.preluts.ds
@@ -61,13 +62,13 @@ class FourierLUTGenerator():
         minlevel = int(np.floor(np.log(np.maximum(zminlevel / z0, 1)) / ds))
         maxlevel = int(np.ceil(np.log(self.zi / z0) / ds))
 
-        if low_level_out < minlevel:  # pragma: no cover
-            print(f'LoLevelOut ({low_level_out}) raised to MinLevel ({minlevel}).')
-            low_level_out = minlevel
+        if low_level_out < minlevel + 1:  # pragma: no cover
+            print(f'LoLevelOut ({low_level_out}) raised to MinLevel ({minlevel+1}).')
+            low_level_out = minlevel + 1
 
-        if high_level_out > maxlevel:  # pragma: no cover
-            print(f'HiLevelOut ({high_level_out}) lowered to MaxLevel ({maxlevel}).')
-            high_level_out = maxlevel
+        if high_level_out > maxlevel - 1:  # pragma: no cover
+            print(f'HiLevelOut ({high_level_out}) lowered to MaxLevel ({maxlevel-1}).')
+            high_level_out = maxlevel - 1
 
         logZiZ0 = np.log(self.zi / z0)
         beta_lst = np.atleast_1d(self.preluts.beta.values)
@@ -133,7 +134,7 @@ class FourierLUTGenerator():
         Rleft = prelut.Rleft.values
         dYx_0 = prelut[f'dyx{forcing}0'].values
         dYx_1 = prelut[f'dyx{forcing}1'].values
-        levels = prelut.level.values
+        levels = prelut.level.values.astype(int)
 
         fac0_1_l = z[0] / (kappa * k * (z[1] - z[0]))
         fac1_1_l = 1 / (kappa * (z[1] - z[0]) * k**2)
@@ -160,7 +161,14 @@ class FourierLUTGenerator():
         return np.sum(fac[1:-1][:, na, na] * output, 0) * area_err_fac
 
 
-@jit
+# c2 = 'complex128[:,:],'
+# c3 = 'complex128[:,:,:],'
+# d = 'double,'
+# i = 'int32,'
+# i1 = 'int32[:],'
+
+
+@jit  # (f'complex128[:,:]({c3}{c3}{c3}{i1}{c2}{c2}{d}{d}{d}{d}{i}{i}{i})')
 def solve_layer(Rright, Rleft, YL, levels, dYx_0, dYx_1,
                 fac0_1, fac1_1, fac0_2, fac1_2,
                 icl_m1, icl, icl_p1, ):  # pragma: no cover
@@ -224,8 +232,13 @@ def solve_layer(Rright, Rleft, YL, levels, dYx_0, dYx_1,
     for RL in Rleft[icl_m1 + 1:0:-1, :, 3:]:
         Yx_6.append(np.concatenate((np.zeros(3, dtype=np.complex128), np.dot(np.ascontiguousarray(RL.T), Yx_6[-1]))))
 
-    new_level = np.concatenate((np.array([True]), levels[1:-1] == levels[:-2] + 1))
-    return [np.ascontiguousarray(YL.T) @ Yx_6
-            for YL, Yx_6 in list(zip(YL[1:][new_level],
-                                     # same as np.array(Yx_6[::-1][1:])[new_level] which is not working with numba jit
-                                     [v for v, nl in zip(Yx_6[::-1][1:], new_level) if nl]))]
+    new_level = np.concatenate((np.array([True]), levels[1:-1] > levels[:-2]))
+
+    return [(np.ascontiguousarray(YL.T) @ Yx_6)
+            for YL, Yx_6 in list(zip(
+
+                # YL[1:][new_level],
+                [v for v, nl in zip(YL[1:], new_level) if nl],
+                # same as np.array(Yx_6[::-1][1:])[new_level] which is not working with
+                # numba jit
+                [v for v, nl in zip(Yx_6[::-1][1:], new_level) if nl]))]

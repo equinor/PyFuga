@@ -1,6 +1,7 @@
 [run]
 omit = 
-	fuga/tests/*
+	pyfuga/tests/*
+	pyfuga/preluts_generator_nojit.py
 	tmp/*
 [report]
 fail_under = 100

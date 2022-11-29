@@ -1,3 +1,5 @@
+# pragma: no cover
+
 from pathlib import Path
 
 from numpy import newaxis as na
@@ -6,11 +8,15 @@ from tqdm import tqdm
 import numpy as np
 import xarray as xr
 
-from .constants import Cm1, Cm2, n_eq, kappa, kappa2, max_recs, Ythreshold
-from .file_readers import read_prelut_list, read_pre_file
-from .utils import psi, dphiu, get_new_h2, cdivkL, ComplexXRDataset
-from fuga.utils import phi
+from pyfuga.constants import Cm1, Cm2, n_eq, kappa, kappa2, max_recs, Ythreshold
+from pyfuga.file_readers import read_prelut_list, read_pre_file
+from pyfuga.utils import ComplexXRDataset
+from pyfuga.common import psi, dphiu, get_new_h2, cdivkL, phi
+import warnings
 
+
+warnings.warn("""This module is deprecated and only used for test comparision.
+Use pyfuga.preluts_generator instead""", DeprecationWarning, stacklevel=2)
 
 # np.set_printoptions(precision=2, linewidth=200)
 # left: (sub)station (lower height)
@@ -97,7 +103,6 @@ class PreLUTGenerator():
     # Der orthonormaliseres ved hver station og gemmes i en hægtet liste.
     # Bruger anden ordens R-K
     def __init__(self, zeta0, kz0, beta, kzmax, ds, accgoal):
-        self.nodes = []
 
         self.zeta0 = zeta0
         self.kz0 = kz0
@@ -126,7 +131,7 @@ class PreLUTGenerator():
             # Unstable
             if self.cdivkL > 1:
                 x = 1
-            else:  # pragma: no cover
+            else:
                 x = self.cdivkL**0.2
 
             while True:
@@ -149,6 +154,7 @@ class PreLUTGenerator():
         return sm
 
     def make_prelut(self):
+        self.nodes = []
         first = PrelutNodeFirst(self.beta, self.ds)
         h = np.sqrt(self.acc * 6 / 3.125)
         self.lastkz = self.kz0
@@ -171,7 +177,7 @@ class PreLUTGenerator():
 
             segment, h = self.solve2(segment, h, yerr, self.acc, j)
             # equal(segment.Yright, f'yright{s1:6.3f}')
-            if len(self.nodes) > max_recs:  # pragma: no cover
+            if len(self.nodes) > max_recs:
                 break
         else:  # max_recs not reached
             if sm < self.smaxx:
@@ -214,6 +220,7 @@ class PreLUTGenerator():
                      'sleft', 'sright']
         var_values = ([np.moveaxis([getattr(n, k) for n in self.nodes], 1, 2) for k in var_names[:3]] +
                       [np.array([getattr(n, k) for n in self.nodes]) for k in var_names[3:]])
+        from pyfuga.preluts import PreLUT
         return PreLUT({**{n: (('i', 'j', 'k')[:len(v.shape)], v)
                           for n, v in zip(var_names, var_values)},
                        'beta': self.beta, 'kz0': self.kz0,
@@ -358,7 +365,7 @@ class PreLUTGenerator():
                 # print(t, Ynorm)
                 if Ynorm > Ythreshold:
                     s2 = p.sright
-                    if j == 1:  # pragma: no cover
+                    if j == 1:
                         kz1 = self.get_kz(t)
                         s1 = np.log(kz1 / self.kz0)
                     else:
@@ -496,7 +503,7 @@ class PreLUTGenerator():
             # Stable
             a = Cm2 * zeta0
             b = t + a + np.log(a)
-            if b < 1:  # pragma: no cover
+            if b < 1:
                 if kz < 0:
                     ax = np.exp(b)
                 else:
@@ -507,7 +514,7 @@ class PreLUTGenerator():
                     if abs(dax / ax) < 1e-14:
                         break
             else:
-                if kz < 0:  # pragma: no cover
+                if kz < 0:
                     ax = b
                 else:
                     ax = a * self.lastkz / kz0
@@ -520,7 +527,7 @@ class PreLUTGenerator():
         else:
             # Unstable
             b = t + b0
-            if kz < 0:  # pragma: no cover
+            if kz < 0:
                 x = np.exp(b)
             else:
                 aux = self.dphiu(self.lastkz)
@@ -530,7 +537,7 @@ class PreLUTGenerator():
                 # print(dx)
                 dx = -(2 * np.arctan(x) + np.log(x) - b) * x * (1 + x**2) / (x + 1)**2
                 x = x + dx
-                if x < 0:  # pragma: no cover
+                if x < 0:
                     x = np.exp(b)
                     dx = x
             kz = 8 * x * (1 + x**2) / (self.cdivkL * (1 - x)**4)
@@ -541,7 +548,7 @@ class PreLUTGenerator():
         # Inverse of stability function phi_m
         # for unstable conditions
         # ! phi_m=(1+Cm1*z/L)**(1/4)
-        return dphiu(kz, self.cdivkL)
+        return (1.0 + self.cdivkL * kz)**0.25
 
     def psi(self, kz):
         return psi(self.zeta0, kz, self.cdivkL)
@@ -555,69 +562,3 @@ class PreLUTGenerator():
         #  implicit none
         #  real(mykind) u0,kz,psi
         return (np.log(kz / self.kz0) + self.psi(kz) - self.psi0) / kappa
-
-
-class PreLUT(ComplexXRDataset):
-    __slots__ = []
-
-    @staticmethod
-    def from_pre_file(filename, zeta0, kz0=None, beta=None, kzmax=None, ds=None, accgoal=None):
-        filename = Path(filename)
-        if None in [kz0, beta, kzmax, ds, accgoal]:
-            ds, smaxx, kz0, beta, kzmax, accgoal = read_prelut_list(filename.parent)[filename.name]
-
-        pre_file = read_pre_file(filename)
-        return PreLUT({**pre_file, 'beta': beta, 'kz0': kz0},
-                      attrs={'ds': ds, 'kzmax': kzmax, 'zeta0': zeta0, 'accgoal': accgoal})
-
-    @staticmethod
-    def make_prelut(zeta0, kz0, beta, kzmax, ds, accgoal):
-        return PreLUTGenerator(zeta0, kz0, beta, kzmax, ds, accgoal).make_prelut()
-
-
-class PreLUTs(ComplexXRDataset):
-    __slots__ = []
-
-    @staticmethod
-    def from_pre_files(folder, zeta0, all_vars=True):
-
-        folder = Path(folder)
-
-        fn, ds, smaxx, kz0, beta, kzmax, accgoal = list(zip(*read_prelut_list(folder, dict=False)))
-        assert all(ds[0] == np.array(ds))
-        assert all(kzmax[0] == np.array(kzmax))
-        dat_lst = [read_pre_file(folder / f) for f in tqdm(fn)]
-
-        # ds, smaxx, kz0, beta, kzmax, accgoal
-        nkz0 = len(np.unique(kz0))
-        kz0_lst = np.array(kz0)[:nkz0]
-        beta_lst = np.array(beta)[::nkz0]
-        f = dat_lst[0]  # first
-        n_node = np.array([len(d['level'][1]) for d in dat_lst])
-        max_nodes = n_node.max()
-
-        def get_var(k):
-            dim = ['beta', 'kz0'] + f[k][0]
-            shape = f[k][1].shape
-            data = np.reshape([np.r_[d[k][1], np.full((max_nodes - d[k][1].shape[0],) + shape[1:], np.nan)] for d in dat_lst],
-                              (len(beta_lst), nkz0, max_nodes) + shape[1:])
-            return (dim, data)
-        if all_vars:
-            var_name_lst = f.keys()
-        else:
-            var_name_lst = ['Yleft', 'Rleft', 'Rright', 'dyxu0', 'dyxu1', 'dyxv0', 'dyxv1', 'level']
-        dim_dat_dict = {k: get_var(k) for k in var_name_lst}
-        return PreLUTs({**dim_dat_dict},
-                       coords={'kz0': kz0_lst, 'beta': beta_lst, 'i': range(max_nodes)},
-                       attrs={'ds': ds[0], 'kzmax': kzmax[0], 'zeta0': zeta0, 'accgoal': accgoal})
-
-    @staticmethod
-    def make_preluts(zeta0, kz0_lst, beta_lst, kzmax, ds, accgoal):
-        kz0_beta_lst = [(kz0, beta) for kz0 in kz0_lst for beta in beta_lst]
-        ds_lst = [PreLUT.make_prelut(zeta0, kz0, beta, kzmax, ds, accgoal) for kz0, beta in tqdm(kz0_beta_lst)]
-        preluts = xr.merge([ds.assign_coords(i=ds.i, kz0=ds.kz0, beta=ds.beta).expand_dims(('kz0', 'beta'))
-                            for ds in ds_lst])
-        f = ds_lst[0]  # first
-        for k in ['ds', 'kzmax', 'zeta0']:
-            assert all(f.attrs[k] == np.array([ds.attrs[k] for ds in ds_lst]))
-        return PreLUTs(preluts, attrs={'ds': f.ds, 'kzmax': f.kzmax, 'zeta0': f.zeta0, 'accgoal': f.accgoal})

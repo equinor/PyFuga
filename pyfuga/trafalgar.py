@@ -1,7 +1,7 @@
 import numpy as np
 from numpy import newaxis as na
 from scipy.interpolate import RectBivariateSpline
-from fuga.constants import kappa
+from pyfuga.constants import kappa
 import xarray as xr
 from tqdm import tqdm
 M_PI = 3.141592653589793
@@ -101,7 +101,7 @@ class Trafalgar():
                 order = interpolation_order
                 flut = fluts[var].values * sign
                 luts = []
-                for i in tqdm(range(len(fluts.level)), leave=False):
+                for i in tqdm(range(len(fluts.level)), disable=(not self.verbose), leave=False):
                     re, im = flut[:, :, i].real, flut[:, :, i].imag
 
                     field = (RectBivariateSpline(beta_lst, np.log(kz0_lst), re, kx=order, ky=order).ev(angleTab, kz0Tab) +
@@ -117,7 +117,7 @@ class Trafalgar():
 
         return xr.Dataset({**luts_dict,  # UL, UT, ...
                            **{k: self.fourier_luts[k] for k in ['diameter', 'hubheight', 'z0']}},
-                          coords={'x': self.x_lst, 'y': self.y_lst, 'z': fluts.z.values},
+                          coords={'x': self.x_lst, 'y': self.y_lst, 'z': np.atleast_1d(fluts.z)},
                           attrs=self.fourier_luts.attrs)
 
     def doKvectorFIT(self, n, delta, NNN):
@@ -157,7 +157,7 @@ class Trafalgar():
         # fft here
         tmpx = np.fft.ifft(hhatxList[:, na] * ghatx, axis=0) * 2 * nx
 
-        if(sign == 1):
+        if (sign == 1):
             field = 2. * (psix[:, na] * tmpx[:nx]).real
         else:  # (sign==-1)
             field = -2. * (psix[:, na] * tmpx[:nx]).imag
@@ -168,7 +168,7 @@ class Trafalgar():
         # fft here
         tmpy = np.fft.ifft(hhatyList[na, :] * ghaty, axis=1) * 2 * ny
 
-        if(sign == 1):
+        if (sign == 1):
             field = 2. * (psiy[na, :] * tmpy[:, :ny]).real
         else:  # (sign==-1)
             # minus here
