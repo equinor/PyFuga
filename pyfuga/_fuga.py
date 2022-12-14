@@ -7,6 +7,8 @@ from pyfuga.trafalgar import Trafalgar
 from pyfuga.utils import get_kz0_lst, get_beta_lst, ComplexXRDataset
 from pathlib import Path
 from pyfuga.constants import UVW_LT
+from pyfuga import utils
+import os
 
 
 def get_luts(folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh,
@@ -59,8 +61,9 @@ def get_luts(folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh,
     -------
     luts : xarray Dataset
     """
-    compile(jit)
+    utils.compile(jit)
     folder = Path(folder)
+    os.makedirs(folder, exist_ok=True)
     dx = dx or diameter / 4
     dy = dy or diameter / 16
 

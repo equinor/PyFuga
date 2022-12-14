@@ -8,6 +8,9 @@ This is the python version of the FUGA LUT generator (Previuosly computed by Pre
 [![pipeline status](https://gitlab.windenergy.dtu.dk/TOPFARM/cuttingedge/pywake/fuga/pyfuga/badges/main/pipeline.svg)](https://gitlab.windenergy.dtu.dk/TOPFARM/cuttingedge/pywake/fuga/pyfuga/-/commits/main)
 [![coverage report](https://gitlab.windenergy.dtu.dk/TOPFARM/cuttingedge/pywake/fuga/pyfuga/badges/main/coverage.svg)](https://gitlab.windenergy.dtu.dk/TOPFARM/cuttingedge/pywake/fuga/pyfuga/-/commits/main)
 
+## Quick start
+
+See [QuickStart.ipynb](QuickStart.ipynb)
 
 ## Difference compared to old fortran / cpp implementation
 
