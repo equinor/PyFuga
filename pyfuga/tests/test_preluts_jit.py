@@ -166,8 +166,8 @@ def test_make_preluts_jit():
             warnings.filterwarnings('ignore', category=DeprecationWarning)
             from pyfuga import preluts_generator_nojit
         r1, t1 = timeit(preluts_generator_nojit.PreLUTGenerator(**kwargs).make_prelut, min_runs=1)()
-        r1 = xr.merge([ds.assign_coords(i=ds.i, kz0=ds.kz0, beta=ds.beta).expand_dims(('kz0', 'beta'))
-                       for ds in [r1]])
+        r1 = xr.combine_by_coords([ds.assign_coords(i=ds.i, kz0=ds.kz0, beta=ds.beta).expand_dims(('kz0', 'beta'))
+                                   for ds in [r1]])
         flut1 = FourierLUTGenerator(r1, zhub=70, diameter=80, zi=400, verbose=False).make_lut(z0=0.1,
                                                                                               low_level_out=47,
                                                                                               high_level_out=165)
@@ -182,8 +182,8 @@ def test_make_preluts_jit():
     #     PreLUTGenerator.make_prelut,
     # ])()
 
-    r2 = xr.merge([ds.assign_coords(i=ds.i, kz0=ds.kz0, beta=ds.beta).expand_dims(('kz0', 'beta'))
-                   for ds in [r2]])
+    r2 = xr.combine_by_coords([ds.assign_coords(i=ds.i, kz0=ds.kz0, beta=ds.beta).expand_dims(('kz0', 'beta'))
+                               for ds in [r2]])
     flut2 = FourierLUTGenerator(r2, zhub=70, diameter=80, zi=400, verbose=False).make_lut(z0=0.1,
                                                                                           low_level_out=47,
                                                                                           high_level_out=165)

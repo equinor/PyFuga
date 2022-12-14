@@ -72,7 +72,7 @@ class PreLUTs(ComplexXRDataset):
                        attrs={'ds': ds[0], 'kzmax': kzmax[0], 'zeta0': zeta0, 'accgoal': accgoal})
 
     @staticmethod
-    def make_preluts(zeta0, kz0_lst, beta_lst, kzmax, ds, accgoal, jit=False, n_cpu=1, verbose=True):
+    def make_preluts(zeta0, kz0_lst, beta_lst, kzmax, ds, accgoal, jit=True, n_cpu=1, verbose=True):
 
         args_lst = [(zeta0, kz0, beta, kzmax, ds, accgoal, jit) for kz0 in kz0_lst for beta in beta_lst]
 
@@ -83,9 +83,11 @@ class PreLUTs(ComplexXRDataset):
 
         ds_lst = list(tqdm(map_func(PreLUT.make_prelut_args, args_lst), total=len(args_lst), disable=(not verbose)))
 
-        preluts = xr.merge([ds.assign_coords(i=ds.i, kz0=ds.kz0, beta=ds.beta).expand_dims(('kz0', 'beta'))
-                            for ds in ds_lst])
         f = ds_lst[0]  # first
         for k in ['ds', 'kzmax', 'zeta0']:
             assert all(f.attrs[k] == np.array([ds.attrs[k] for ds in ds_lst]))
+
+        preluts = xr.combine_by_coords([ds.assign_coords(i=ds.i, kz0=ds.kz0, beta=ds.beta).expand_dims(('kz0', 'beta'))
+                                        for ds in ds_lst])
+
         return PreLUTs(preluts, attrs={'ds': f.ds, 'kzmax': f.kzmax, 'zeta0': f.zeta0, 'accgoal': f.accgoal})
