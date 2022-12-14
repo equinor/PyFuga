@@ -4,7 +4,8 @@ from tqdm import tqdm
 import xarray as xr
 import numpy as np
 from pyfuga.file_readers import read_prelut_list, read_pre_file
-from pyfuga.utils import ComplexXRDataset
+from pyfuga.utils import ComplexXRDataset, numba_jit
+import multiprocessing
 
 
 class PreLUT(ComplexXRDataset):
@@ -24,6 +25,14 @@ class PreLUT(ComplexXRDataset):
     def make_prelut(zeta0, kz0, beta, kzmax, ds, accgoal):
         from pyfuga.preluts_generator import PreLUTGenerator
         return PreLUTGenerator(zeta0, kz0, beta, kzmax, ds, accgoal).make_prelut()
+
+    @staticmethod
+    def make_prelut_args(args):
+        from pyfuga import utils
+        jit = args[-1]
+        args = args[:-1]
+        utils.compile(jit)
+        return PreLUT.make_prelut(*args)
 
 
 class PreLUTs(ComplexXRDataset):
@@ -63,10 +72,17 @@ class PreLUTs(ComplexXRDataset):
                        attrs={'ds': ds[0], 'kzmax': kzmax[0], 'zeta0': zeta0, 'accgoal': accgoal})
 
     @staticmethod
-    def make_preluts(zeta0, kz0_lst, beta_lst, kzmax, ds, accgoal, verbose=True):
-        kz0_beta_lst = [(kz0, beta) for kz0 in kz0_lst for beta in beta_lst]
-        ds_lst = [PreLUT.make_prelut(zeta0, kz0, beta, kzmax, ds, accgoal)
-                  for kz0, beta in tqdm(kz0_beta_lst, disable=(not verbose))]
+    def make_preluts(zeta0, kz0_lst, beta_lst, kzmax, ds, accgoal, jit=False, n_cpu=1, verbose=True):
+
+        args_lst = [(zeta0, kz0, beta, kzmax, ds, accgoal, jit) for kz0 in kz0_lst for beta in beta_lst]
+
+        if n_cpu == 1:
+            map_func = map
+        else:
+            map_func = multiprocessing.Pool(n_cpu).imap
+
+        ds_lst = list(tqdm(map_func(PreLUT.make_prelut_args, args_lst), total=len(args_lst), disable=(not verbose)))
+
         preluts = xr.merge([ds.assign_coords(i=ds.i, kz0=ds.kz0, beta=ds.beta).expand_dims(('kz0', 'beta'))
                             for ds in ds_lst])
         f = ds_lst[0]  # first

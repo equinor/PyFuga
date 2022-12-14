@@ -92,7 +92,7 @@ def compare(res, ref, atol=1e-13, rtol=1e-9):
 
 def test_prelut_neutral_all_vars():
     preluts = PreLUTs.make_preluts(zeta0=0, kz0_lst=[1e-9, 1e-8], beta_lst=get_beta_lst(1),
-                                   kzmax=300, ds=0.05, accgoal=0.00001, verbose=False)
+                                   kzmax=300, ds=0.05, accgoal=0.00001, jit=False, verbose=False)
     ref_prelut = PreLUT.from_pre_file(tfp + f'preLUTs_Zeta0=0.00E+00_2_5/0.0000-09.0000.pre', zeta0=0)
 
     assert ref_prelut.ds == preluts.ds
@@ -117,7 +117,7 @@ def test_prelut_neutral_all_vars():
 @pytest.mark.parametrize('zeta0', [-1, 1])
 def test_prelut_stable_and_unstable(zeta0):
     preluts = PreLUTs.make_preluts(zeta0=zeta0, kz0_lst=[1e-9], beta_lst=[0],
-                                   kzmax=300, ds=0.05, accgoal=0.0001, verbose=False)
+                                   kzmax=300, ds=0.05, accgoal=0.0001, jit=False, verbose=False)
     ref_prelut = PreLUT.from_pre_file(tfp + f'preLUTs_Zeta0={zeta0}.00E+00_1_2/0.0000-09.0000.pre', zeta0=zeta0)
 
     assert ref_prelut.ds == preluts.ds
@@ -155,7 +155,7 @@ def test_prelut_with_above_sm():
     # prelut = PreLUT.from_pre_file(tfp + 'preLUTs_Zeta0=0.00E+00_2_5/0.0000-07.0000.pre',
     #                               zeta0=0, beta=0, kz0=1e-7, kzmax=0, ds=0.05)
     preluts = PreLUTs.make_preluts(zeta0=0, kz0_lst=[1e-7], beta_lst=get_beta(np.array([0]))[:1],
-                                   kzmax=300, ds=0.05, accgoal=0.00001, verbose=False)
+                                   kzmax=300, ds=0.05, accgoal=0.00001, jit=False, verbose=False)
     flut = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False
                                ).make_hubheight_luts(z0=0.00001, luts=['UL'])
     ref = read_lut_file(tfp + f'D080.0000_zH070.0000_1_2_9999/Z0=0.00001000Zi=00400Zeta0=0.00E+00/UL9999.lut',
@@ -166,7 +166,7 @@ def test_prelut_with_above_sm():
 
 def test_prelut_with_substations():
     preluts = PreLUTs.make_preluts(zeta0=0, kz0_lst=[1e-6], beta_lst=get_beta(np.array([0]))[:1],
-                                   kzmax=300, ds=0.05, accgoal=0.0001, verbose=False)
+                                   kzmax=300, ds=0.05, accgoal=0.0001, jit=False, verbose=False)
     flut = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False
                                ).make_hubheight_luts(z0=0.00001, luts=['UL'])
     ref = read_lut_file(tfp + f'D080.0000_zH070.0000_1_2_9999/Z0=0.00001000Zi=00400Zeta0=0.00E+00/UL9999.lut',
@@ -221,7 +221,7 @@ def test_preluts_from_pre_files():
 def test_make_preluts():
     preluts_ref = PreLUTs.from_netcdf(tfp + 'preLUTs_Zeta0=0.00E+00_1_2.nc')
     preluts = PreLUTs.make_preluts(zeta0=0, kz0_lst=[1e-9, 1e-8], beta_lst=preluts_ref.beta[:2].values,
-                                   kzmax=0.0000001, ds=0.05, accgoal=0.0001, verbose=False)
+                                   kzmax=0.0000001, ds=0.05, accgoal=0.0001, jit=False, verbose=False)
     prelut = preluts.isel(beta=1, kz0=1, i=7)
 
     npt.assert_array_almost_equal(prelut.Yleft[0, 3], -3.818665046221538e-002 - 4.092601925385363e-011j, 10)

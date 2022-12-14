@@ -10,7 +10,8 @@ from pyfuga.constants import UVW_LT
 
 
 def get_luts(folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh,
-             lut_vars=UVW_LT, nx=2048, ny=512, dx=None, dy=None):  # pragma: no cover
+             lut_vars=UVW_LT, nx=2048, ny=512, dx=None, dy=None,
+             jit=True, n_cpu=1):  # pragma: no cover
     """Generate and save (or load if exists) Fuga look-up tables. This function performs the full path from
     input via preluts, fourier LUTs and LUTs to the final LUTs netcdf dataset
 
@@ -48,11 +49,17 @@ def get_luts(folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh,
     dy : int, float or None, optional
         Distance between points on the y-axis (V direction)
         If None (default), dy is set to diameter / 16
+    jit : boolean
+        If True (default), some slow functions are just-in-time compiled
+    n_cpu : int or None
+        If >1, the preluts are generated in parallel on <n_cpu> cpus
+        If None, the maximum available number of cpus are used
 
     Returns
     -------
     luts : xarray Dataset
     """
+    compile(jit)
     folder = Path(folder)
     dx = dx or diameter / 4
     dy = dy or diameter / 16
@@ -92,8 +99,10 @@ def get_luts(folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh,
             preluts_path = folder / f'preLUTs_Zeta0={zeta0:3.2f}_{nkz0}_{nbeta}.nc'
             if not preluts_path.exists():
                 # Preluts are missing (run prelut)
-                preluts = PreLUTs.make_preluts(zeta0=0, kz0_lst=get_kz0_lst(nkz0, 1e-9, 1e-1), beta_lst=get_beta_lst(nbeta),
-                                               kzmax=300, ds=ds, accgoal=0.0001)
+                preluts = PreLUTs.make_preluts(zeta0=0,
+                                               kz0_lst=get_kz0_lst(nkz0, 1e-9, 1e-1),
+                                               beta_lst=get_beta_lst(nbeta),
+                                               kzmax=300, ds=ds, accgoal=0.0001, jit=jit, n_cpu=n_cpu)
                 preluts.attrs['nkz0'] = nkz0
                 preluts.attrs['nbeta'] = nbeta
                 preluts.save(preluts_path)

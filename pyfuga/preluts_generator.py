@@ -515,7 +515,7 @@ d = 'double,'
 dyx = c1 * 6
 
 
-# @jit(f'''Tuple(({c2}{d}{d}{d}))({c2}{d}{d}{dyx}{d}{c2}{d}int32,{d}{d}{d}{d}{d}{d}{d})''')
+@jit(f'''Tuple(({c2}{d}{d}{d}))({c2}{d}{d}{dyx}{d}{c2}{d}int32,{d}{d}{d}{d}{d}{d}{d})''')
 def solve2(Yleft, sleft, sright, dyxu0, dyxv0, dyxw0, dyxu1, dyxv1, dyxw1, h, yerr, acc, j,
            kz0, lastkz, zeta0, cdivkL, psi0, cosbeta, sinbeta):
     # use params, only: mykind,n,kz0,Ythreshold,kappa,reccount

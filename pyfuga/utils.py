@@ -10,6 +10,7 @@ import sys
 from pyfuga.constants import kappa
 import importlib
 from pyfuga.profiling import print_time
+import time
 
 
 debugging = getattr(sys, 'gettrace')() is not None
@@ -30,18 +31,21 @@ def jit(*args, **kwargs):
             return args[0]
 
 
-@print_time
 def compile(jit=True):
     global numba_jit, jit_modules
     from pyfuga import common, lut, preluts_generator
-    numba_jit = jit
-    for m in [
-        'pyfuga.common',
-        'pyfuga.lut',
-        'pyfuga.preluts_generator',
-    ]:
-        # if m in jit_modules:
-        importlib.reload(sys.modules[m])
+    if numba_jit != jit:
+        numba_jit = jit
+        t = time.time()
+        for m in [
+            'pyfuga.common',
+            'pyfuga.lut',
+            'pyfuga.preluts_generator',
+        ]:
+            # if m in jit_modules:
+            importlib.reload(sys.modules[m])
+        if numba_jit:
+            print(f"JIT compiled in {time.time()-t}s")
 
 
 def get_beta(x):

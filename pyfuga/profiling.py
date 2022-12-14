@@ -50,7 +50,7 @@ def line_timeit(func, profile_funcs=[]):  # pragma: no cover
     return lambda *args, lp=lp, **kwargs: (lp_wrapper(*args, **kwargs), lp)
 
 
-def print_time(f):
+def print_time(f):  # pragma: no cover
     """Print time decorator
     prints name of method and time of execution
 
