@@ -85,12 +85,12 @@ class FourierLUTGenerator():
             xL = np.array([[self.solve_layers(beta, kz0, z0, 'L', lowerjf, upperjf,
                                               minlevel, maxlevel, low_level_out, high_level_out)
                             for kz0 in kz0_lst]
-                           for beta in tqdm(beta_lst, desc='Solving for longitudinal forcing', disable=not self.verbose)])
+                           for beta in tqdm(beta_lst, desc='Fourier LUTS: Solving for longitudinal forcing', disable=not self.verbose)])
         if any([l[1] == 'T' for l in luts]):
             xT = np.array([[self.solve_layers(beta, kz0, z0, 'T', lowerjf, upperjf,
                                               minlevel, maxlevel, low_level_out, high_level_out)
                             for kz0 in kz0_lst]
-                           for beta in tqdm(beta_lst, desc='Solving for transvertal forcing', disable=not self.verbose)])
+                           for beta in tqdm(beta_lst, desc='Fourier LUTS: Solving for transvertal forcing', disable=not self.verbose)])
 
         def get_var(s):
             if s[1] == 'L':
@@ -202,8 +202,9 @@ def solve_layer(Rright, Rleft, YL, levels, dYx_0, dYx_1,
     icl_m1, icl, icl_p1 = icl_m1.item(), icl.item(), icl_p1.item()
     Yx_3 = [np.zeros(3, dtype=np.complex128)] * (icl_m1 + 1)  # minlevel(z=1m) to cl-1
 
-    Ux_step_lst = [*(-dYx_0[icl_m1:icl, :3] * fac0_1 + dYx_1[icl_m1:icl, :3] * fac1_1),  # cl-1 to cl
-                   *(-dYx_0[icl:icl_p1, :3] * fac0_2 + dYx_1[icl:icl_p1, :3] * fac1_2)]  # cl to cl+1
+    Ux_step_lst = np.concatenate(((-dYx_0[icl_m1:icl, :3] * fac0_1 + dYx_1[icl_m1:icl, :3] * fac1_1),  # cl-1 to cl
+                                  (-dYx_0[icl:icl_p1, :3] * fac0_2 + dYx_1[icl:icl_p1, :3] * fac1_2)))  # cl to cl+1
+
     for Ux_step, RR in zip(Ux_step_lst, Rright[icl_m1:icl_p1, :3, :3]):
         Yx_3.append(np.dot(np.ascontiguousarray(RR.T), Yx_3[-1] + Ux_step))
 
@@ -223,8 +224,8 @@ def solve_layer(Rright, Rleft, YL, levels, dYx_0, dYx_1,
         Yx_6.append(np.concatenate((Yx_3.pop(), np.dot(np.ascontiguousarray(RL.T), Yx_6[-1]))))
 
     icl_m1, icl, icl_p1 = icl_m1 - 1, icl - 1, icl_p1 - 1
-    Ux_step_lst = [*(+dYx_0[icl_p1:icl:-1, 3:] * fac0_2 - dYx_1[icl_p1:icl:-1, 3:] * fac1_2),  # cl+1 to cl
-                   *(+dYx_0[icl:icl_m1:-1, 3:] * fac0_1 - dYx_1[icl:icl_m1:-1, 3:] * fac1_1)]  # cl to cl-1
+    Ux_step_lst = np.concatenate(((+dYx_0[icl_p1:icl:-1, 3:] * fac0_2 - dYx_1[icl_p1:icl:-1, 3:] * fac1_2),  # cl+1 to cl
+                                  (+dYx_0[icl:icl_m1:-1, 3:] * fac0_1 - dYx_1[icl:icl_m1:-1, 3:] * fac1_1)))  # cl to cl-1
     for Ux_step, RL in zip(Ux_step_lst, Rleft[icl_p1 + 1:icl_m1 + 1:-1, :, 3:]):
         Yx_6.append(np.concatenate((Yx_3.pop(), np.dot(np.ascontiguousarray(RL.T), Yx_6[-1]) + Ux_step)))
 

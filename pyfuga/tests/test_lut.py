@@ -2,7 +2,7 @@ from pyfuga.tests import npt
 from pyfuga.file_readers import read_lut_file
 
 from pyfuga.preluts import PreLUTs
-from pyfuga.lut import FourierLUTGenerator
+from pyfuga.flut import FourierLUTGenerator
 from pyfuga.tests.test_files import tfp
 import pytest
 from pyfuga.constants import UVW_LT

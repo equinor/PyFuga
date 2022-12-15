@@ -81,7 +81,8 @@ class PreLUTs(ComplexXRDataset):
         else:
             map_func = multiprocessing.Pool(n_cpu).imap
 
-        ds_lst = list(tqdm(map_func(PreLUT.make_prelut_args, args_lst), total=len(args_lst), disable=(not verbose)))
+        ds_lst = list(tqdm(map_func(PreLUT.make_prelut_args, args_lst), total=len(args_lst), disable=(not verbose),
+                           desc="Generating preluts"))
 
         f = ds_lst[0]  # first
         for k in ['ds', 'kzmax', 'zeta0']:

@@ -33,13 +33,13 @@ def jit(*args, **kwargs):
 
 def compile(jit=True):
     global numba_jit, jit_modules
-    from pyfuga import common, lut, preluts_generator
+    from pyfuga import common, flut, preluts_generator
     if numba_jit != jit:
         numba_jit = jit
         t = time.time()
         for m in [
             'pyfuga.common',
-            'pyfuga.lut',
+            'pyfuga.flut',
             'pyfuga.preluts_generator',
         ]:
             # if m in jit_modules:
@@ -82,7 +82,7 @@ def save_complex(dataset, *args, **kwargs):
     for k in dataset.data_vars:
         if np.iscomplexobj(dataset[k]) is False:
             ds[k] = dataset[k]
-    return ds.to_netcdf(*args, **kwargs)
+    return xr.Dataset.to_netcdf(ds, *args, **kwargs)
 
 
 def read_complex(*args, **kwargs):

@@ -7,7 +7,7 @@ import numpy as np
 import numpy.testing as npt
 from pyfuga.constants import UVW_LT
 from pyfuga.file_readers import read_lut_file
-from pyfuga.lut import FourierLUTGenerator
+from pyfuga.flut import FourierLUTGenerator
 from pyfuga.preluts import PreLUT, PreLUTs
 from pyfuga.preluts_generator import PrelutNode
 from pyfuga.tests.test_files import tfp

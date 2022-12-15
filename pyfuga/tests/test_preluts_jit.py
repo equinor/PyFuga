@@ -8,7 +8,7 @@ import numpy.testing as npt
 from pyfuga.preluts import PreLUT, PreLUTs
 from pyfuga.tests.test_files import tfp
 from pyfuga.utils import get_beta, get_beta_lst, get_kz0_lst, ComplexXRDataset, compile
-from pyfuga.lut import FourierLUTGenerator
+from pyfuga.flut import FourierLUTGenerator
 from pyfuga.file_readers import read_lut_file
 from pyfuga.constants import UVW_LT
 from pyfuga import utils

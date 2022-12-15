@@ -1,7 +1,7 @@
 import numpy as np
 import xarray as xr
 
-from pyfuga.lut import FourierLUTGenerator
+from pyfuga.flut import FourierLUTGenerator
 from pyfuga.preluts import PreLUTs
 from pyfuga.trafalgar import Trafalgar
 from pyfuga.utils import get_kz0_lst, get_beta_lst, ComplexXRDataset
