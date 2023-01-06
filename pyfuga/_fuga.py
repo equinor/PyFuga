@@ -67,7 +67,7 @@ def get_luts(folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh,
     dx = dx or diameter / 4
     dy = dy or diameter / 16
 
-    preluts_id = f'Zeta0={zeta0:3.2f}_{nkz0}_{nbeta}'
+    preluts_id = f'Zeta0={zeta0:3.2e}_{nkz0}_{nbeta}'
 
     L_vars = [v[0] for v in lut_vars if v[1] == 'L']
     T_vars = [v[0] for v in lut_vars if v[1] == 'T']
@@ -99,10 +99,10 @@ def get_luts(folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh,
         if not fluts_path.exists():
             # FourierLUTs are missing (run lut)
 
-            preluts_path = folder / f'preLUTs_Zeta0={zeta0:3.2f}_{nkz0}_{nbeta}.nc'
+            preluts_path = folder / f'preLUTs_{preluts_id}.nc'
             if not preluts_path.exists():
                 # Preluts are missing (run prelut)
-                preluts = PreLUTs.make_preluts(zeta0=0,
+                preluts = PreLUTs.make_preluts(zeta0=zeta0,
                                                kz0_lst=get_kz0_lst(nkz0, 1e-9, 1e-1),
                                                beta_lst=get_beta_lst(nbeta),
                                                kzmax=300, ds=ds, accgoal=0.0001, jit=jit, n_cpu=n_cpu)
