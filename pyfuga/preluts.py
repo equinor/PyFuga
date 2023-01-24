@@ -124,6 +124,8 @@ class PreLUTs(ComplexXRDataset):
 
 
 class CompactPreLUTs(PreLUTs):
+    __slots__ = []
+
     def sel(self, kz0, beta, indexers=None, method=None, tolerance=None, drop=False, **indexers_kwargs,):
 
         self = self.where((self.beta == beta) & (self.kz0 == kz0), drop=True).rename(kz0_beta_i='i')
