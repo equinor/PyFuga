@@ -90,6 +90,25 @@ def compare(res, ref, atol=1e-13, rtol=1e-9):
             raise
 
 
+def test_compact():
+    preluts = PreLUTs.make_preluts(zeta0=0, kz0_lst=[1e-9, 1e-8], beta_lst=get_beta_lst(1),
+                                   kzmax=300, ds=0.05, accgoal=0.00001, jit=False, verbose=False, compact=False)
+    preluts.save(tfp + 'tmp_preluts.nc')
+    preluts = PreLUTs.from_netcdf(tfp + 'tmp_preluts.nc')
+
+    preluts_compact = PreLUTs.make_preluts(zeta0=0, kz0_lst=[1e-9, 1e-8], beta_lst=get_beta_lst(1),
+                                           kzmax=300, ds=0.05, accgoal=0.00001, jit=False, verbose=False)
+    preluts_compact.save(tfp + 'tmp_preluts_compact.nc')
+    preluts_compact = PreLUTs.from_netcdf(tfp + 'tmp_preluts_compact.nc')
+
+    for beta in preluts.beta:
+        for kz0 in preluts.kz0:
+            p_c = preluts_compact.sel(beta=beta, kz0=kz0)
+            p = preluts.sel(beta=beta, kz0=kz0)
+            for k, v in p.items():
+                npt.assert_array_equal(v, p_c[k])
+
+
 def test_prelut_neutral_all_vars():
     preluts = PreLUTs.make_preluts(zeta0=0, kz0_lst=[1e-9, 1e-8], beta_lst=get_beta_lst(1),
                                    kzmax=300, ds=0.05, accgoal=0.00001, jit=False, verbose=False)
@@ -220,9 +239,11 @@ def test_preluts_from_pre_files():
 
 def test_make_preluts():
     preluts_ref = PreLUTs.from_netcdf(tfp + 'preLUTs_Zeta0=0.00E+00_1_2.nc')
-    preluts = PreLUTs.make_preluts(zeta0=0, kz0_lst=[1e-9, 1e-8], beta_lst=preluts_ref.beta[:2].values,
+    kz0_lst = [1e-9, 1e-8]
+    beta_lst = preluts_ref.beta[:2].values
+    preluts = PreLUTs.make_preluts(zeta0=0, kz0_lst=kz0_lst, beta_lst=beta_lst,
                                    kzmax=0.0000001, ds=0.05, accgoal=0.0001, jit=False, verbose=False)
-    prelut = preluts.isel(beta=1, kz0=1, i=7)
+    prelut = preluts.sel(beta=beta_lst[1], kz0=kz0_lst[1], i=7)
 
     npt.assert_array_almost_equal(prelut.Yleft[0, 3], -3.818665046221538e-002 - 4.092601925385363e-011j, 10)
     npt.assert_array_almost_equal(prelut.Rleft[1, 4], -4.185413090968856e-002 - 1.707412114366788e-010j, 10)

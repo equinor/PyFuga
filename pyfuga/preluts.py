@@ -4,8 +4,9 @@ from tqdm import tqdm
 import xarray as xr
 import numpy as np
 from pyfuga.file_readers import read_prelut_list, read_pre_file
-from pyfuga.utils import ComplexXRDataset, numba_jit
+from pyfuga.utils import ComplexXRDataset, numba_jit, mprof_tag, read_complex
 import multiprocessing
+from _collections import defaultdict
 
 
 class PreLUT(ComplexXRDataset):
@@ -72,9 +73,9 @@ class PreLUTs(ComplexXRDataset):
                        attrs={'ds': ds[0], 'kzmax': kzmax[0], 'zeta0': zeta0, 'accgoal': accgoal})
 
     @staticmethod
-    def make_preluts(zeta0, kz0_lst, beta_lst, kzmax, ds, accgoal, jit=True, n_cpu=1, verbose=True):
+    def make_preluts(zeta0, kz0_lst, beta_lst, kzmax, ds, accgoal, jit=True, n_cpu=1, verbose=True, compact=True):
 
-        args_lst = [(zeta0, kz0, beta, kzmax, ds, accgoal, jit) for kz0 in kz0_lst for beta in beta_lst]
+        args_lst = [(zeta0, kz0, beta, kzmax, ds, accgoal, jit) for beta in beta_lst for kz0 in kz0_lst]
 
         if n_cpu == 1:
             map_func = map
@@ -88,7 +89,44 @@ class PreLUTs(ComplexXRDataset):
         for k in ['ds', 'kzmax', 'zeta0']:
             assert all(f.attrs[k] == np.array([ds.attrs[k] for ds in ds_lst]))
 
-        preluts = xr.combine_by_coords([ds.assign_coords(i=ds.i, kz0=ds.kz0, beta=ds.beta).expand_dims(('kz0', 'beta'))
-                                        for ds in ds_lst])
+        if compact:
 
-        return PreLUTs(preluts, attrs={'ds': f.ds, 'kzmax': f.kzmax, 'zeta0': f.zeta0, 'accgoal': f.accgoal})
+            data_dict = defaultdict(lambda: [])
+
+            def append(ds):
+                for k, v in ds.items():
+                    if len(v.dims) and v.dims[0] == 'i':
+                        data_dict[k].append(v.values)
+                    else:
+                        data_dict[k].append(np.full(len(ds.i), v))
+
+            while len(ds_lst):
+                append(ds_lst.pop())
+
+            for k, v in data_dict.items():
+                data_dict[k] = (('kz0_beta_i', ) + f[k].dims[1:], np.concatenate(v, 0))
+
+            return CompactPreLUTs(data_dict, attrs={'ds': f.ds, 'kzmax': f.kzmax, 'zeta0': f.zeta0, 'accgoal': f.accgoal,
+                                                    'kz0_lst': kz0_lst, 'beta_lst': beta_lst})
+        else:
+            preluts = xr.combine_by_coords([ds.assign_coords(i=ds.i, kz0=ds.kz0, beta=ds.beta).expand_dims(('kz0', 'beta'))
+                                            for ds in ds_lst])
+
+            return PreLUTs(preluts, attrs={'ds': f.ds, 'kzmax': f.kzmax, 'zeta0': f.zeta0, 'accgoal': f.accgoal})
+
+    @staticmethod
+    def from_netcdf(filename):
+        ds = read_complex(filename)
+        if 'kz0_beta_i' in ds.dims:
+            return CompactPreLUTs(ds, attrs=ds.attrs)
+        else:
+            return PreLUTs(ds, attrs=ds.attrs)
+
+
+class CompactPreLUTs(PreLUTs):
+    def sel(self, kz0, beta, indexers=None, method=None, tolerance=None, drop=False, **indexers_kwargs,):
+
+        self = self.where((self.beta == beta) & (self.kz0 == kz0), drop=True).rename(kz0_beta_i='i')
+        self = self.assign_coords(i=self.i)
+        return PreLUTs.sel(self, indexers=indexers, method=method,
+                           tolerance=tolerance, drop=drop, **indexers_kwargs)

@@ -47,7 +47,7 @@ class FourierLUTGenerator():
         R = self.radius
         ds, kzmax, zeta0 = [self.preluts.attrs[k] for k in ['ds', 'kzmax', 'zeta0']]
 
-        kz0_lst = np.atleast_1d(self.preluts.kz0.values)
+        kz0_lst = np.sort(np.unique(self.preluts.kz0.values))
         if len(kz0_lst) > 1:
             nkz0 = int(np.round(1 / np.diff(np.log10(kz0_lst))[0]))
         else:
@@ -71,7 +71,7 @@ class FourierLUTGenerator():
             high_level_out = maxlevel - 1
 
         logZiZ0 = np.log(self.zi / z0)
-        beta_lst = np.atleast_1d(self.preluts.beta.values)
+        beta_lst = np.sort(np.unique(self.preluts.beta.values))
         ktab = kz0_lst / z0
 
         # assert smaxx>self.preluts.ds * upperjf # TODO: smaxx not available here
@@ -118,12 +118,14 @@ class FourierLUTGenerator():
 
         z = z0 * np.exp(ds * (jf_l + np.array([-1, 0, 1])[:, na]))  # height blow, at and above current layer
         k = kz0 / z0
-        max_table_level = self.preluts.level.sel(beta=beta, kz0=kz0).max().item()
+        prelut = self.preluts.sel(beta=beta, kz0=kz0)
+
+        max_table_level = prelut.level.max().item()
+        print(beta, kz0, prelut.Yleft.shape, max_table_level)
         if max_table_level < minlevel:
             return np.zeros((high_level_out - low_level_out + 1, 6), dtype=np.complex128)
-        imin, imax = np.searchsorted(self.preluts.level.sel(beta=beta, kz0=kz0),
-                                     [minlevel, min(maxlevel, max_table_level)])
-        prelut = self.preluts.sel(beta=beta, kz0=kz0, i=slice(imin, imax))
+        imin, imax = np.searchsorted(prelut.level, [minlevel, min(maxlevel, max_table_level)])
+        prelut = prelut.sel(i=slice(imin, imax))
 
         zero_pad_levels = int(max(0, maxlevel - max_table_level))
 
@@ -152,6 +154,7 @@ class FourierLUTGenerator():
         ky = k * np.sin(beta)
         with np.warnings.catch_warnings():
             np.warnings.filterwarnings('ignore', r'invalid value encountered in true_divide')
+            np.warnings.filterwarnings('ignore', r'invalid value encountered in divide')
             fac = np.where(ky == 0, layer_halfwidth, np.sin(ky * layer_halfwidth) / ky)
 
         area_err_fac = self.radius**2 * np.pi / \

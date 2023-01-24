@@ -171,3 +171,13 @@ def rel_err(A, B):  # pragma: no cover
 
     comp(A.real, B.real)
     comp(A.imag, B.imag)
+
+
+def mprof_tag(id):  # pragma: no cover
+    try:
+        def f():
+            pass
+        f.__name__ = id.replace(' ', '_')
+        profile(f)()
+    except Exception:
+        pass

@@ -6,7 +6,7 @@ from pyfuga.flut import FourierLUTGenerator
 from pyfuga.tests.test_files import tfp
 import pytest
 from pyfuga.constants import UVW_LT
-from pyfuga.utils import compile
+from pyfuga.utils import compile, get_beta_lst
 from pyfuga.profiling import timeit
 
 
@@ -32,6 +32,19 @@ def test_all_vars():
                             prelut_folder=tfp + f'preLUTs_Zeta0=0.00E+00_2_5')
         npt.assert_array_almost_equal(luts[v], ref[v][:, :len(luts.kz0)])
         npt.assert_array_equal(0, ref[v][:, len(luts.kz0):])
+
+
+def test_compact_preluts():
+    preluts_compact = PreLUTs.make_preluts(zeta0=0, kz0_lst=[1e-9, 1e-8], beta_lst=get_beta_lst(1),
+                                           kzmax=300, ds=0.05, accgoal=0.00001, jit=False, verbose=False, compact=True)
+    preluts = PreLUTs.make_preluts(zeta0=0, kz0_lst=[1e-9, 1e-8], beta_lst=get_beta_lst(1),
+                                   kzmax=300, ds=0.05, accgoal=0.00001, jit=False, verbose=False, compact=False)
+    luts_c = FourierLUTGenerator(preluts_compact, zhub=70, diameter=80, zi=400, verbose=False
+                                 ).make_lut(z0=0.00001, low_level_out=314, high_level_out=314)
+    luts = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False
+                               ).make_lut(z0=0.00001, low_level_out=314, high_level_out=314)
+    for k in UVW_LT:
+        npt.assert_array_almost_equal(luts[k], luts_c[k])
 
 
 def test_rotor_luts():
