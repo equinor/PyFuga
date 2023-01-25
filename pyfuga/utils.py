@@ -22,7 +22,7 @@ def jit(*args, **kwargs):
     global jit_modules
     jit_modules.add(sys._getframe(1).f_globals['__name__'])
     if numba_jit:
-        return njit(*args, **kwargs)
+        return njit(*args, cache=True, **kwargs)
     else:
         if isinstance(args[0], str):
             return lambda f: f
