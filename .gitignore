@@ -14,3 +14,4 @@ CaseData.txt
 levels.txt
 progress.txt
 /pyfuga/tests/test_files/preLUTs_Zeta0=0.00E+00_16_32
+__pycache__

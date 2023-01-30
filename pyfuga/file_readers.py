@@ -65,14 +65,21 @@ def read_prelut_list(folder, dict=True):
 
     folder = Path(folder)
     with open(folder / 'prelut_list.lst', 'rb') as fid:
-        N = int(eof(fid) / 72)
-
-        # list of filename (24, ignore last 6), ds, smaxx, kz0, beta, kzmax, accgoal
-        if dict:
-            return {fid.read(24)[:18].decode():
-                    struct.unpack('d' * 6, fid.read(8 * 6)) for _ in range(N)}
+        fid.seek(18)
+        if fid.read(6) == b'\x00\x00\x00\x00\x00\x00':
+            n = 24
         else:
-            return [(fid.read(24)[:18].decode(),) +
+            n = 18
+
+        N = eof(fid) // (n + 48)
+
+        # list of filename (18 or 18+6xNull), ds, smaxx, kz0, beta, kzmax, accgoal
+        if dict:
+            return {fid.read(n)[:18].decode():
+                    struct.unpack('d' * 6, fid.read(8 * 6)) for _ in range(N)}
+
+        else:
+            return [(fid.read(n)[:18].decode(),) +
                     struct.unpack('d' * 6, fid.read(8 * 6)) for _ in range(N)]
 
 

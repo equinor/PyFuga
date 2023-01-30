@@ -50,6 +50,19 @@ def test_read_prelut_list():
     assert len(lst) == 17 * 6
 
 
+def test_read_prelut_list_fmt2():
+    lst = read_prelut_list(tfp + 'prelut_list_fmt2', dict=False)
+    filename, ds, smaxx, kz0, beta, kzmax, accgoal = lst[25]
+    assert filename == '0.0000-07.7000.pre'
+    assert ds == 0.05
+    assert smaxx == 17.30000000000011
+    assert kz0 == 3.651741272548377e-08
+    assert beta == 1.4693679385278594e-39
+    assert kzmax == 300.0
+    assert accgoal == 0.0001
+    assert len(lst) == 4773
+
+
 def test_read_prelut_list_smaxx():
     lst = read_prelut_list(tfp + 'preLUTs_Zeta0=0.00E+00_1_2', dict=False)
     npt.assert_array_almost_equal([l[2] for l in lst],
