@@ -1,16 +1,6 @@
 import numpy as np
 from .constants import Cm1, Cm2
-import xarray as xr
-from numpy import newaxis as na
-
-from numba.core.decorators import njit
-
-
-import sys
-from pyfuga.constants import kappa
-import importlib
 from pyfuga.utils import jit
-import scipy
 
 
 @jit('double(double,double)')
@@ -45,7 +35,7 @@ def psi(zeta0, kz, cdivkl):
         aux2 = (1.0 + aux)**2 * (1 + aux**2)
         return np.log(8.0 / aux2) + 2.0 * np.arctan(cdivkl * kz / aux2)
     else:  # Stable: -psi_m=Cm2*z/L
-        return cdivkL(zeta0, kz) * kz
+        return cdivkl * kz
 
 
 @jit('double(double,double,double)')
