@@ -55,6 +55,15 @@ def test_rotor_luts():
     assert luts.z[-1 > 70 + 40]
 
 
+def test_fluts_ncpu():
+    preluts = PreLUTs.from_netcdf(tfp + 'preLUTs_Zeta0=0.00E+00_2_5.nc')
+    luts = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False
+                               ).make_rotor_luts(z0=0.00001, luts=['UL'])
+    pluts = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False
+                                ).make_rotor_luts(z0=0.00001, luts=['UL'], n_cpu=None)
+    assert luts.equals(pluts)
+
+
 def test_jit_luts():
     preluts = PreLUTs.from_netcdf(tfp + 'preLUTs_Zeta0=0.00E+00_2_5.nc')
     lut_generator = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False)

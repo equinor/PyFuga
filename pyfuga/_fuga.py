@@ -115,9 +115,9 @@ def get_luts(folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh,
             # preluts loaded make fourier luts
             flut_generator = FourierLUTGenerator(preluts, zhub, diameter, zi)
             if low_level_out == high_level_out == 9999:
-                fluts = flut_generator.make_hubheight_luts(z0, lut_vars)
+                fluts = flut_generator.make_hubheight_luts(z0, lut_vars, n_cpu=n_cpu)
             else:
-                fluts = flut_generator.make_lut(z0, low_level_out, high_level_out, lut_vars)
+                fluts = flut_generator.make_lut(z0, low_level_out, high_level_out, lut_vars, n_cpu=n_cpu)
 
             fluts.save(fluts_path)
         else:

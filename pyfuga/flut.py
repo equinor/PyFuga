@@ -4,7 +4,7 @@ import xarray as xr
 from tqdm import tqdm
 from pyfuga.constants import zminlevel, kappa, UVW_LT
 from pyfuga.utils import ComplexXRDataset, jit
-import numba
+import multiprocessing
 
 
 class FourierLUTGenerator():
@@ -15,17 +15,17 @@ class FourierLUTGenerator():
         self.zi = zi  # Domain height
         self.verbose = verbose
 
-    def make_rotor_luts(self, z0, luts=UVW_LT):
+    def make_rotor_luts(self, z0, luts=UVW_LT, n_cpu=1):
         ds = self.preluts.ds
         low_level_out = int(np.floor(np.log((self.zhub - self.radius) / z0) / ds))
         high_level_out = int(np.ceil(np.log((self.zhub + self.radius) / z0) / ds))
-        return self.make_lut(z0, low_level_out, high_level_out, luts)
+        return self.make_lut(z0, low_level_out, high_level_out, luts, n_cpu=n_cpu)
 
-    def make_hubheight_luts(self, z0, luts=UVW_LT):
+    def make_hubheight_luts(self, z0, luts=UVW_LT, n_cpu=1):
         ds = self.preluts.ds
         low_level_out = int(np.floor(np.log((self.zhub) / z0) / ds))
         high_level_out = int(np.ceil(np.log((self.zhub) / z0) / ds))
-        luts = self.make_lut(z0, low_level_out, high_level_out, luts)
+        luts = self.make_lut(z0, low_level_out, high_level_out, luts, n_cpu=n_cpu)
         a = np.log(self.zhub / z0) / ds - low_level_out
         lut_vars = luts.isel(level=0) * (1 - a) + luts.isel(level=1) * (a)
 
@@ -41,7 +41,7 @@ class FourierLUTGenerator():
                                 attrs=luts.attrs)
 
     def make_lut(self, z0, low_level_out, high_level_out,
-                 luts=UVW_LT):
+                 luts=UVW_LT, n_cpu=1):
         assert all([l in UVW_LT for l in luts])
         zh = self.zhub
         R = self.radius
@@ -81,16 +81,26 @@ class FourierLUTGenerator():
             # Stable and unstable
             smax = np.minimum(smax, np.log(np.abs(15 / zeta0)))
 
+        if n_cpu == 1:
+            map_func = map
+        else:
+            map_func = multiprocessing.Pool(n_cpu).imap
+
+        beta_kz0_lst = [(beta, kz0) for beta in beta_lst for kz0 in kz0_lst]
         if any([l[1] == 'L' for l in luts]):
-            xL = np.array([[self.solve_layers(beta, kz0, z0, 'L', lowerjf, upperjf,
-                                              minlevel, maxlevel, low_level_out, high_level_out)
-                            for kz0 in kz0_lst]
-                           for beta in tqdm(beta_lst, desc='Fourier LUTS: Solving for longitudinal forcing', disable=not self.verbose)])
+            args_lst = ((self.preluts.sel(beta=beta, kz0=kz0), beta, kz0, z0, self.zhub, self.radius, 'L',
+                         lowerjf, upperjf, minlevel, maxlevel, low_level_out, high_level_out)
+                        for beta, kz0 in beta_kz0_lst)
+
+            xL = list(tqdm(map_func(solve_layers, args_lst), total=len(beta_kz0_lst), disable=(not self.verbose),
+                           desc='Fourier LUTS: Solving for longitudinal forcing'))
         if any([l[1] == 'T' for l in luts]):
-            xT = np.array([[self.solve_layers(beta, kz0, z0, 'T', lowerjf, upperjf,
-                                              minlevel, maxlevel, low_level_out, high_level_out)
-                            for kz0 in kz0_lst]
-                           for beta in tqdm(beta_lst, desc='Fourier LUTS: Solving for transvertal forcing', disable=not self.verbose)])
+            args_lst = ((self.preluts.sel(beta=beta, kz0=kz0), beta, kz0, z0, self.zhub, self.radius, 'T',
+                         lowerjf, upperjf, minlevel, maxlevel, low_level_out, high_level_out)
+                        for beta, kz0 in beta_kz0_lst)
+
+            xT = list(tqdm(map_func(solve_layers, args_lst), total=len(beta_kz0_lst), disable=(not self.verbose),
+                           desc='Fourier LUTS: Solving for transversal forcing'))
 
         def get_var(s):
             if s[1] == 'L':
@@ -98,7 +108,7 @@ class FourierLUTGenerator():
             else:
                 x = xT
             i = {'U': 0, 'V': 2, 'W': 4, 'P': 5}[s[0]]
-            return x[..., i]
+            return np.reshape(x, (len(beta_lst), len(kz0_lst)) + np.shape(x)[1:])[..., i]
 
         level = np.arange(low_level_out, high_level_out + 1)
         z = z0 * np.exp(ds * level)
@@ -110,58 +120,59 @@ class FourierLUTGenerator():
                                 attrs={'zi': self.zi,
                                        **self.preluts.attrs})
 
-    def solve_layers(self, beta, kz0, z0, forcing, lowerjf, upperjf, minlevel, maxlevel, low_level_out, high_level_out):
-        assert forcing in 'LT'
-        forcing = forcing.replace('L', 'u').replace('T', 'v')
-        ds = self.preluts.ds
-        jf_l = np.arange(lowerjf + 1, upperjf)
 
-        z = z0 * np.exp(ds * (jf_l + np.array([-1, 0, 1])[:, na]))  # height blow, at and above current layer
-        k = kz0 / z0
-        prelut = self.preluts.sel(beta=beta, kz0=kz0)
+def solve_layers(args):
+    prelut, beta, kz0, z0, zhub, radius, forcing, lowerjf, upperjf, minlevel, maxlevel, low_level_out, high_level_out = args
+    assert forcing in 'LT'
+    forcing = forcing.replace('L', 'u').replace('T', 'v')
+    ds = prelut.ds
+    jf_l = np.arange(lowerjf + 1, upperjf)
 
-        max_table_level = prelut.level.max().item()
-        print(beta, kz0, prelut.Yleft.shape, max_table_level)
-        if max_table_level < minlevel:
-            return np.zeros((high_level_out - low_level_out + 1, 6), dtype=np.complex128)
-        imin, imax = np.searchsorted(prelut.level, [minlevel, min(maxlevel, max_table_level)])
-        prelut = prelut.sel(i=slice(imin, imax))
+    z = z0 * np.exp(ds * (jf_l + np.array([-1, 0, 1])[:, na]))  # height blow, at and above current layer
+    k = kz0 / z0
 
-        zero_pad_levels = int(max(0, maxlevel - max_table_level))
+    max_table_level = prelut.level.max().item()
 
-        ijf0_l, ijf1_l, ijf2_l = np.searchsorted(prelut.level, [jf_l - 1, jf_l, jf_l + 1])
+    if max_table_level < minlevel:
+        return np.zeros((high_level_out - low_level_out + 1, 6), dtype=np.complex128)
+    imin, imax = np.searchsorted(prelut.level, [minlevel, min(maxlevel, max_table_level)])
+    prelut = prelut.sel(i=slice(imin, imax))
 
-        YL = prelut.Yleft.values
-        Rright = prelut.Rright.values
-        Rleft = prelut.Rleft.values
-        dYx_0 = prelut[f'dyx{forcing}0'].values
-        dYx_1 = prelut[f'dyx{forcing}1'].values
-        levels = prelut.level.values.astype(int)
+    zero_pad_levels = int(max(0, maxlevel - max_table_level))
 
-        fac0_1_l = z[0] / (kappa * k * (z[1] - z[0]))
-        fac1_1_l = 1 / (kappa * (z[1] - z[0]) * k**2)
-        fac0_2_l = z[2] / (kappa * k * (z[1] - z[2]))
-        fac1_2_l = 1 / (kappa * (z[1] - z[2]) * k**2)
-        output = [np.concatenate([solve_layer(Rright, Rleft, YL, levels, dYx_0, dYx_1,
-                                              fac0_1, fac1_1, fac0_2, fac1_2,
-                                              ijf0, ijf1, ijf2),
-                                  np.zeros((zero_pad_levels, 6))])
-                  for ijf0, ijf1, ijf2, fac0_1, fac1_1, fac0_2, fac1_2 in zip(ijf0_l, ijf1_l, ijf2_l,
-                                                                              fac0_1_l, fac1_1_l, fac0_2_l, fac1_2_l)]
+    ijf0_l, ijf1_l, ijf2_l = np.searchsorted(prelut.level, [jf_l - 1, jf_l, jf_l + 1])
 
-        zf = z0 * np.exp(ds * np.arange(lowerjf, upperjf + 1))
-        layer_halfwidth = np.sqrt(self.radius**2 - (zf - self.zhub)**2)
-        ky = k * np.sin(beta)
-        with np.warnings.catch_warnings():
-            np.warnings.filterwarnings('ignore', r'invalid value encountered in true_divide')
-            np.warnings.filterwarnings('ignore', r'invalid value encountered in divide')
-            fac = np.where(ky == 0, layer_halfwidth, np.sin(ky * layer_halfwidth) / ky)
+    YL = prelut.Yleft.values
+    Rright = prelut.Rright.values
+    Rleft = prelut.Rleft.values
+    dYx_0 = prelut[f'dyx{forcing}0'].values
+    dYx_1 = prelut[f'dyx{forcing}1'].values
+    levels = prelut.level.values.astype(int)
 
-        area_err_fac = self.radius**2 * np.pi / \
-            np.sum(np.sqrt(self.radius**2 - (zf - self.zhub)**2) * zf * (np.exp(ds) - np.exp(-ds)))
-        s = slice(low_level_out - minlevel - 1, high_level_out - minlevel)
-        output = np.array(output)[:, s]  # dim: (from_level, to_level, uu'vv'wp)
-        return np.sum(fac[1:-1][:, na, na] * output, 0) * area_err_fac
+    fac0_1_l = z[0] / (kappa * k * (z[1] - z[0]))
+    fac1_1_l = 1 / (kappa * (z[1] - z[0]) * k**2)
+    fac0_2_l = z[2] / (kappa * k * (z[1] - z[2]))
+    fac1_2_l = 1 / (kappa * (z[1] - z[2]) * k**2)
+    output = [np.concatenate([solve_layer(Rright, Rleft, YL, levels, dYx_0, dYx_1,
+                                          fac0_1, fac1_1, fac0_2, fac1_2,
+                                          ijf0, ijf1, ijf2),
+                              np.zeros((zero_pad_levels, 6))])
+              for ijf0, ijf1, ijf2, fac0_1, fac1_1, fac0_2, fac1_2 in zip(ijf0_l, ijf1_l, ijf2_l,
+                                                                          fac0_1_l, fac1_1_l, fac0_2_l, fac1_2_l)]
+
+    zf = z0 * np.exp(ds * np.arange(lowerjf, upperjf + 1))
+    layer_halfwidth = np.sqrt(radius**2 - (zf - zhub)**2)
+    ky = k * np.sin(beta)
+    with np.warnings.catch_warnings():
+        np.warnings.filterwarnings('ignore', r'invalid value encountered in true_divide')
+        np.warnings.filterwarnings('ignore', r'invalid value encountered in divide')
+        fac = np.where(ky == 0, layer_halfwidth, np.sin(ky * layer_halfwidth) / ky)
+
+    area_err_fac = radius**2 * np.pi / \
+        np.sum(np.sqrt(radius**2 - (zf - zhub)**2) * zf * (np.exp(ds) - np.exp(-ds)))
+    s = slice(low_level_out - minlevel - 1, high_level_out - minlevel)
+    output = np.array(output)[:, s]  # dim: (from_level, to_level, uu'vv'wp)
+    return np.sum(fac[1:-1][:, na, na] * output, 0) * area_err_fac
 
 
 # c2 = 'complex128[:,:],'
