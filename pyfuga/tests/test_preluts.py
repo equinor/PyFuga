@@ -101,8 +101,8 @@ def test_compact():
     preluts_compact.save(tfp + 'tmp_preluts_compact.nc')
     preluts_compact = PreLUTs.from_netcdf(tfp + 'tmp_preluts_compact.nc')
 
-    for beta in preluts.beta:
-        for kz0 in preluts.kz0:
+    for beta in preluts.beta.values:
+        for kz0 in preluts.kz0.values:
             p_c = preluts_compact.sel(beta=beta, kz0=kz0)
             p = preluts.sel(beta=beta, kz0=kz0)
             for k, v in p.items():

@@ -127,8 +127,9 @@ class CompactPreLUTs(PreLUTs):
     __slots__ = []
 
     def sel(self, kz0, beta, indexers=None, method=None, tolerance=None, drop=False, **indexers_kwargs,):
-
-        self = self.where((self.beta == beta) & (self.kz0 == kz0), drop=True).rename(kz0_beta_i='i')
-        self = self.assign_coords(i=self.i)
+        m = (self.beta.values == beta) & (self.kz0.values == kz0)
+        self = xr.Dataset({k: (('i',) + v.dims[1:], v.values[m]) for k, v in self.items()},
+                          attrs={k: v for k, v in self.attrs.items() if k not in ['kz0_lst', 'beta_lst']})
+        self = self.assign_coords(i=self.i, beta=beta, kz0=kz0)
         return PreLUTs.sel(self, indexers=indexers, method=method,
                            tolerance=tolerance, drop=drop, **indexers_kwargs)

@@ -43,6 +43,10 @@ def test_compact_preluts():
                                  ).make_lut(z0=0.00001, low_level_out=314, high_level_out=314)
     luts = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False
                                ).make_lut(z0=0.00001, low_level_out=314, high_level_out=314)
+
+    for beta in luts.beta.values:
+        for kz0 in luts.kz0.values:
+            assert preluts.sel(beta=beta, kz0=kz0).equals(preluts_compact.sel(beta=beta, kz0=kz0))
     for k in UVW_LT:
         npt.assert_array_almost_equal(luts[k], luts_c[k])
 
