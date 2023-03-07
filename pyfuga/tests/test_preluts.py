@@ -9,9 +9,12 @@ from pyfuga.constants import UVW_LT
 from pyfuga.file_readers import read_lut_file
 from pyfuga.flut import FourierLUTGenerator
 from pyfuga.preluts import PreLUT, PreLUTs
-from pyfuga.preluts_generator import PrelutNode
+from pyfuga.preluts_generator import PrelutNode, PreLUTGenerator
 from pyfuga.tests.test_files import tfp
 from pyfuga.utils import get_beta, get_beta_lst, get_kz0_lst, compile
+from pyfuga import utils
+import importlib
+import inspect
 
 
 def setup_module(module):
@@ -152,6 +155,22 @@ def test_prelut_stable_and_unstable(zeta0):
                         prelut_folder=tfp + f'preLUTs_Zeta0={zeta0}.00E+00_1_2')
 
     npt.assert_allclose(ref.sel(kz0=1e-9, beta=0).UL, flut.UL.item(), rtol=2e-5, atol=1e-10)
+
+
+def test_prelut_stable():
+
+    utils.preludium_equivalent = True
+    importlib.reload(inspect.getmodule(PreLUTGenerator))
+    zeta0 = 3.85e-7
+    kzmax = 1
+    prelut_generator = PreLUTGenerator(zeta0=zeta0, kz0=1e-6, beta=1.469367938527859e-039,
+                                       kzmax=kzmax, ds=0.05, accgoal=0.0001)
+    prelut = prelut_generator.make_prelut()
+    utils.preludium_equivalent = False
+    importlib.reload(inspect.getmodule(PreLUTGenerator))
+
+    ref_prelut = PreLUT.from_pre_file(tfp + 'preLUTs_Zeta0=3.85E-07_1_2/0.0000-06.0000.pre', zeta0=zeta0)
+    compare(prelut, ref_prelut)
 
 
 def test_next_node():

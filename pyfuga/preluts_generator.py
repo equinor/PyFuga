@@ -5,6 +5,7 @@ from pyfuga.constants import max_recs, kappa, Ythreshold, kappa2, Cm1, Cm2, n_eq
 from pyfuga.common import cdivkL, psi, get_new_h2, dphiu, phi
 from pyfuga.utils import jit
 from pyfuga.preluts import PreLUT
+from pyfuga import utils
 
 
 # np.set_printoptions(precision=2, linewidth=200)
@@ -59,6 +60,11 @@ class PrelutNode():
         node.Yleft = Yleft
         self.Rright = Rright
         return node
+
+
+if utils.preludium_equivalent:
+    from pyfuga.preludium_eq_routines import get_new_h2_Preludium as get_new_h2
+    from pyfuga.preludium_eq_routines import PrelutNodePreludium as PrelutNode
 
 
 @jit('Tuple((complex128[:,:],complex128[:,:],complex128[:,:]))(complex128[:,:])')
@@ -333,14 +339,13 @@ def getM(j, t, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta):
         kz = t
         u = u0(kz, kz0, psi(zeta0, kz, cdivkL), psi0)
 
-    dphiu_ = dphiu(kz, cdivkL)
     if zeta0 < 0:
         # Unstable
-        kK = kappa * kz * dphiu_
+        kK = kappa * kz * dphiu(kz, cdivkL)
         dKdz = kK * (1.0 / kz + 0.25 / (1.0 / cdivkL + kz))
     else:
         # Stable and neutral
-        aux = dphiu_
+        aux = phi(zeta0, kz, cdivkL)
         kK = kappa * kz / aux
         dKdz = kappa / aux**2
 

@@ -16,6 +16,7 @@ import time
 debugging = getattr(sys, 'gettrace')() is not None
 numba_jit = False  # and not debugging
 jit_modules = set()
+preludium_equivalent = False
 
 
 def jit(*args, **kwargs):
