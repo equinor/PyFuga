@@ -5,6 +5,7 @@ from tqdm import tqdm
 from pyfuga.constants import zminlevel, kappa, UVW_LT
 from pyfuga.utils import ComplexXRDataset, jit
 import multiprocessing
+import warnings
 
 
 class FourierLUTGenerator():
@@ -25,9 +26,14 @@ class FourierLUTGenerator():
         ds = self.preluts.ds
         low_level_out = int(np.floor(np.log((self.zhub) / z0) / ds))
         high_level_out = int(np.ceil(np.log((self.zhub) / z0) / ds))
+
         luts = self.make_lut(z0, low_level_out, high_level_out, luts, n_cpu=n_cpu)
-        a = np.log(self.zhub / z0) / ds - low_level_out
-        lut_vars = luts.isel(level=0) * (1 - a) + luts.isel(level=1) * (a)
+        if low_level_out == high_level_out:
+            lut_vars = luts.isel(level=0)
+        else:
+            a = np.log(self.zhub / z0) / ds - low_level_out
+            lut_vars = luts.isel(level=0) * (1 - a) + luts.isel(level=1) * (a)
+        lut_vars['level'] = 9999
 
         return ComplexXRDataset(data_vars={'z': (('level'), [self.zhub]),
                                            'k': luts.k,
@@ -163,9 +169,9 @@ def solve_layers(args):
     zf = z0 * np.exp(ds * np.arange(lowerjf, upperjf + 1))
     layer_halfwidth = np.sqrt(radius**2 - (zf - zhub)**2)
     ky = k * np.sin(beta)
-    with np.warnings.catch_warnings():
-        np.warnings.filterwarnings('ignore', r'invalid value encountered in true_divide')
-        np.warnings.filterwarnings('ignore', r'invalid value encountered in divide')
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', r'invalid value encountered in true_divide')
+        warnings.filterwarnings('ignore', r'invalid value encountered in divide')
         fac = np.where(ky == 0, layer_halfwidth, np.sin(ky * layer_halfwidth) / ky)
 
     area_err_fac = radius**2 * np.pi / \

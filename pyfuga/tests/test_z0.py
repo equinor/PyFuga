@@ -48,6 +48,5 @@ def test_z0_from_TI():
         plt.ylabel('z0')
         plt.legend()
         plt.show()
-        print(np.array([z0_from_TI]))
     npt.assert_array_almost_equal([z0_from_TI([.06, .12], 70, zeta0) for zeta0 in [-6e-7, 0, 6e-7]],
                                   [[1e-05, 1.663e-02], [1e-05, 1.683e-02], [7.269e-05, 1.703e-02]], 5)

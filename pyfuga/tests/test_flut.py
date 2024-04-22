@@ -8,6 +8,7 @@ import pytest
 from pyfuga.constants import UVW_LT
 from pyfuga.utils import compile, get_beta_lst
 from pyfuga.profiling import timeit
+import numpy as np
 
 
 @pytest.mark.parametrize('zeta0', [0, -1, 1])
@@ -21,6 +22,17 @@ def test_make_hubheight_luts(zeta0):
     npt.assert_array_almost_equal(ref.UL.sel(kz0=luts.kz0), luts.sel(level=ref.level).UL)
 
     npt.assert_array_equal(ref.UL[:, len(luts.kz0):], 0)
+
+
+def test_make_hubheight_luts_lo_eq_hi():
+    preluts = PreLUTs.from_netcdf(tfp + f'preLUTs_Zeta0=0.00E+00_1_2.nc')
+    z0 = 70 / np.exp(315 * 0.05)
+    luts = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False
+                               ).make_hubheight_luts(z0=z0, luts=['UL'])
+    ref = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False
+                              ).make_lut(z0, low_level_out=315, high_level_out=315, luts=['UL'])
+
+    npt.assert_array_almost_equal(ref.UL, luts.UL)
 
 
 def test_all_vars():
