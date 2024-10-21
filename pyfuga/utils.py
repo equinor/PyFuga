@@ -46,7 +46,7 @@ def compile(jit=True):
             # if m in jit_modules:
             importlib.reload(sys.modules[m])
         if numba_jit:
-            print(f"JIT compiled in {time.time()-t}s")
+            print(f"JIT compiled in {time.time() - t}s")
 
 
 def get_beta(x):

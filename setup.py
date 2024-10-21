@@ -12,5 +12,6 @@ setup(
         'xarray',
         'tqdm',
         'h5netcdf',
+        'numba'
     ]
 )

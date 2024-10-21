@@ -69,11 +69,11 @@ class FourierLUTGenerator():
         maxlevel = int(np.ceil(np.log(self.zi / z0) / ds))
 
         if low_level_out < minlevel + 1:  # pragma: no cover
-            print(f'LoLevelOut ({low_level_out}) raised to MinLevel ({minlevel+1}).')
+            print(f'LoLevelOut ({low_level_out}) raised to MinLevel ({minlevel + 1}).')
             low_level_out = minlevel + 1
 
         if high_level_out > maxlevel - 1:  # pragma: no cover
-            print(f'HiLevelOut ({high_level_out}) lowered to MaxLevel ({maxlevel-1}).')
+            print(f'HiLevelOut ({high_level_out}) lowered to MaxLevel ({maxlevel - 1}).')
             high_level_out = maxlevel - 1
 
         logZiZ0 = np.log(self.zi / z0)

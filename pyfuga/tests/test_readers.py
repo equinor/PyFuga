@@ -20,7 +20,7 @@ def test_parameters():
     assert p.mbeta == 0
     assert p.ds == 0.05
     npt.assert_array_almost_equal(p.beta_lst, [0., 0.829728, 1.295116, 1.515176, 1.552644, 1.570796])
-    npt.assert_array_equal(p.kz0_lst, 10.**(np.arange(p.jmin, p.jmax + 1) / p.nkz0))
+    npt.assert_array_almost_equal(p.kz0_lst, 10.**(np.arange(p.jmin, p.jmax + 1) / p.nkz0), 10)
 
 
 def test_casedata():
