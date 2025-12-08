@@ -75,12 +75,10 @@ def read_prelut_list(folder, dict=True):
 
         # list of filename (18 or 18+6xNull), ds, smaxx, kz0, beta, kzmax, accgoal
         if dict:
-            return {fid.read(n)[:18].decode():
-                    struct.unpack('d' * 6, fid.read(8 * 6)) for _ in range(N)}
+            return {fid.read(n)[:18].decode(): struct.unpack('d' * 6, fid.read(8 * 6)) for _ in range(N)}
 
         else:
-            return [(fid.read(n)[:18].decode(),) +
-                    struct.unpack('d' * 6, fid.read(8 * 6)) for _ in range(N)]
+            return [(fid.read(n)[:18].decode(),) + struct.unpack('d' * 6, fid.read(8 * 6)) for _ in range(N)]
 
 
 def read_pre_file(filename):

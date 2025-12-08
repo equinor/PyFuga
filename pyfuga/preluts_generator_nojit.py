@@ -218,8 +218,9 @@ class PreLUTGenerator():
         var_names = ['Yleft', 'Rleft', 'Rright',
                      'dyxu0', 'dyxu1', 'dyxv0', 'dyxv1', 'dyxw0', 'dyxw1',
                      'sleft', 'sright']
-        var_values = ([np.moveaxis([getattr(n, k) for n in self.nodes], 1, 2) for k in var_names[:3]] +
-                      [np.array([getattr(n, k) for n in self.nodes]) for k in var_names[3:]])
+        var_values = [np.moveaxis([getattr(n, k) for n in self.nodes], 1, 2) for k in var_names[:3]] + [
+            np.array([getattr(n, k) for n in self.nodes]) for k in var_names[3:]
+        ]
         from pyfuga.preluts import PreLUT
         return PreLUT({**{n: (('i', 'j', 'k')[:len(v.shape)], v)
                           for n, v in zip(var_names, var_values)},
@@ -277,14 +278,24 @@ class PreLUTGenerator():
             # dyxw1=dyxw1+h*(conjg(kz1*a1*c1*y(6,:)+kzm*am*c3*y3(6,:)+kz2*a2*(c4*y4(6,:)+c2*y2(6,:))))*kappa
             node.dyxu0 += h * (np.conj(a1 * c1 * y[1, :] + am * c3 * y3[1, :] + a2 * (c4 * y4[1, :] + c2 * y2[1, :])))
             node.dyxv0 += h * (np.conj(a1 * c1 * y[3, :] + am * c3 * y3[3, :] + a2 * (c4 * y4[3, :] + c2 * y2[3, :])))
-            node.dyxw0 += h * (np.conj(a1 * c1 * y[5, :] + am * c3 * y3[5, :] +
-                                       a2 * (c4 * y4[5, :] + c2 * y2[5, :]))) * kappa
-            node.dyxu1 += h * (np.conj(kz1 * a1 * c1 * y[1, :] + kzm * am *
-                                       c3 * y3[1, :] + kz2 * a2 * (c4 * y4[1, :] + c2 * y2[1, :])))
-            node.dyxv1 += h * (np.conj(kz1 * a1 * c1 * y[3, :] + kzm * am *
-                                       c3 * y3[3, :] + kz2 * a2 * (c4 * y4[3, :] + c2 * y2[3, :])))
-            node.dyxw1 += h * (np.conj(kz1 * a1 * c1 * y[5, :] + kzm * am * c3 *
-                                       y3[5, :] + kz2 * a2 * (c4 * y4[5, :] + c2 * y2[5, :]))) * kappa
+            node.dyxw0 += (
+                h * (np.conj(a1 * c1 * y[5, :] + am * c3 * y3[5, :] + a2 * (c4 * y4[5, :] + c2 * y2[5, :]))) * kappa
+            )
+            node.dyxu1 += h * (
+                np.conj(kz1 * a1 * c1 * y[1, :] + kzm * am * c3 * y3[1, :] + kz2 * a2 * (c4 * y4[1, :] + c2 * y2[1, :]))
+            )
+            node.dyxv1 += h * (
+                np.conj(kz1 * a1 * c1 * y[3, :] + kzm * am * c3 * y3[3, :] + kz2 * a2 * (c4 * y4[3, :] + c2 * y2[3, :]))
+            )
+            node.dyxw1 += (
+                h
+                * (
+                    np.conj(
+                        kz1 * a1 * c1 * y[5, :] + kzm * am * c3 * y3[5, :] + kz2 * a2 * (c4 * y4[5, :] + c2 * y2[5, :])
+                    )
+                )
+                * kappa
+            )
         else:
             xm = x + 0.5 * h
             x2 = x + h

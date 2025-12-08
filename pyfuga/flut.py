@@ -48,7 +48,7 @@ class FourierLUTGenerator():
 
     def make_lut(self, z0, low_level_out, high_level_out,
                  luts=UVW_LT, n_cpu=1):
-        assert all([l in UVW_LT for l in luts])
+        assert all([lut in UVW_LT for lut in luts])
         zh = self.zhub
         R = self.radius
         ds, kzmax, zeta0 = [self.preluts.attrs[k] for k in ['ds', 'kzmax', 'zeta0']]
@@ -93,14 +93,14 @@ class FourierLUTGenerator():
             map_func = multiprocessing.Pool(n_cpu).imap
 
         beta_kz0_lst = [(beta, kz0) for beta in beta_lst for kz0 in kz0_lst]
-        if any([l[1] == 'L' for l in luts]):
+        if any([lut[1] == 'L' for lut in luts]):
             args_lst = ((self.preluts.sel(beta=beta, kz0=kz0), beta, kz0, z0, self.zhub, self.radius, 'L',
                          lowerjf, upperjf, minlevel, maxlevel, low_level_out, high_level_out)
                         for beta, kz0 in beta_kz0_lst)
 
             xL = list(tqdm(map_func(solve_layers, args_lst), total=len(beta_kz0_lst), disable=(not self.verbose),
                            desc='Fourier LUTS: Solving for longitudinal forcing'))
-        if any([l[1] == 'T' for l in luts]):
+        if any([lut[1] == 'T' for lut in luts]):
             args_lst = ((self.preluts.sel(beta=beta, kz0=kz0), beta, kz0, z0, self.zhub, self.radius, 'T',
                          lowerjf, upperjf, minlevel, maxlevel, low_level_out, high_level_out)
                         for beta, kz0 in beta_kz0_lst)

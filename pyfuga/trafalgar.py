@@ -104,8 +104,9 @@ class Trafalgar():
                 for i in tqdm(range(len(fluts.level)), disable=(not self.verbose), leave=False):
                     re, im = flut[:, :, i].real, flut[:, :, i].imag
 
-                    field = (RectBivariateSpline(beta_lst, np.log(kz0_lst), re, kx=order, ky=order).ev(angleTab, kz0Tab) +
-                             1j * RectBivariateSpline(beta_lst, np.log(kz0_lst), im, kx=order, ky=order).ev(angleTab, kz0Tab))
+                    field = RectBivariateSpline(beta_lst, np.log(kz0_lst), re, kx=order, ky=order).ev(
+                        angleTab, kz0Tab
+                    ) + 1j * RectBivariateSpline(beta_lst, np.log(kz0_lst), im, kx=order, ky=order).ev(angleTab, kz0Tab)
                     field *= force * fuzz
 
                     k0 = 0  # ??? TODO: Ask Søren if this is true

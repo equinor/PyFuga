@@ -23,7 +23,38 @@ check_code_style:  # name the job what we like
     test
   script:
   - pip install -e . --user
-  - pycodestyle --ignore=E501,W504,E741 .
+  - pycodestyle --ignore=E203,E501,W503 .
   tags:  # only runners with this tag can do the job [3]
   - python
 
+
+
+# ===== PyWake docs debian=====
+pages:  # name the job what we like
+  image: continuumio/anaconda3
+  stage:  # build, test, deploy defined by default [2]
+    deploy
+  script:
+  - apt-get update
+  - apt-get -y install make pandoc
+  - pip install -e . --user
+  - pip install sphinx==8.1.3
+  - pip install nbsphinx
+  - pip install sphinx_rtd_theme
+  - pip install sphinx-rtd-dark-mode
+  - pip install sphinxcontrib-bibtex
+  - pip install sphinx-multiversion
+  - pip install sphinx-copybutton
+  - cd docs
+  - sphinx-build -b html . _build
+  # - sphinx-multiversion . _build
+  - cd ../
+  - mv docs/_build public/
+  artifacts:
+    paths:
+      - public
+  tags:
+  - ci-ubuntu
+  only:
+    - main
+    - /^docs.*$/

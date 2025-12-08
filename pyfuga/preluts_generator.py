@@ -25,14 +25,23 @@ from pyfuga import utils
 
 
 class PrelutNode():
+    """
+        Represents a node in the preLUT generation process.
+
+        Encapsulates state variables and error accumulators at a station and provides
+        methods to reset errors and advance to the next node using a QR decomposition.
+    """
+
     def __init__(self):
         self.reset_dyx()
 
     def set_s(self, sleft, sright):
+        """Set the lower and upper bounds for the segment in s."""
         self.sleft = sleft
         self.sright = sright
 
     def reset_dyx(self):
+        """Reset the differential error accumulators for forcing."""
         self.dyxu0 = np.zeros(n_eq, dtype=np.complex128)
         self.dyxv0 = np.zeros(n_eq, dtype=np.complex128)
         self.dyxw0 = np.zeros(n_eq, dtype=np.complex128)
@@ -41,19 +50,17 @@ class PrelutNode():
         self.dyxw1 = np.zeros(n_eq, dtype=np.complex128)
 
     def get_next(self, sleft, sright):
+        """Generate and return the next node via QR decomposition."""
         next_node = self.GMRES()
         next_node.set_s(sleft, sright)
         return next_node
 
     def GMRES(self):
-        # Modified Gram-Schmidt ortonormalization
-        # Yright, Yleft, Rleft and Rright are nxn matrices
-        # Columns of Yright are linearly independent vectors (the input)
-        # Columns of Yleft form an orthonormal basis (Yleft is unitary)
-        # Rleft and Rright are lower triangular
-        # Rright is the inverse of Rleft
-        # Yright=Yleft Rleft.T*  where Rleft.T* is the conjugate transpose of Rleft
-
+        """
+            Perform QR decomposition of the final state matrix of a segment, Yright, to
+            get the first statement matrix of the next segment, Yleft. Store the
+            decomposition results (Rleft, Yleft, Rright) in the new node.
+        """
         node = PrelutNode()
         Rleft, Yleft, Rright = gmres(self.Yright)
         node.Rleft = Rleft
@@ -69,6 +76,14 @@ if utils.preludium_equivalent:
 
 @jit('Tuple((complex128[:,:],complex128[:,:],complex128[:,:]))(complex128[:,:])')
 def gmres(Yright):
+    """
+    Perform a QR decomposition of an input matrix with columns representing linearly independent vectors.
+
+    Returns a tuple containing:
+        1) the lower triangular matrix, Rleft,
+        2) the unitary, orthonormal basis matrix, Yleft, and
+        3) Rright, which is the inverse of the Hermitian adjoint (conjugate transpose) of Rleft.
+    """
     Yleft, Rleft = np.linalg.qr(Yright)
     Rleft = np.conj(Rleft.T)
     Rright = np.linalg.inv(Rleft)
@@ -76,7 +91,13 @@ def gmres(Yright):
 
 
 class PrelutNodeFirst(PrelutNode):
+    """
+    Specialised first node for preLUT generation.
+
+    Initialises the node with boundary conditions based on the phase angle (beta) and station spacing (ds).
+    """
     def __init__(self, beta, ds):
+        """Initialise the first node with the prescribed boundary conditions."""
         PrelutNode.__init__(self)
         self.set_s(sleft=0, sright=ds)
         sinbeta, cosbeta = np.sin(beta), np.cos(beta)
@@ -90,17 +111,37 @@ class PrelutNodeFirst(PrelutNode):
 
 
 class PreLUTGenerator():
-    # Internt benyttes variablene:
-    # u,v,w,p og t=u/kappa for kz<kzm
-    # u,v,w,p og kz        for kz>kzm
-    # kzm=phi(zm/L)
-    # preluts formuleres i termer af  u,v,w,p og s=log(z/z0).
-    # Stationer ved s=j*ds samt ved s=Log(kzm/kz0) og evt. extra stationer.
-    # Level incrementeres ved stationer med s=j*ds
-    # Der orthonormaliseres ved hver station og gemmes i en hægtet liste.
-    # Bruger anden ordens R-K
-    def __init__(self, zeta0, kz0, beta, kzmax, ds, accgoal):
+    """
+    Orchestrates the generation of preliminary look-up tables (preLUTs).
 
+    Integrates the system state between (sub)stations using a second-order Runge-Kutta
+    (RK2) method with adaptive step-size control. It applies relevant transformations
+    for the physical variables and aggregates the resulting nodes into a structured
+    preLUT dataset.
+
+    Internally uses variables:
+        u,v,w,p and t = u/kappa for kz<kzm
+        u,v,w,p and kz          for kz>kzm
+        kzm = phi(zm/L)
+
+    - The preLUTs are formulated in terms of u,v,w,p and s = log(z/z0).
+    - Stations are located at s = j*ds and at s = log(kzm/kz0) with optional extra stations.
+    - Level increments at stations with s = j*ds.
+    - Orthonormalisation is performed at each station and the results are appended to a list.
+    - Uses second-order Runge-Kutta methods.
+    """
+    def __init__(self, zeta0, kz0, beta, kzmax, ds, accgoal):
+        """
+        Initialise the preLUT generator with simulation parameters.
+
+        Args:
+            zeta0: The stability parameter (z0/L)
+            kz0: Base s-coordinate
+            beta: Phase angle
+            kzmaz: Maximum s-coordinate
+            ds: Station spacing
+            accgoal: Accuracy goal for integration
+        """
         self.zeta0 = float(zeta0)
         self.kz0 = kz0
         self.beta = beta
@@ -123,6 +164,12 @@ class PreLUTGenerator():
         self.psi0 = psi(zeta0, kz0, self.cdivkL)
 
     def sm(self):
+        """
+        Calculate the transitional value of s/t for the current stability conditions.
+
+        sm is the value of s (kz) at which the system transitions from the independent variable s to the
+        independent variable t. This transition occurs where d/dt = d/ds (dt/ds = 1) and depends on the stability.
+        """
         # Determine max s (sm) and max kz (kzm)?
         if self.zeta0 < 0:
             # Unstable
@@ -151,6 +198,12 @@ class PreLUTGenerator():
         return sm
 
     def make_prelut(self):
+        """
+        Generate the preLUT dataset by integrating the state between stations.
+
+        Returns:
+            PreLUT: A structured dataset containing the preLUT and associated metadata.
+        """
         self.nodes = []
         first = PrelutNodeFirst(self.beta, self.ds)
         h = np.sqrt(self.acc * 6 / 3.125)
@@ -215,8 +268,9 @@ class PreLUTGenerator():
         var_names = ['Yleft', 'Rleft', 'Rright',
                      'dyxu0', 'dyxu1', 'dyxv0', 'dyxv1', 'dyxw0', 'dyxw1',
                      'sleft', 'sright']
-        var_values = ([np.moveaxis([getattr(n, k) for n in self.nodes], 1, 2) for k in var_names[:3]] +
-                      [np.array([getattr(n, k) for n in self.nodes]) for k in var_names[3:]])
+        var_values = [np.moveaxis([getattr(n, k) for n in self.nodes], 1, 2) for k in var_names[:3]] + [
+            np.array([getattr(n, k) for n in self.nodes]) for k in var_names[3:]
+        ]
         return PreLUT({**{n: (('i', 'j', 'k')[:len(v.shape)], v)
                           for n, v in zip(var_names, var_values)},
                        'beta': self.beta, 'kz0': self.kz0,
@@ -224,6 +278,9 @@ class PreLUTGenerator():
                       attrs={'ds': self.ds, 'kzmax': self.kzmax, 'zeta0': self.zeta0, 'accgoal': self.accgoal})
 
     def rk2(self, node, y, x, h, j):
+        """
+        A wrapper for the jit-compilable rk2 function to allow it to be called from within a class.
+        """
         Yright, yerr = rk2(
             y, x, h, j, self.kz0, self.psi0, self.lastkz, self.zeta0, self.cdivkL, self.cosbeta, self.sinbeta,
             node.dyxu0, node.dyxv0, node.dyxw0, node.dyxu1, node.dyxv1, node.dyxw1)
@@ -231,6 +288,21 @@ class PreLUTGenerator():
         return yerr
 
     def solve2(self, p, h, yerr, acc, j):
+        """
+        A wrapper for the jit-compilable solve2 function to allow it to be called from within a class.
+
+        Adjust the integration step size until the accuracy requirement is met.
+
+        This function repeatedly applies RK2 integration steps to update the state until the
+        accumulated error is within the specified tolerance.
+
+        Args:
+            p: The current node in the preLUT generation process.
+            h: The current integration step size.
+            yerr: The accumulated error in the state.
+            acc: The accuracy goal for the integration.
+            j: Choice of coordinate system (j == 1 for t = u0 * kappa, j == 2 for s = kz).
+        """
         # return self.solve2_old(p, h, yerr, acc, j)
         while True:
             sright = p.sright
@@ -253,6 +325,7 @@ class PreLUTGenerator():
 
 @jit("double(double, double, double, double, double, double)")
 def get_kz(t, zeta0, kz0, lastkz, psi0, cdivkL):
+    """Get kz from t and stability parameter zeta0."""
 
     kz = lastkz
     if zeta0 < 0:
@@ -310,27 +383,42 @@ def get_kz(t, zeta0, kz0, lastkz, psi0, cdivkL):
 
 @jit('double(double,double,double,double)')
 def u0(kz, kz0, psi, psi0):
-    # Wind speed from MOST normalized by uStar
-    #  use params, only: mykind,kz0,kappa,psi0
-    #  implicit none
-    #  real(mykind) u0,kz,psi
+    """
+    Compute the wind speed from Monin-Obukhov Similarity Theory (MOST) normalised by
+    the friction velocity, ustar.
+
+    Arg:
+        kz: Current wavenumber
+        kz0: Base wavenumber
+        psi: Stability correction function at kz
+        psi0: Stability correction function at kz0
+
+    Returns:
+        The normalised wind speed
+    """
     return (np.log(kz / kz0) + psi - psi0) / kappa
 
 
 @jit("complex128[:,:](int32,double,double, double, double,double,double,double,double)")
 def getM(j, t, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta):
-    # ! This version includes stability in the eddy diffusivity.
-    # ! Parameter zeta0=z0/L
-    # ! In reality it returns -A* , minus the adjoint of A
-    # ! s=kappa*u for j=1
-    # ! s=k z for j=2
-    # ! variables: u,u',v,v',w and p/pscale (for both j=1 and j=2).
-    # ! To change back to p=q*s uncomment lines 1261-1265 in prelut_machine)
-    # ! K = k u* z/phi
-    # ! Only case(1) and case(2) are called
-    # ! Only simple closure
-    # use params, only: mykind,n,cdivkL,cosbeta,sinbeta,kappa,kappa2,lastkz, &
-    #                   pscale,zeta0,lidt
+    """
+    Compute the adjoint system matrix M = -A* with stability effects included in the eddy diffusivity.
+    Refactored to use helper functions for clarity.
+
+    Args:
+        j: Choice of coordinate system (1: t = u0*kappa, 2: s = kz).
+        x: The input coordinate (t or s depending on j).
+        kz0: The base s-coordinate.
+        psi0: The base stability correction value at kz0.
+        lastkz: The s-coordinate from the last station or integration step.
+        zeta0: The stability parameter (z0/L).
+        cdivkL: Eddy diffusivity scaling parameter.
+        cosbeta: The cosine of the phase angle.
+        sinbeta: The sine of the phase angle.
+
+    Returns:
+        A 6x6 complex matrix M.
+    """
     assert j in [1, 2]
     if j == 1:
         kz = get_kz(t, zeta0, kz0, lastkz, psi0, cdivkL)
@@ -427,6 +515,25 @@ def getM(j, t, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta):
 
 @jit('complex128[:,:](int32,double,double, complex128[:,:],complex128[:,:],double,double,double,double,double,double,double)')
 def rk2step(j, t, h, Ay, y1, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta):
+    r"""
+    Perform a single integration step of the 2nd-order Runge-Kutta (RK2) method. Refer to "Numerical Recipes" section
+    17.1 Runge-Kutta Method for more details.
+
+    Computes an "trial" step to the midpoint of the interval. Then uses both the values of vector Y and the matrix
+    M (= -A^\dagger) at that midpoint to calculate the value of Y at the end of the interval.
+
+    Args:
+        j: Coordinate system indicator.
+        x: Current coordinate (s or t depending on j)
+        h: Integration step size.
+        my: Product of the matrix M and the vector Y.
+        y: Current adjoint state vector.
+        kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta:
+            Parameters required to compute the matrix M via getM.
+
+    Returns:
+        The updated adjoint state vector after the RK2 intermediate step.
+    """
     A = getM(j, t + h * 0.5, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
     ym = y1 + h * Ay / 2
     y2 = y1 + h * np.dot(np.ascontiguousarray(A), ym)
@@ -445,6 +552,32 @@ C4 = 2.0 / 6.0
 def rk2(y, x, h, j, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta,
         dyxu0, dyxv0, dyxw0, dyxu1, dyxv1, dyxw1
         ):
+    """
+    Perform a integration step using the Modified Midpoint method, as described in Numerical Recipes, §17.3.1, with two
+    substeps (n=2). The estimate is fourth-order accurate, the same as the fourth-order Runge-Kutta method, but
+    requires fewer function evaluations.
+
+    Also updates the differential forcing accumulators based on the integrated state.
+
+    Args:
+        y: Current state matrix.
+        x: Current state variable.
+        h: Integration step size.
+        j: Coordinate system indicator.
+        kz0: Base s-coordinate.
+        psi0: Base stability correction.
+        lastkz: Previous s-coordinate.
+        zeta0: Stability parameter.
+        cdivkL: Eddy diffusivity coefficient.
+        cosbeta: Cosine of phase angle.
+        sinbeta: Sine of phase angle.
+        dyxu0, dyxv0, dyxw0, dyxu1, dyxv1, dyxw1:
+            Differential forcing accumulators.
+
+    Returns:
+        A tuple where the first element is the updated state matrix (Yright)
+        and the second element is an error estimate (yerr).
+    """
 
     A = getM(j, x, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
     Ay = np.dot(np.ascontiguousarray(A), np.ascontiguousarray(y))
@@ -484,14 +617,18 @@ def rk2(y, x, h, j, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta,
         # dyxw1=dyxw1+h*(conjg(kz1*a1*C1*y(6,:)+kzm*am*C3*y3(6,:)+kz2*a2*(C4*y4(6,:)+C2*y2(6,:))))*kappa
         dyxu0 += h * (np.conj(a1 * C1 * y[1, :] + am * C3 * y3[1, :] + a2 * (C4 * y4[1, :] + C2 * y2[1, :])))
         dyxv0 += h * (np.conj(a1 * C1 * y[3, :] + am * C3 * y3[3, :] + a2 * (C4 * y4[3, :] + C2 * y2[3, :])))
-        dyxw0 += h * (np.conj(a1 * C1 * y[5, :] + am * C3 * y3[5, :] +
-                              a2 * (C4 * y4[5, :] + C2 * y2[5, :]))) * kappa
-        dyxu1 += h * (np.conj(kz1 * a1 * C1 * y[1, :] + kzm * am *
-                              C3 * y3[1, :] + kz2 * a2 * (C4 * y4[1, :] + C2 * y2[1, :])))
-        dyxv1 += h * (np.conj(kz1 * a1 * C1 * y[3, :] + kzm * am *
-                              C3 * y3[3, :] + kz2 * a2 * (C4 * y4[3, :] + C2 * y2[3, :])))
-        dyxw1 += h * (np.conj(kz1 * a1 * C1 * y[5, :] + kzm * am * C3 *
-                              y3[5, :] + kz2 * a2 * (C4 * y4[5, :] + C2 * y2[5, :]))) * kappa
+        dyxw0 += h * (np.conj(a1 * C1 * y[5, :] + am * C3 * y3[5, :] + a2 * (C4 * y4[5, :] + C2 * y2[5, :]))) * kappa
+        dyxu1 += h * (
+            np.conj(kz1 * a1 * C1 * y[1, :] + kzm * am * C3 * y3[1, :] + kz2 * a2 * (C4 * y4[1, :] + C2 * y2[1, :]))
+        )
+        dyxv1 += h * (
+            np.conj(kz1 * a1 * C1 * y[3, :] + kzm * am * C3 * y3[3, :] + kz2 * a2 * (C4 * y4[3, :] + C2 * y2[3, :]))
+        )
+        dyxw1 += (
+            h
+            * (np.conj(kz1 * a1 * C1 * y[5, :] + kzm * am * C3 * y3[5, :] + kz2 * a2 * (C4 * y4[5, :] + C2 * y2[5, :])))
+            * kappa
+        )
     else:
 
         xm = x + 0.5 * h
@@ -523,19 +660,33 @@ dyx = c1 * 6
 @jit(f'''Tuple(({c2}{d}{d}{d}))({c2}{d}{d}{dyx}{d}{c2}{d}int32,{d}{d}{d}{d}{d}{d}{d})''')
 def solve2(Yleft, sleft, sright, dyxu0, dyxv0, dyxw0, dyxu1, dyxv1, dyxw1, h, yerr, acc, j,
            kz0, lastkz, zeta0, cdivkL, psi0, cosbeta, sinbeta):
-    # use params, only: mykind,n,kz0,Ythreshold,kappa,reccount
-    # use contr, only: Tprelutnode
-    # use GMRES_interface
-    # implicit none
-    # type(Tprelutnode), pointer :: p
-    # integer(4) j
-    # real(mykind), intent(inout) :: h
-    # real(mykind), intent(in) :: acc
-    # complex(mykind), dimension(n,n), intent(out) :: Yerr
-    # complex(mykind), dimension(n,n) :: Y1,Y2,dYerr,A
-    # real(mykind) t,t1,t2,hh,err,Ynorm,Ynorm1,kz1,kz2,s1,s2
-    # integer(4) i
-    # real(mykind) u0,norm
+    """
+    Adjust the integration step to satisfy the accuracy requirement.
+
+    Repeatedly applies RK2 integration to evolve the state until the error is below
+    the accuracy goal, adjusting the step size if necessary.
+
+    Args:
+        Yleft: State matrix at the lower bound of the segment.
+        sleft: s-coordinate of the lower bound of the current segment.
+        sright: s-coordinate of the upper bound of the current segment.
+        dyxu0, dyxv0, dyxw0, dyxu1, dyxv1, dyxw1:
+            Forcing differential accumulators.
+        h: Initial integration step size.
+        yerr: Current accumulated error.
+        acc: Desired accuracy level.
+        j: Coordinate system indicator.
+        kz0: Base s-coordinate.
+        lastkz: Previous s-coordinate.
+        zeta0: Stability parameter (z0/L).
+        cdivkL: Eddy diffusivity coefficient.
+        psi0: Stability correction parameter.
+        cosbeta: Cosine of phase angle.
+        sinbeta: Sine of phase angle.
+
+    Returns:
+        The updated state matrix after integration and the new step size.
+    """
     kz1 = kz0 * np.exp(sleft)
     kz2 = kz0 * np.exp(sright)
 

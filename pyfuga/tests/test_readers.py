@@ -64,8 +64,8 @@ def test_read_prelut_list_fmt2():
 
 
 def test_read_prelut_list_smaxx():
-    lst = read_prelut_list(tfp + 'preLUTs_Zeta0=0.00E+00_1_2', dict=False)
-    npt.assert_array_almost_equal([l[2] for l in lst],
+    lists = read_prelut_list(tfp + 'preLUTs_Zeta0=0.00E+00_1_2', dict=False)
+    npt.assert_array_almost_equal([list[2] for list in lists],
                                   [18.4, 18.4, 18.45, 18.45, 17.25, 18.4,
                                    18.4, 18.45, 18.45, 17.25, 18.4,
                                    18.4, 18.45, 18.45, 17.25])
