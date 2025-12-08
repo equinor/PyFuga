@@ -1,7 +1,7 @@
 from tqdm import tqdm
 
 import numpy as np
-from pyfuga.constants import max_recs, kappa, Ythreshold, kappa2, Cm1, Cm2, n_eq
+from pyfuga.constants import max_recs, kappa, Ythreshold, kappa2, Cm1, Cm2, n_eq, COORD_T, COORD_S
 from pyfuga.common import cdivkL, psi, get_new_h2, dphiu, phi
 from pyfuga.utils import jit
 from pyfuga.preluts import PreLUT
@@ -209,7 +209,7 @@ class PreLUTGenerator():
         h = np.sqrt(self.acc * 6 / 3.125)
         self.lastkz = self.kz0
 
-        yerr = self.rk2(first, first.Yleft, 0., h, j=1)
+        yerr = self.rk2(first, first.Yleft, 0., h, COORD_T)
         first.reset_dyx()
         h = get_new_h2(h, self.acc, yerr, first.Yright)
         sm = self.sm()
@@ -218,14 +218,16 @@ class PreLUTGenerator():
         s_lst = np.sort(np.r_[0, np.cumsum(np.full(int(self.smaxx // self.ds) + 1, self.ds)), sm])
 
         # equal(first.Yleft, f'yleft{0:6.3f}')
-        segment, h = self.solve2(first, h, yerr, self.acc, 1)
+        segment, h = self.solve2(first, h, yerr, self.acc, COORD_T)
         # equal(segment.Yright, f'yright{0:6.3f}')
         for (s1, s2) in tqdm(list(zip(s_lst[1:], s_lst[2:])), disable=1):
             self.nodes.append(segment)
             segment = segment.get_next(s1, s2)
-            j = 1 + (s1 >= sm)
 
-            segment, h = self.solve2(segment, h, yerr, self.acc, j)
+            # Before sm: integrate in t, after sm: integrate in s
+            coordsys = COORD_T if s1 < sm else COORD_S
+
+            segment, h = self.solve2(segment, h, yerr, self.acc, coordsys)
             # equal(segment.Yright, f'yright{s1:6.3f}')
             if len(self.nodes) > max_recs:  # pragma: no cover
                 break
@@ -280,6 +282,10 @@ class PreLUTGenerator():
     def rk2(self, node, y, x, h, j):
         """
         A wrapper for the jit-compilable rk2 function to allow it to be called from within a class.
+
+        Args:
+            ...
+            j: Coordinate system indicator (COORD_T for t = u0 * kappa, COORD_S for s = kz).
         """
         Yright, yerr = rk2(
             y, x, h, j, self.kz0, self.psi0, self.lastkz, self.zeta0, self.cdivkL, self.cosbeta, self.sinbeta,
@@ -301,7 +307,7 @@ class PreLUTGenerator():
             h: The current integration step size.
             yerr: The accumulated error in the state.
             acc: The accuracy goal for the integration.
-            j: Choice of coordinate system (j == 1 for t = u0 * kappa, j == 2 for s = kz).
+            j: Coordinate system indicator (COORD_T for t, COORD_S for s).
         """
         # return self.solve2_old(p, h, yerr, acc, j)
         while True:
@@ -406,8 +412,8 @@ def getM(j, t, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta):
     Refactored to use helper functions for clarity.
 
     Args:
-        j: Choice of coordinate system (1: t = u0*kappa, 2: s = kz).
-        x: The input coordinate (t or s depending on j).
+        j: Coordinate system indicator (COORD_T = 1: t = u0*kappa, COORD_S = 2: s = kz).
+        t: The input coordinate (t or s depending on j).
         kz0: The base s-coordinate.
         psi0: The base stability correction value at kz0.
         lastkz: The s-coordinate from the last station or integration step.
@@ -419,11 +425,11 @@ def getM(j, t, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta):
     Returns:
         A 6x6 complex matrix M.
     """
-    assert j in [1, 2]
-    if j == 1:
+    assert j in (COORD_T, COORD_S)
+    if j == COORD_T:
         kz = get_kz(t, zeta0, kz0, lastkz, psi0, cdivkL)
         u = t / kappa
-    elif j == 2:
+    elif j == COORD_S:
         kz = t
         u = u0(kz, kz0, psi(zeta0, kz, cdivkL), psi0)
 
@@ -440,7 +446,7 @@ def getM(j, t, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta):
     kKcos = kK * cosbeta
     kKsin = kK * sinbeta
 
-    if j == 1:
+    if j == COORD_T:
 
         return np.array([
             # M(1,2)=cmplx(-kK**2,kKcos*u)/kappa2
@@ -474,7 +480,7 @@ def getM(j, t, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta):
             [0, complex(0, kKcos / kappa2), 0,
              complex(0, kKsin / kappa2), 0, 0]])
 
-    else:  # j == 2:
+    else:  # j == COORD_S:
         return np.array([
             # M(1,2)=dcmplx(-1.0D0,cosbeta*u/kK)
             # M(1,5)=dcmplx(0.0D0,-cosbeta)
@@ -523,7 +529,7 @@ def rk2step(j, t, h, Ay, y1, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
     M (= -A^\dagger) at that midpoint to calculate the value of Y at the end of the interval.
 
     Args:
-        j: Coordinate system indicator.
+        j: Coordinate system indicator (COORD_T for t = u0 * kappa, COORD_S for s = kz).
         x: Current coordinate (s or t depending on j)
         h: Integration step size.
         my: Product of the matrix M and the vector Y.
@@ -563,7 +569,7 @@ def rk2(y, x, h, j, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta,
         y: Current state matrix.
         x: Current state variable.
         h: Integration step size.
-        j: Coordinate system indicator.
+        j: Coordinate system indicator (COORD_T for t = u0 * kappa, COORD_S for s = kz).
         kz0: Base s-coordinate.
         psi0: Base stability correction.
         lastkz: Previous s-coordinate.
@@ -594,7 +600,7 @@ def rk2(y, x, h, j, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta,
     yerr = yout - y4
     Yright = yout
 
-    if j == 1:
+    if j == COORD_T:
         # kz1, kzm, kz2 = self.get_kz(x + np.array([0, .5, 1]) * h)
 
         kz1, kzm, kz2 = [get_kz(x + s * h, zeta0, kz0, lastkz, psi0, cdivkL) for s in [0., .5, 1.]]
@@ -629,7 +635,7 @@ def rk2(y, x, h, j, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta,
             * (np.conj(kz1 * a1 * C1 * y[5, :] + kzm * am * C3 * y3[5, :] + kz2 * a2 * (C4 * y4[5, :] + C2 * y2[5, :])))
             * kappa
         )
-    else:
+    else:  # j == COORD_S
 
         xm = x + 0.5 * h
         x2 = x + h
@@ -675,7 +681,7 @@ def solve2(Yleft, sleft, sright, dyxu0, dyxv0, dyxw0, dyxu1, dyxv1, dyxw1, h, ye
         h: Initial integration step size.
         yerr: Current accumulated error.
         acc: Desired accuracy level.
-        j: Coordinate system indicator.
+        j: Coordinate system indicator (COORD_T for t = u0 * kappa, COORD_S for s = kz).
         kz0: Base s-coordinate.
         lastkz: Previous s-coordinate.
         zeta0: Stability parameter (z0/L).
@@ -690,7 +696,7 @@ def solve2(Yleft, sleft, sright, dyxu0, dyxv0, dyxw0, dyxu1, dyxv1, dyxw1, h, ye
     kz1 = kz0 * np.exp(sleft)
     kz2 = kz0 * np.exp(sright)
 
-    if (j == 1):
+    if j == COORD_T:
         t1 = kappa * u0(kz1, kz0, psi(zeta0, kz1, cdivkL), psi0)
         t2 = kappa * u0(kz2, kz0, psi(zeta0, kz2, cdivkL), psi0)
     else:
@@ -741,7 +747,7 @@ def solve2(Yleft, sleft, sright, dyxu0, dyxv0, dyxw0, dyxu1, dyxv1, dyxw1, h, ye
             # One can have multiple sublevels between two levels if necessary.
             # print(t, Ynorm)
             if Ynorm > Ythreshold:
-                if j == 1:  # pragma: no cover
+                if j == COORD_T:  # pragma: no cover
                     kz1 = get_kz(t, zeta0, kz0, lastkz, psi0, cdivkL)
                     lastkz = kz1
                     s1 = np.log(kz1 / kz0)
