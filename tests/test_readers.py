@@ -1,9 +1,9 @@
 from pyfuga.file_readers import CaseData, read_lut_file, read_prelut_list, Parameters
-from pyfuga.tests import npt
+from numpy.testing import assert_array_almost_equal, assert_almost_equal
 import numpy as np
 from pyfuga.file_readers import read_lut_dat_file
 import matplotlib.pyplot as plt
-from pyfuga.tests.test_files import tfp
+from .test_files import tfp
 
 
 def test_parameters():
@@ -19,8 +19,8 @@ def test_parameters():
     assert p.nbeta == 5
     assert p.mbeta == 0
     assert p.ds == 0.05
-    npt.assert_array_almost_equal(p.beta_lst, [0., 0.829728, 1.295116, 1.515176, 1.552644, 1.570796])
-    npt.assert_array_almost_equal(p.kz0_lst, 10.**(np.arange(p.jmin, p.jmax + 1) / p.nkz0), 10)
+    assert_array_almost_equal(p.beta_lst, [0., 0.829728, 1.295116, 1.515176, 1.552644, 1.570796])
+    assert_array_almost_equal(p.kz0_lst, 10.**(np.arange(p.jmin, p.jmax + 1) / p.nkz0), 10)
 
 
 def test_casedata():
@@ -65,10 +65,11 @@ def test_read_prelut_list_fmt2():
 
 def test_read_prelut_list_smaxx():
     lists = read_prelut_list(tfp + 'preLUTs_Zeta0=0.00E+00_1_2', dict=False)
-    npt.assert_array_almost_equal([list[2] for list in lists],
-                                  [18.4, 18.4, 18.45, 18.45, 17.25, 18.4,
-                                   18.4, 18.45, 18.45, 17.25, 18.4,
-                                   18.4, 18.45, 18.45, 17.25])
+    assert_array_almost_equal(
+        [list[2] for list in lists],
+        [18.4, 18.4, 18.45, 18.45, 17.25, 18.4,
+         18.4, 18.45, 18.45, 17.25, 18.4,
+         18.4, 18.45, 18.45, 17.25])
 
 
 def test_read_prelut_list_dict():
@@ -86,7 +87,7 @@ def test_read_prelut_list_dict():
 def test_read_fourier_lut():
     lut = read_lut_file(tfp + "D080.0000_zH070.0000_2_5/Z0=0.00001000Zi=00400Zeta0=0.00E+00/UL0314.lut",
                         prelut_folder=tfp + "preLUTs_Zeta0=0.00E+00_2_5")
-    npt.assert_almost_equal(lut.UL.isel(beta=0, kz0=0, level=0), -1642.12402757 + 569.48780155j)
+    assert_almost_equal(lut.UL.isel(beta=0, kz0=0, level=0), -1642.12402757 + 569.48780155j)
 
 
 def test_read_fourier_9999():

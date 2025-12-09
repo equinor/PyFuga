@@ -1,9 +1,9 @@
-from pyfuga.tests import npt
+from numpy.testing import assert_array_almost_equal, assert_array_equal
 from pyfuga.file_readers import read_lut_file
 
 from pyfuga.preluts import PreLUTs
 from pyfuga.flut import FourierLUTGenerator
-from pyfuga.tests.test_files import tfp
+from .test_files import tfp
 import pytest
 from pyfuga.constants import UVW_LT
 from pyfuga.utils import compile, get_beta_lst
@@ -19,9 +19,9 @@ def test_make_hubheight_luts(zeta0):
     luts = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False
                                ).make_hubheight_luts(z0=0.00001, luts=['UL'])
 
-    npt.assert_array_almost_equal(ref.UL.sel(kz0=luts.kz0), luts.sel(level=ref.level).UL)
+    assert_array_almost_equal(ref.UL.sel(kz0=luts.kz0), luts.sel(level=ref.level).UL)
 
-    npt.assert_array_equal(ref.UL[:, len(luts.kz0):], 0)
+    assert_array_equal(ref.UL[:, len(luts.kz0):], 0)
 
 
 def test_make_hubheight_luts_lo_eq_hi():
@@ -32,7 +32,7 @@ def test_make_hubheight_luts_lo_eq_hi():
     ref = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False
                               ).make_lut(z0, low_level_out=315, high_level_out=315, luts=['UL'])
 
-    npt.assert_array_almost_equal(ref.UL, luts.UL)
+    assert_array_almost_equal(ref.UL, luts.UL)
 
 
 def test_all_vars():
@@ -42,8 +42,8 @@ def test_all_vars():
     for v in UVW_LT:
         ref = read_lut_file(tfp + f'D080.0000_zH070.0000_2_5/Z0=0.00001000Zi=00400Zeta0=0.00E+00/{v}0314.lut',
                             prelut_folder=tfp + f'preLUTs_Zeta0=0.00E+00_2_5')
-        npt.assert_array_almost_equal(luts[v], ref[v][:, :len(luts.kz0)])
-        npt.assert_array_equal(0, ref[v][:, len(luts.kz0):])
+        assert_array_almost_equal(luts[v], ref[v][:, :len(luts.kz0)])
+        assert_array_equal(0, ref[v][:, len(luts.kz0):])
 
 
 def test_compact_preluts():
@@ -60,7 +60,7 @@ def test_compact_preluts():
         for kz0 in luts.kz0.values:
             assert preluts.sel(beta=beta, kz0=kz0).equals(preluts_compact.sel(beta=beta, kz0=kz0))
     for k in UVW_LT:
-        npt.assert_array_almost_equal(luts[k], luts_c[k])
+        assert_array_almost_equal(luts[k], luts_c[k])
 
 
 def test_rotor_luts():
@@ -90,4 +90,4 @@ def test_jit_luts():
     assert t2[1] < t1[0]
     for k in r1:
         # print(k, r1[k].shape)
-        npt.assert_array_almost_equal(r1[k], r2[k], 10)
+        assert_array_almost_equal(r1[k], r2[k], 10)
