@@ -1,10 +1,14 @@
 import os
-from pathlib import Path
-from .test_files import tfp
 import sys
+from pathlib import Path
+
 from pyfuga.preluts import PreLUTs
+
+from .test_files import tfp
+
 sys.path.append(r'C:\mmpe\programming\python\Topfarm\CuttingEdge\Fuga\Easylut')  # nopep8
 from run import run
+
 os.chdir(r'C:\mmpe\programming\python\Topfarm\CuttingEdge\Fuga\Easylut')
 Path('lut_path.txt').write_text(tfp)
 

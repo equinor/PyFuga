@@ -1,9 +1,11 @@
 import numpy as np
+import xarray as xr
 from numpy import newaxis as na
 from scipy.interpolate import RectBivariateSpline
-from pyfuga.constants import kappa
-import xarray as xr
 from tqdm import tqdm
+
+from pyfuga.constants import kappa
+
 M_PI = 3.141592653589793
 
 

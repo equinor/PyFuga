@@ -1,4 +1,5 @@
 import numpy as np
+
 from pyfuga.common import complex_norm
 from pyfuga.preluts_generator import PrelutNode
 from pyfuga.utils import jit
@@ -15,11 +16,11 @@ def get_new_h2_Preludium(h, acc, Yerr, Y):
 class PrelutNodePreludium(PrelutNode):
     def GMRES(self):
         from numpy import newaxis as na
+
         # use params, only: mykind,n
         # use contr, only: Tprelutnode
         # use vector_functions, only: outer
         # implicit none
-
         # Modified Gram-Schmidt ortonormalization
         # Y, V, R and invR are nxn matrices
         # Columns of Y are linearly independent vectors (the input)
@@ -27,13 +28,11 @@ class PrelutNodePreludium(PrelutNode):
         # R and invR are lower triangular
         # invR is the inverse of R
         # Y=V R*  where R* is the conjugate transpose of R
-
         # type(Tprelutnode),pointer :: p
         # complex(mykind), dimension(n,n) :: B
         # real(mykind) aux
         # integer(4) i,j,k
         # real(mykind) norm
-
         # aux = np.linalg.norm(self.Yright, axis=0)
         # node.dat.Yleft = Yleft = self.Yright / aux
         # node.dat.Rleft = np.diag(aux)

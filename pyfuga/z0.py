@@ -1,6 +1,6 @@
 import numpy as np
-from scipy.special import lambertw
 from scipy.optimize import fsolve
+from scipy.special import lambertw
 
 Cm1 = 5
 Cm2 = -19.3

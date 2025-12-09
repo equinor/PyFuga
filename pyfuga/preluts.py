@@ -1,12 +1,13 @@
+import multiprocessing
 from pathlib import Path
 
-from tqdm import tqdm
-import xarray as xr
 import numpy as np
-from pyfuga.file_readers import read_prelut_list, read_pre_file
-from pyfuga.utils import ComplexXRDataset, numba_jit, mprof_tag, read_complex
-import multiprocessing
+import xarray as xr
 from _collections import defaultdict
+from tqdm import tqdm
+
+from pyfuga.file_readers import read_pre_file, read_prelut_list
+from pyfuga.utils import ComplexXRDataset, mprof_tag, numba_jit, read_complex
 
 
 class PreLUT(ComplexXRDataset):

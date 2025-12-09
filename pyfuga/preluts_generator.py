@@ -1,12 +1,21 @@
+import numpy as np
 from tqdm import tqdm
 
-import numpy as np
-from pyfuga.constants import max_recs, kappa, Ythreshold, kappa2, Cm1, Cm2, n_eq, COORD_T, COORD_S
-from pyfuga.common import cdivkL, psi, get_new_h2, dphiu, phi
-from pyfuga.utils import jit
-from pyfuga.preluts import PreLUT
 from pyfuga import utils
-
+from pyfuga.common import cdivkL, dphiu, get_new_h2, phi, psi
+from pyfuga.constants import (
+    COORD_S,
+    COORD_T,
+    Cm1,
+    Cm2,
+    Ythreshold,
+    kappa,
+    kappa2,
+    max_recs,
+    n_eq,
+)
+from pyfuga.preluts import PreLUT
+from pyfuga.utils import jit
 
 # np.set_printoptions(precision=2, linewidth=200)
 # left: (sub)station (lower height)
@@ -70,8 +79,8 @@ class PrelutNode():
 
 
 if utils.preludium_equivalent:
-    from pyfuga.preludium_eq_routines import get_new_h2_Preludium as get_new_h2
     from pyfuga.preludium_eq_routines import PrelutNodePreludium as PrelutNode
+    from pyfuga.preludium_eq_routines import get_new_h2_Preludium as get_new_h2
 
 
 @jit('Tuple((complex128[:,:],complex128[:,:],complex128[:,:]))(complex128[:,:])')

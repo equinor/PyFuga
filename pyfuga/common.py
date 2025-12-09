@@ -1,6 +1,8 @@
 import numpy as np
-from .constants import Cm1, Cm2
+
 from pyfuga.utils import jit
+
+from .constants import Cm1, Cm2
 
 
 @jit('double(double,double)')

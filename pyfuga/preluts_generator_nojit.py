@@ -1,19 +1,17 @@
 # pragma: no cover
 
+import warnings
 from pathlib import Path
-
-from numpy import newaxis as na
-from tqdm import tqdm
 
 import numpy as np
 import xarray as xr
+from numpy import newaxis as na
+from tqdm import tqdm
 
-from pyfuga.constants import Cm1, Cm2, n_eq, kappa, kappa2, max_recs, Ythreshold
-from pyfuga.file_readers import read_prelut_list, read_pre_file
+from pyfuga.common import cdivkL, dphiu, get_new_h2, phi, psi
+from pyfuga.constants import Cm1, Cm2, Ythreshold, kappa, kappa2, max_recs, n_eq
+from pyfuga.file_readers import read_pre_file, read_prelut_list
 from pyfuga.utils import ComplexXRDataset
-from pyfuga.common import psi, dphiu, get_new_h2, cdivkL, phi
-import warnings
-
 
 warnings.warn("""This module is deprecated and only used for test comparision.
 Use pyfuga.preluts_generator instead""", DeprecationWarning, stacklevel=2)

@@ -1,17 +1,16 @@
-import numpy as np
-from .constants import Cm1, Cm2
-import xarray as xr
-from numpy import newaxis as na
-
-from numba.core.decorators import njit
-
-
-import sys
-from pyfuga.constants import kappa
 import importlib
-from pyfuga.profiling import print_time
+import sys
 import time
 
+import numpy as np
+import xarray as xr
+from numba.core.decorators import njit
+from numpy import newaxis as na
+
+from pyfuga.constants import kappa
+from pyfuga.profiling import print_time
+
+from .constants import Cm1, Cm2
 
 debugging = getattr(sys, 'gettrace')() is not None
 numba_jit = False  # and not debugging

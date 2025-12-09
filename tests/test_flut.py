@@ -1,14 +1,15 @@
-from numpy.testing import assert_array_almost_equal, assert_array_equal
-from pyfuga.file_readers import read_lut_file
-
-from pyfuga.preluts import PreLUTs
-from pyfuga.flut import FourierLUTGenerator
-from .test_files import tfp
-import pytest
-from pyfuga.constants import UVW_LT
-from pyfuga.utils import compile, get_beta_lst
-from pyfuga.profiling import timeit
 import numpy as np
+import pytest
+from numpy.testing import assert_array_almost_equal, assert_array_equal
+
+from pyfuga.constants import UVW_LT
+from pyfuga.file_readers import read_lut_file
+from pyfuga.flut import FourierLUTGenerator
+from pyfuga.preluts import PreLUTs
+from pyfuga.profiling import timeit
+from pyfuga.utils import compile, get_beta_lst
+
+from .test_files import tfp
 
 
 @pytest.mark.parametrize('zeta0', [0, -1, 1])

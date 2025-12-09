@@ -1,20 +1,21 @@
+import importlib
+import inspect
 import os
-
-import pytest
 
 import matplotlib.pyplot as plt
 import numpy as np
-from numpy.testing import assert_array_almost_equal, assert_allclose, assert_array_equal
+import pytest
+from numpy.testing import assert_allclose, assert_array_almost_equal, assert_array_equal
+
+from pyfuga import utils
 from pyfuga.constants import UVW_LT
 from pyfuga.file_readers import read_lut_file
 from pyfuga.flut import FourierLUTGenerator
 from pyfuga.preluts import PreLUT, PreLUTs
-from pyfuga.preluts_generator import PrelutNode, PreLUTGenerator
+from pyfuga.preluts_generator import PreLUTGenerator, PrelutNode
+from pyfuga.utils import compile, get_beta, get_beta_lst, get_kz0_lst
+
 from .test_files import tfp
-from pyfuga.utils import get_beta, get_beta_lst, get_kz0_lst, compile
-from pyfuga import utils
-import importlib
-import inspect
 
 
 def setup_module(module):

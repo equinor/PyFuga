@@ -1,9 +1,11 @@
-from pyfuga.file_readers import read_lut_file, read_lut_dat_file
-from .test_files import tfp
-from pyfuga.trafalgar import Trafalgar
 import matplotlib.pyplot as plt
-from numpy.testing import assert_allclose
 import pytest
+from numpy.testing import assert_allclose
+
+from pyfuga.file_readers import read_lut_dat_file, read_lut_file
+from pyfuga.trafalgar import Trafalgar
+
+from .test_files import tfp
 
 
 @pytest.mark.parametrize('var', ['UL', 'UT'])

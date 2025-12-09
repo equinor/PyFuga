@@ -1,8 +1,15 @@
-from pyfuga.file_readers import CaseData, read_lut_file, read_prelut_list, Parameters
-from numpy.testing import assert_array_almost_equal, assert_almost_equal
-import numpy as np
-from pyfuga.file_readers import read_lut_dat_file
 import matplotlib.pyplot as plt
+import numpy as np
+from numpy.testing import assert_almost_equal, assert_array_almost_equal
+
+from pyfuga.file_readers import (
+    CaseData,
+    Parameters,
+    read_lut_dat_file,
+    read_lut_file,
+    read_prelut_list,
+)
+
 from .test_files import tfp
 
 

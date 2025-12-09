@@ -1,7 +1,8 @@
-from pathlib import Path
-import struct
-import numpy as np
 import os
+import struct
+from pathlib import Path
+
+import numpy as np
 import xarray as xr
 from numpy import newaxis as na
 
