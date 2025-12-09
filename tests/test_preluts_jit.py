@@ -162,41 +162,47 @@ def test_make_preluts():
     assert_array_equal(prelut.level, 7)
 
 
-def test_make_preluts_jit():
+def _make_flut(jit: bool, **kwargs):
+    """
+    Helper that:
+    - toggles JIT on/off
+    - builds preLUTs with PreLUTGenerator
+    - combines them into a single dataset
+    - runs FourierLUTGenerator to get the final FLUT
 
+    Returns: (flut, time_taken)
+    """
+    utils.compile(jit=jit)
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+        from pyfuga.preluts_generator import PreLUTGenerator
+
+    r, t = timeit(PreLUTGenerator(**kwargs).make_prelut, min_runs=1)()
+
+    r = xr.combine_by_coords(
+        [ds.assign_coords(i=ds.i, kz0=ds.kz0, beta=ds.beta).expand_dims(("kz0", "beta")) for ds in [r]]
+    )
+
+    flut = FourierLUTGenerator(r, zhub=70, diameter=80, zi=400, verbose=False).make_lut(
+        z0=0.1, low_level_out=47, high_level_out=165
+    )
+
+    return flut, t
+
+
+def test_make_preluts_jit_matches_reference():
     kwargs = dict(zeta0=0, kz0=1e-1, beta=0, kzmax=300, ds=0.05, accgoal=0.0001)
-    if 1:  # not os.path.isfile('flut1.nc'):
-        utils.compile(jit=False)
-        with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', category=DeprecationWarning)
-            from pyfuga import preluts_generator_nojit
-        r1, t1 = timeit(preluts_generator_nojit.PreLUTGenerator(**kwargs).make_prelut, min_runs=1)()
-        r1 = xr.combine_by_coords([ds.assign_coords(i=ds.i, kz0=ds.kz0, beta=ds.beta).expand_dims(('kz0', 'beta'))
-                                   for ds in [r1]])
-        flut1 = FourierLUTGenerator(r1, zhub=70, diameter=80, zi=400, verbose=False).make_lut(z0=0.1,
-                                                                                              low_level_out=47,
-                                                                                              high_level_out=165)
-        flut1.to_netcdf('flut1.nc')
-    else:
-        flut1 = ComplexXRDataset.from_netcdf('flut1.nc')
 
-    utils.compile(jit=True)
-    r2, t2 = timeit(PreLUTGenerator(**kwargs).make_prelut, min_runs=2)()
+    flut_nojit, t_nojit = _make_flut(jit=False, **kwargs)
+    flut_jit, t_jit = _make_flut(jit=True, **kwargs)
 
-    # timeit(PreLUTGenerator(**kwargs).make_prelut, verbose=1, line_profile=True, profile_funcs=[
-    #     PreLUTGenerator.make_prelut,
-    # ])()
+    # Numerical equivalence on the final FLUTs:
+    for k in flut_nojit:
+        assert_array_almost_equal(flut_nojit[k], flut_jit[k], 10)
 
-    r2 = xr.combine_by_coords([ds.assign_coords(i=ds.i, kz0=ds.kz0, beta=ds.beta).expand_dims(('kz0', 'beta'))
-                               for ds in [r2]])
-    flut2 = FourierLUTGenerator(r2, zhub=70, diameter=80, zi=400, verbose=False).make_lut(z0=0.1,
-                                                                                          low_level_out=47,
-                                                                                          high_level_out=165)
-
-    assert t2 < t1
-    for k in flut1:
-        # print(k, flut1[k].shape)
-        assert_array_almost_equal(flut1[k], flut2[k], 10)
+    # JIT should be faster (this is more performance test than correctness test)
+    assert t_jit < t_nojit
 
 
 def test_compile():
