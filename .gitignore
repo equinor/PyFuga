@@ -19,5 +19,21 @@ settings.json
 docs/_build/
 docs/api/generated/
 pixi*
+.coverage
 .pixi/*
 *.nc
+.venv*
+.vscode/
+
+# Test files
+pyfuga_tests/test_files/*
+!pyfuga_tests/test_files/__init__.py
+
+# Build files
+dist/
+
+# Wheel files
+*.whl
+
+# Tar gz files
+*.tar.gz

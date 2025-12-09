@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "PyFuga"
+version = "0.1.0"
+description = "Linearised CFD wake model (PyFuga)"
+readme = "README.md"
+authors = [
+  { name = "PyFuga team", email = "njoga@dtu.dk" },
+]
+requires-python = ">=3.10"
+dependencies = [
+  "numpy",
+  "scipy",
+  "matplotlib",
+  "xarray",
+  "tqdm",
+  "h5netcdf",
+  "numba",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3",
+  "pytest-cov>=6.0",
+  "mypy>=1.15",
+  "isort>=7.0",
+  "pycodestyle>=2.14",
+  "sphinx>=8.1",
+  "sphinx-autobuild>=2024.10",
+  "sphinx_rtd_theme>=3.0",
+  "nbsphinx>=0.9.7",
+  "sphinxcontrib-bibtex>=2.6",
+  "sphinx-multiversion>=0.2.4",
+  "sphinx-copybutton>=0.5.2",
+]
+
+[tool.setuptools]
+packages = ["pyfuga"]
+
+[tool.isort]
+profile = "black"
+line_length = 120
+known_first_party = ["pyfuga", "pyfuga_tests"]
+known_third_party = ["numpy", "scipy", "matplotlib", "xarray", "tqdm", "h5netcdf", "numba", "pytest"]

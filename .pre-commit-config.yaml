@@ -3,4 +3,3 @@ repos:
     rev: 7.0.0
     hooks:
       - id: isort
-        args: ["--profile", "black"]

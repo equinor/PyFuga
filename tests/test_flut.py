@@ -69,7 +69,7 @@ def test_rotor_luts():
     luts = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False
                                ).make_rotor_luts(z0=0.00001, luts=['UL'])
     assert luts.z[0] < 70 - 40
-    assert luts.z[-1 > 70 + 40]
+    assert luts.z[-1] > 70 + 40
 
 
 def test_fluts_ncpu():
