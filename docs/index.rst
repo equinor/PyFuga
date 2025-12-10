@@ -150,6 +150,25 @@ Contents
 
     examples/01_QuickStart
 
+.. toctree
+..     :caption: User Guide
+..     :maxdepth: 1
+
+..     user_guide/installation
+..     user_guide/usage
+..     user_guide/configuration
+..     user_guide/integration
+..     user_guide/faq
+
+.. toctree::
+    :caption: Developer Guide
+    :maxdepth: 1
+
+    developer_guide/style_guide
+.. developer_guide/contributing
+.. developer_guide/code_structure
+.. developer_guide/testing
+
 .. toctree::
     :caption: API Reference
     :maxdepth: 1

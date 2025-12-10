@@ -1,38 +1,32 @@
 image: continuumio/anaconda3
 
-
-
 # ===== TEST PyWake debian=====
-test_PyFuga:  # name the job what we like
+test_PyFuga:
   image: continuumio/anaconda3
-  stage:  # build, test, deploy defined by default [2]
+  stage:
     test
   coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
   script:
   - pip install -e . --user
   - pip install pytest-cov --user
   - pytest --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc --import-mode=importlib
-  tags:  # only runners with this tag can do the job [3]
+  tags:
   - ci-ubuntu
 
-
-  
 # ===== Check code style =====
-check_code_style:  # name the job what we like
-  stage:  # build, test, deploy defined by default [2]
+check_code_style:
+  stage:
     test
   script:
   - pip install -e . --user
   - pycodestyle --ignore=E203,E501,W503 .
-  tags:  # only runners with this tag can do the job [3]
+  tags:
   - python
 
-
-
-# ===== PyWake docs debian=====
-pages:  # name the job what we like
+# ===== PyWake docs debian =====
+pages:
   image: continuumio/anaconda3
-  stage:  # build, test, deploy defined by default [2]
+  stage:
     deploy
   script:
   - apt-get update

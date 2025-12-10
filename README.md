@@ -37,17 +37,32 @@ Tell people where they can go to for help. It can be any combination of an issue
 If you have ideas for releases in the future, it is a good idea to list them in the README.
 
 ## Contributing
-We use [pre-commit](https://pre-commit.com/) to keep imports and formatting consistent.
 
-```bash
-pip install pre-commit
-pre-commit install
-```
+- We use **Black** for formatting.
+  - Default line length: 120 characters.
+  - Use `#fmt: off` / `#fmt: on` sparingly for genuinely hard-to-read edge cases (such as jitted functions with many inputs).
 
-Then `isort` (and other hooks) will run automatically on staged files when you commit. You can also run all hooks manually with:
-```bash
-pre-commit run --all-files
-```
+- We use **Ruff** for linting and import sorting.
+  - Configuration is in `pyproject.toml`.
+  - Import order follow's Ruff's isort rules with `pyfuga` as first-party code.
+
+- We use [pre-commit](https://pre-commit.com/) to keep imports and formatting consistent.
+  ```bash
+  pip install pre-commit
+  pre-commit install
+  ```
+
+  Then `isort` (and other hooks) will run automatically on staged files when you commit. You can also run all hooks manually with:
+  ```bash
+  pre-commit run --all-files
+  ```
+
+- Recommended workflow:
+  - Install pre-commit: `pip install pre-commit`.
+  - Run `pre-commit install` once in your clone.
+  - Optionally, run `pre-commit run --all-files` before large refactors.
+
+- Type checking and editor diagnostics still use **Pylance** in VS Code.
 
 State if you are open to contributions and what your requirements are for accepting them.
 
