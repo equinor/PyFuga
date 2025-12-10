@@ -12,9 +12,25 @@ from pyfuga.trafalgar import Trafalgar
 from pyfuga.utils import ComplexXRDataset, get_beta_lst, get_kz0_lst
 
 
-def get_luts(folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh,
-             lut_vars=UVW_LT, nx=2048, ny=512, dx=None, dy=None,
-             jit=True, n_cpu=1):  # pragma: no cover
+def get_luts(
+    folder,
+    zeta0,
+    nkz0,
+    nbeta,
+    diameter,
+    zhub,
+    z0,
+    zi,
+    zlow,
+    zhigh,
+    lut_vars=UVW_LT,
+    nx=2048,
+    ny=512,
+    dx=None,
+    dy=None,
+    jit=True,
+    n_cpu=1,
+):  # pragma: no cover
     """Generate and save (or load if exists) Fuga look-up tables. This function performs the full path from
     input via preluts, fourier LUTs and LUTs to the final LUTs netcdf dataset
 
@@ -68,10 +84,10 @@ def get_luts(folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh,
     dx = dx or diameter / 4
     dy = dy or diameter / 16
 
-    preluts_id = f'Zeta0={zeta0:3.2e}_{nkz0}_{nbeta}'
+    preluts_id = f"Zeta0={zeta0:3.2e}_{nkz0}_{nbeta}"
 
-    L_vars = [v[0] for v in lut_vars if v[1] == 'L']
-    T_vars = [v[0] for v in lut_vars if v[1] == 'T']
+    L_vars = [v[0] for v in lut_vars if v[1] == "L"]
+    T_vars = [v[0] for v in lut_vars if v[1] == "T"]
     lut_vars_id = ""
     if L_vars:
         lut_vars_id += f"_{''.join(L_vars)}L"
@@ -89,26 +105,32 @@ def get_luts(folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh,
         zhigh = z0 * np.exp(high_level_out * ds)
         z_id = f"z{zlow:.1f}-{zhigh:.1f}"
 
-    fluts_id = preluts_id + f'_D{diameter}_zhub{zhub}_zi{zi}_z0={z0:.8f}_{z_id}{lut_vars_id}'
+    fluts_id = preluts_id + f"_D{diameter}_zhub{zhub}_zi{zi}_z0={z0:.8f}_{z_id}{lut_vars_id}"
 
-    luts_id = fluts_id + f'_nx{nx}_ny{ny}_dx{dx}_dy{dy}'
+    luts_id = fluts_id + f"_nx{nx}_ny{ny}_dx{dx}_dy{dy}"
 
-    luts_path = folder / f'LUTs_{luts_id}.nc'
+    luts_path = folder / f"LUTs_{luts_id}.nc"
     if not luts_path.exists():
         # LUTs are missing (run Trafalgar)
-        fluts_path = folder / f'fLUTs_{fluts_id}.nc'
+        fluts_path = folder / f"fLUTs_{fluts_id}.nc"
         if not fluts_path.exists():
             # FourierLUTs are missing (run lut)
 
-            preluts_path = folder / f'preLUTs_{preluts_id}.nc'
+            preluts_path = folder / f"preLUTs_{preluts_id}.nc"
             if not preluts_path.exists():
                 # Preluts are missing (run prelut)
-                preluts = PreLUTs.make_preluts(zeta0=zeta0,
-                                               kz0_lst=get_kz0_lst(nkz0, 1e-9, 1e-1),
-                                               beta_lst=get_beta_lst(nbeta),
-                                               kzmax=300, ds=ds, accgoal=0.0001, jit=jit, n_cpu=n_cpu)
-                preluts.attrs['nkz0'] = nkz0
-                preluts.attrs['nbeta'] = nbeta
+                preluts = PreLUTs.make_preluts(
+                    zeta0=zeta0,
+                    kz0_lst=get_kz0_lst(nkz0, 1e-9, 1e-1),
+                    beta_lst=get_beta_lst(nbeta),
+                    kzmax=300,
+                    ds=ds,
+                    accgoal=0.0001,
+                    jit=jit,
+                    n_cpu=n_cpu,
+                )
+                preluts.attrs["nkz0"] = nkz0
+                preluts.attrs["nbeta"] = nbeta
                 preluts.save(preluts_path)
             else:
                 preluts = PreLUTs.from_netcdf(preluts_path)
@@ -129,25 +151,46 @@ def get_luts(folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh,
         luts.to_netcdf(luts_path)
     else:
         luts = xr.load_dataset(luts_path)
-    luts.attrs['name'] = luts_path.stem
+    luts.attrs["name"] = luts_path.stem
     return luts
 
 
 def main():
-    if __name__ == '__main__':  # pragma: no cover
-        luts = get_luts(folder=Path(__file__).parent.parent, zeta0=0, nkz0=16, nbeta=32,
-                        diameter=80, zhub=70, z0=0.00001, zi=400, zlow=70, zhigh=70,
-                        lut_vars=['UL'])
+    if __name__ == "__main__":  # pragma: no cover
+        luts = get_luts(
+            folder=Path(__file__).parent.parent,
+            zeta0=0,
+            nkz0=16,
+            nbeta=32,
+            diameter=80,
+            zhub=70,
+            z0=0.00001,
+            zi=400,
+            zlow=70,
+            zhigh=70,
+            lut_vars=["UL"],
+        )
         import matplotlib.pyplot as plt
-        luts.UL.sel(z=70)[502:542, :40].plot(x='x')
-        plt.axis('equal')
-        plt.figure()
-        luts = get_luts(folder=Path(__file__).parent.parent, zeta0=0, nkz0=16, nbeta=32,
-                        diameter=80, zhub=70, z0=0.00001, zi=400, zlow=30, zhigh=110,
-                        lut_vars=['UL'])
 
-        luts.UL.sel(x=500)[:, :50].plot(x='y')
-        plt.axis('equal')
+        luts.UL.sel(z=70)[502:542, :40].plot(x="x")
+        plt.axis("equal")
+        plt.figure()
+        luts = get_luts(
+            folder=Path(__file__).parent.parent,
+            zeta0=0,
+            nkz0=16,
+            nbeta=32,
+            diameter=80,
+            zhub=70,
+            z0=0.00001,
+            zi=400,
+            zlow=30,
+            zhigh=110,
+            lut_vars=["UL"],
+        )
+
+        luts.UL.sel(x=500)[:, :50].plot(x="y")
+        plt.axis("equal")
         plt.show()
 
 

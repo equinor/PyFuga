@@ -5,7 +5,7 @@ from pyfuga.utils import jit
 from .constants import Cm1, Cm2
 
 
-@jit('double(double,double)')
+@jit("double(double,double)")
 def cdivkL(zeta0, kz0):
     """c/(k*L), c is a stability constant: depending on the stability (0, Cm1, Cm2)"""
     if abs(zeta0) < 1e-10:  # Neutral
@@ -17,48 +17,48 @@ def cdivkL(zeta0, kz0):
             return zeta0 / kz0 * Cm2
 
 
-@jit('double(double,double)')
+@jit("double(double,double)")
 def dphiu(kz, cdivkl):
     """
     Inverse of stability function phi_m
     for unstable conditions
     phi_m=(1+Cm1*z/L)**(1/4)
     """
-    return (1.0 + cdivkl * kz)**0.25
+    return (1.0 + cdivkl * kz) ** 0.25
 
 
-@jit('double(double,double,double)')
+@jit("double(double,double,double)")
 def psi(zeta0, kz, cdivkl):
     """Stability function -psi_m"""
     if zeta0 < 0:
         # Unstable: -psi_m=-ln(1/8*(1+phi_m**-2)*(1+phi_m**-1)**2)+2*atan(phi_m**-1)-pi/2
 
         aux = dphiu(kz, cdivkl)
-        aux2 = (1.0 + aux)**2 * (1 + aux**2)
+        aux2 = (1.0 + aux) ** 2 * (1 + aux**2)
         return np.log(8.0 / aux2) + 2.0 * np.arctan(cdivkl * kz / aux2)
     else:  # Stable: -psi_m=Cm2*z/L
         return cdivkl * kz
 
 
-@jit('double(double,double,double)')
+@jit("double(double,double,double)")
 def phi(zeta0, kz, cdivkl):
     """Stability function phi_m"""
     if zeta0 < 0:  # Unstable: phi_m=(1+Cm1*z/L)**(-1/4)
-        return (1.0 + cdivkl * kz)**(-0.25)
+        return (1.0 + cdivkl * kz) ** (-0.25)
     else:  # Stable: phi_m=1+Cm2*z/L
         return 1.0 + cdivkl * kz
 
 
-@jit('double[:](complex128[:,:],int32)')
+@jit("double[:](complex128[:,:],int32)")
 def complex_norm(arr, axis=0):
     """Compute the norm of a complex array along the first axis"""
-    return np.sqrt((np.abs(arr)**2).sum(0))
+    return np.sqrt((np.abs(arr) ** 2).sum(0))
 
 
-@jit('double(double,double,complex128[:,:],complex128[:,:])')
+@jit("double(double,double,complex128[:,:],complex128[:,:])")
 def get_new_h2(h, acc, Yerr, Y):
     """Get new step size based on error between integration estimates"""
     err = np.max(complex_norm(Yerr, axis=0) / complex_norm(Y, axis=0))
-    return np.maximum(np.minimum(0.9 * h * (acc / err)**(1 / 3), 4.0E-1), 1.0E-4)
+    return np.maximum(np.minimum(0.9 * h * (acc / err) ** (1 / 3), 4.0e-1), 1.0e-4)
 
     # return np.clip(0.9 * h * (acc / err)**(1 / 3), 1.0E-4, 4.0E-1)

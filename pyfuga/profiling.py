@@ -8,7 +8,7 @@ import numpy as np
 def timeit(func, min_time=0, min_runs=1, verbose=False, line_profile=False, profile_funcs=[]):
     @functools.wraps(func)
     def newfunc(*args, **kwargs):
-        if line_profile and getattr(sys, 'gettrace')() is None:  # pragma: no cover
+        if line_profile and sys.gettrace() is None:  # pragma: no cover
             lp_wrapper = line_timeit(func, profile_funcs)
             t = time.time()
             res, lp = lp_wrapper(*args, **kwargs)
@@ -27,23 +27,25 @@ def timeit(func, min_time=0, min_runs=1, verbose=False, line_profile=False, prof
                     break
 
             if verbose:  # pragma: no cover
-                if hasattr(func, '__name__'):
+                if hasattr(func, "__name__"):
                     fn = func.__name__
                 else:
                     fn = "Function"
-                print('%s: %f +/-%f (%d runs)' % (fn, np.mean(t_lst), np.std(t_lst), i + 1))
+                print("%s: %f +/-%f (%d runs)" % (fn, np.mean(t_lst), np.std(t_lst), i + 1))
             return res, t_lst
+
     return newfunc
 
 
 def line_timeit(func, profile_funcs=[]):  # pragma: no cover
     from line_profiler import LineProfiler
+
     lp = LineProfiler()
     lp.timer_unit = 1e-6
 
     for f in profile_funcs:
         lp.add_function(f)
-    if getattr(sys, 'gettrace')() is None:
+    if sys.gettrace() is None:
         lp_wrapper = lp(func)
     else:
         # in debug mode
@@ -62,11 +64,13 @@ def print_time(f):  # pragma: no cover
     >>> test()
     test            1.000s
     """
+
     def wrap(*args, **kwargs):
         t = time.time()
         res = f(*args, **kwargs)
         print("%-12s\t%.3fs" % (f.__name__, time.time() - t))
         return res
+
     w = wrap
     w.__name__ = f.__name__
     return w

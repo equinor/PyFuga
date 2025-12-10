@@ -47,7 +47,18 @@ packages = ["pyfuga"]
 [tool.black]
 line-length = 120
 target-version = ["py310"]
-exclude = "docs/_build"
+extend-exclude = """
+(
+  ^docs/_build/
+  | ^.pixi/
+  | ^.git/
+  | ^.pytest_cache/
+  | ^.ruff_cache/
+  | ^.mypy_cache/
+  | ^.vscode/
+  | ^.gitlab/
+)
+"""
 
 # --------------------------------------------------------------------------------------------------
 # Ruff configuration (replaces pylint + pycodestyle + isort)

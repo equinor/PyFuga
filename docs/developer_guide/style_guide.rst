@@ -2,7 +2,7 @@ Code style
 ==========
 
 - We use **Black** for formatting.
-    - Default line length: 88 characters.
+    - Default line length: 120 characters.
     - Use `# fmt: off` / `# fmt: on` sparingly for genuinely hard-to-read edge cases.
 
 - We use **Ruff** for linting and import sorting.

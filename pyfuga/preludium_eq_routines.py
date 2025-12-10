@@ -5,10 +5,10 @@ from pyfuga.preluts_generator import PrelutNode
 from pyfuga.utils import jit
 
 
-@jit('double(double,double,complex128[:,:],complex128[:,:])')
+@jit("double(double,double,complex128[:,:],complex128[:,:])")
 def get_new_h2_Preludium(h, acc, Yerr, Y):
     err = np.max(complex_norm(Yerr, axis=0) / complex_norm(Y, axis=0))
-    return np.maximum(np.minimum(0.9 * h * (acc * h / err)**(1 / 3), 4.0E-1), 1.0E-4)
+    return np.maximum(np.minimum(0.9 * h * (acc * h / err) ** (1 / 3), 4.0e-1), 1.0e-4)
 
     # return np.clip(0.9 * h * (acc / err)**(1 / 3), 1.0E-4, 4.0E-1)
 
@@ -47,9 +47,10 @@ class PrelutNodePreludium(PrelutNode):
             aux = np.linalg.norm(Yleft[:, j])
             Yleft[:, j] = Yleft[:, j] / aux
             node.Rleft[j, j] = aux
-            node.Rleft[j, j + 1:] = np.dot(np.conj(Yleft[:, j]), Yleft[:, j + 1:])
-            Yleft[:, j + 1:] = Yleft[:, j + 1:] - \
-                np.dot((Yleft[:, j] * np.conj(Yleft[:, j])[:, na]).T, Yleft[:, j + 1:])
+            node.Rleft[j, j + 1 :] = np.dot(np.conj(Yleft[:, j]), Yleft[:, j + 1 :])
+            Yleft[:, j + 1 :] = Yleft[:, j + 1 :] - np.dot(
+                (Yleft[:, j] * np.conj(Yleft[:, j])[:, na]).T, Yleft[:, j + 1 :]
+            )
 
         aux = np.linalg.norm(Yleft[:, -1])
         Yleft[:, -1] = Yleft[:, -1] / aux

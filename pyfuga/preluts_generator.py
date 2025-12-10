@@ -33,12 +33,12 @@ from pyfuga.utils import jit
 # where f is the wind turbine forcing.
 
 
-class PrelutNode():
+class PrelutNode:
     """
-        Represents a node in the preLUT generation process.
+    Represents a node in the preLUT generation process.
 
-        Encapsulates state variables and error accumulators at a station and provides
-        methods to reset errors and advance to the next node using a QR decomposition.
+    Encapsulates state variables and error accumulators at a station and provides
+    methods to reset errors and advance to the next node using a QR decomposition.
     """
 
     def __init__(self):
@@ -66,9 +66,9 @@ class PrelutNode():
 
     def GMRES(self):
         """
-            Perform QR decomposition of the final state matrix of a segment, Yright, to
-            get the first statement matrix of the next segment, Yleft. Store the
-            decomposition results (Rleft, Yleft, Rright) in the new node.
+        Perform QR decomposition of the final state matrix of a segment, Yright, to
+        get the first statement matrix of the next segment, Yleft. Store the
+        decomposition results (Rleft, Yleft, Rright) in the new node.
         """
         node = PrelutNode()
         Rleft, Yleft, Rright = gmres(self.Yright)
@@ -83,7 +83,7 @@ if utils.preludium_equivalent:
     from pyfuga.preludium_eq_routines import get_new_h2_Preludium as get_new_h2
 
 
-@jit('Tuple((complex128[:,:],complex128[:,:],complex128[:,:]))(complex128[:,:])')
+@jit("Tuple((complex128[:,:],complex128[:,:],complex128[:,:]))(complex128[:,:])")
 def gmres(Yright):
     """
     Perform a QR decomposition of an input matrix with columns representing linearly independent vectors.
@@ -105,21 +105,27 @@ class PrelutNodeFirst(PrelutNode):
 
     Initialises the node with boundary conditions based on the phase angle (beta) and station spacing (ds).
     """
+
     def __init__(self, beta, ds):
         """Initialise the first node with the prescribed boundary conditions."""
         PrelutNode.__init__(self)
         self.set_s(sleft=0, sright=ds)
         sinbeta, cosbeta = np.sin(beta), np.cos(beta)
-        self.Yleft = np.array([[-sinbeta, 0, cosbeta, 0, 0, 0],
-                               [cosbeta, 0, sinbeta, 0, 0, 0],
-                               [0, 0, 0, 0, 1, 0],
-                               [0, -sinbeta, 0, cosbeta, 0, 0],
-                               [0, cosbeta, 0, sinbeta, 0, 0],
-                               [0, 0, 0, 0, 0, 1]], dtype=np.complex128).T
+        self.Yleft = np.array(
+            [
+                [-sinbeta, 0, cosbeta, 0, 0, 0],
+                [cosbeta, 0, sinbeta, 0, 0, 0],
+                [0, 0, 0, 0, 1, 0],
+                [0, -sinbeta, 0, cosbeta, 0, 0],
+                [0, cosbeta, 0, sinbeta, 0, 0],
+                [0, 0, 0, 0, 0, 1],
+            ],
+            dtype=np.complex128,
+        ).T
         self.Rleft = np.eye(6, dtype=np.complex128)
 
 
-class PreLUTGenerator():
+class PreLUTGenerator:
     """
     Orchestrates the generation of preliminary look-up tables (preLUTs).
 
@@ -139,6 +145,7 @@ class PreLUTGenerator():
     - Orthonormalisation is performed at each station and the results are appended to a list.
     - Uses second-order Runge-Kutta methods.
     """
+
     def __init__(self, zeta0, kz0, beta, kzmax, ds, accgoal):
         """
         Initialise the preLUT generator with simulation parameters.
@@ -190,7 +197,7 @@ class PreLUTGenerator():
             while True:
                 dx = (1.0 - x**4 - self.cdivkL * x**5) / (4.0 * x**3 + self.cdivkL * 5.0 * x**4)
                 x = x + dx
-                if (abs(dx / x) < 1.0e-14):
+                if abs(dx / x) < 1.0e-14:
                     break
             # kzm = x
             sm = np.log(x / self.kz0)
@@ -218,7 +225,7 @@ class PreLUTGenerator():
         h = np.sqrt(self.acc * 6 / 3.125)
         self.lastkz = self.kz0
 
-        yerr = self.rk2(first, first.Yleft, 0., h, COORD_T)
+        yerr = self.rk2(first, first.Yleft, 0.0, h, COORD_T)
         first.reset_dyx()
         h = get_new_h2(h, self.acc, yerr, first.Yright)
         sm = self.sm()
@@ -229,7 +236,7 @@ class PreLUTGenerator():
         # equal(first.Yleft, f'yleft{0:6.3f}')
         segment, h = self.solve2(first, h, yerr, self.acc, COORD_T)
         # equal(segment.Yright, f'yright{0:6.3f}')
-        for (s1, s2) in tqdm(list(zip(s_lst[1:], s_lst[2:])), disable=1):
+        for s1, s2 in tqdm(list(zip(s_lst[1:], s_lst[2:])), disable=1):
             self.nodes.append(segment)
             segment = segment.get_next(s1, s2)
 
@@ -276,17 +283,31 @@ class PreLUTGenerator():
         #     else:
         #         return [getattr(node.dat, k)] + get_res(node.next, k)
         # print(self.counter)
-        var_names = ['Yleft', 'Rleft', 'Rright',
-                     'dyxu0', 'dyxu1', 'dyxv0', 'dyxv1', 'dyxw0', 'dyxw1',
-                     'sleft', 'sright']
+        var_names = [
+            "Yleft",
+            "Rleft",
+            "Rright",
+            "dyxu0",
+            "dyxu1",
+            "dyxv0",
+            "dyxv1",
+            "dyxw0",
+            "dyxw1",
+            "sleft",
+            "sright",
+        ]
         var_values = [np.moveaxis([getattr(n, k) for n in self.nodes], 1, 2) for k in var_names[:3]] + [
             np.array([getattr(n, k) for n in self.nodes]) for k in var_names[3:]
         ]
-        return PreLUT({**{n: (('i', 'j', 'k')[:len(v.shape)], v)
-                          for n, v in zip(var_names, var_values)},
-                       'beta': self.beta, 'kz0': self.kz0,
-                       **{'level': (('i',), np.round(var_values[-2] / self.ds, 3).astype(int))}},
-                      attrs={'ds': self.ds, 'kzmax': self.kzmax, 'zeta0': self.zeta0, 'accgoal': self.accgoal})
+        return PreLUT(
+            {
+                **{n: (("i", "j", "k")[: len(v.shape)], v) for n, v in zip(var_names, var_values)},
+                "beta": self.beta,
+                "kz0": self.kz0,
+                **{"level": (("i",), np.round(var_values[-2] / self.ds, 3).astype(int))},
+            },
+            attrs={"ds": self.ds, "kzmax": self.kzmax, "zeta0": self.zeta0, "accgoal": self.accgoal},
+        )
 
     def rk2(self, node, y, x, h, j):
         """
@@ -297,8 +318,24 @@ class PreLUTGenerator():
             j: Coordinate system indicator (COORD_T for t = u0 * kappa, COORD_S for s = kz).
         """
         Yright, yerr = rk2(
-            y, x, h, j, self.kz0, self.psi0, self.lastkz, self.zeta0, self.cdivkL, self.cosbeta, self.sinbeta,
-            node.dyxu0, node.dyxv0, node.dyxw0, node.dyxu1, node.dyxv1, node.dyxw1)
+            y,
+            x,
+            h,
+            j,
+            self.kz0,
+            self.psi0,
+            self.lastkz,
+            self.zeta0,
+            self.cdivkL,
+            self.cosbeta,
+            self.sinbeta,
+            node.dyxu0,
+            node.dyxv0,
+            node.dyxw0,
+            node.dyxu1,
+            node.dyxv1,
+            node.dyxw1,
+        )
         node.Yright = Yright
         return yerr
 
@@ -321,10 +358,28 @@ class PreLUTGenerator():
         # return self.solve2_old(p, h, yerr, acc, j)
         while True:
             sright = p.sright
-            Yright, h, s2, lastkz = solve2(p.Yleft, p.sleft, sright, p.dyxu0, p.dyxv0,
-                                           p.dyxw0, p.dyxu1, p.dyxv1, p.dyxw1, h, yerr, acc, j,
-                                           self.kz0, self.lastkz, self.zeta0, self.cdivkL, self.psi0,
-                                           self.cosbeta, self.sinbeta)
+            Yright, h, s2, lastkz = solve2(
+                p.Yleft,
+                p.sleft,
+                sright,
+                p.dyxu0,
+                p.dyxv0,
+                p.dyxw0,
+                p.dyxu1,
+                p.dyxv1,
+                p.dyxw1,
+                h,
+                yerr,
+                acc,
+                j,
+                self.kz0,
+                self.lastkz,
+                self.zeta0,
+                self.cdivkL,
+                self.psi0,
+                self.cosbeta,
+                self.sinbeta,
+            )
             self.lastkz = lastkz
             p.Yright = Yright
 
@@ -383,20 +438,20 @@ def get_kz(t, zeta0, kz0, lastkz, psi0, cdivkL):
             x = np.exp(b)
         else:
             aux = dphiu(lastkz, cdivkL)
-            x = (cdivkL * lastkz) / ((aux**2 + 1) * (1 + aux)**2)
-            dx = -(2 * np.arctan(x) + np.log(x) - b) * x * (1 + x**2) / (x + 1)**2
+            x = (cdivkL * lastkz) / ((aux**2 + 1) * (1 + aux) ** 2)
+            dx = -(2 * np.arctan(x) + np.log(x) - b) * x * (1 + x**2) / (x + 1) ** 2
         while abs(dx / x) > 1e-14:
             # print(dx)
-            dx = -(2 * np.arctan(x) + np.log(x) - b) * x * (1 + x**2) / (x + 1)**2
+            dx = -(2 * np.arctan(x) + np.log(x) - b) * x * (1 + x**2) / (x + 1) ** 2
             x = x + dx
             if x < 0:  # pragma: no cover
                 x = np.exp(b)
                 dx = x
-        kz = 8 * x * (1 + x**2) / (cdivkL * (1 - x)**4)
+        kz = 8 * x * (1 + x**2) / (cdivkL * (1 - x) ** 4)
     return kz
 
 
-@jit('double(double,double,double,double)')
+@jit("double(double,double,double,double)")
 def u0(kz, kz0, psi, psi0):
     """
     Compute the wind speed from Monin-Obukhov Similarity Theory (MOST) normalised by
@@ -457,78 +512,93 @@ def getM(j, t, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta):
 
     if j == COORD_T:
 
-        return np.array([
-            # M(1,2)=cmplx(-kK**2,kKcos*u)/kappa2
-            # M(1,5)=cmplx(0.0E0,-kKcos/kappa)
-            # M(1,6)=cmplx(0.0E0,-2.0E0*dKdz*kKcos/kappa/pscale)
-            [0, complex(-kK**2, kKcos * u) / kappa2, 0, 0,
-             complex(0, -kKcos / kappa),
-             complex(0, -2 * dKdz * kKcos / kappa)],
-            # M(2,1)=cmplx(-1.0E0,0.0E0)
-            # M(2,6)=cmplx(0.0E0,-kKcos/pscale)
-            [-1, 0, 0, 0, 0,
-             complex(0, -kKcos)],
-            # M(3,4)=M(1,2)
-            # M(3,5)=cmplx(0.0E0,-kKsin/kappa)
-            # M(3,6)=cmplx(0.0E0,-2.0E0*dKdz*kKsin/kappa/pscale)
-            [0, 0, 0, complex(-kK**2, kKcos * u) / kappa2,
-             complex(0, - kKsin / kappa),
-             complex(0, - 2 * dKdz * kKsin / kappa)],
-            # M(4,3)=cmplx(-1.0E0,0.0E0)
-            # M(4,6)=cmplx(0.0E0,-kKsin/pscale)
-            [0, 0, -1, 0, 0,
-             complex(0, -kKsin)],
-            # M(5,2)=cmplx(-1.0E0,-dKdz*kKcos)/kappa2
-            # M(5,4)=cmplx(0.0E0,-dKdz*kKsin/kappa2)
-            # M(5,6)=cmplx(kK**2,-kKcos*u)/(pscale*kappa)
-            [0, complex(-1, - dKdz * kKcos) / kappa2, 0,
-             complex(0, -dKdz * kKsin / kappa2), 0,
-             complex(kK**2, - kKcos * u) / (kappa)],
-            # M(6,2)=cmplx(0.0E0,kKcos/kappa2*pscale)
-            # M(6,4)=cmplx(0.0E0,kKsin/kappa2*pscale)
-            [0, complex(0, kKcos / kappa2), 0,
-             complex(0, kKsin / kappa2), 0, 0]])
+        return np.array(
+            [
+                # M(1,2)=cmplx(-kK**2,kKcos*u)/kappa2
+                # M(1,5)=cmplx(0.0E0,-kKcos/kappa)
+                # M(1,6)=cmplx(0.0E0,-2.0E0*dKdz*kKcos/kappa/pscale)
+                [
+                    0,
+                    complex(-(kK**2), kKcos * u) / kappa2,
+                    0,
+                    0,
+                    complex(0, -kKcos / kappa),
+                    complex(0, -2 * dKdz * kKcos / kappa),
+                ],
+                # M(2,1)=cmplx(-1.0E0,0.0E0)
+                # M(2,6)=cmplx(0.0E0,-kKcos/pscale)
+                [-1, 0, 0, 0, 0, complex(0, -kKcos)],
+                # M(3,4)=M(1,2)
+                # M(3,5)=cmplx(0.0E0,-kKsin/kappa)
+                # M(3,6)=cmplx(0.0E0,-2.0E0*dKdz*kKsin/kappa/pscale)
+                [
+                    0,
+                    0,
+                    0,
+                    complex(-(kK**2), kKcos * u) / kappa2,
+                    complex(0, -kKsin / kappa),
+                    complex(0, -2 * dKdz * kKsin / kappa),
+                ],
+                # M(4,3)=cmplx(-1.0E0,0.0E0)
+                # M(4,6)=cmplx(0.0E0,-kKsin/pscale)
+                [0, 0, -1, 0, 0, complex(0, -kKsin)],
+                # M(5,2)=cmplx(-1.0E0,-dKdz*kKcos)/kappa2
+                # M(5,4)=cmplx(0.0E0,-dKdz*kKsin/kappa2)
+                # M(5,6)=cmplx(kK**2,-kKcos*u)/(pscale*kappa)
+                [
+                    0,
+                    complex(-1, -dKdz * kKcos) / kappa2,
+                    0,
+                    complex(0, -dKdz * kKsin / kappa2),
+                    0,
+                    complex(kK**2, -kKcos * u) / (kappa),
+                ],
+                # M(6,2)=cmplx(0.0E0,kKcos/kappa2*pscale)
+                # M(6,4)=cmplx(0.0E0,kKsin/kappa2*pscale)
+                [0, complex(0, kKcos / kappa2), 0, complex(0, kKsin / kappa2), 0, 0],
+            ]
+        )
 
     else:  # j == COORD_S:
-        return np.array([
-            # M(1,2)=dcmplx(-1.0D0,cosbeta*u/kK)
-            # M(1,5)=dcmplx(0.0D0,-cosbeta)
-            # M(1,6)=dcmplx(0.0D0,-2.0D0*dKdz*cosbeta/pscale)
-            [0, complex(-1, cosbeta * u / kK), 0, 0,
-             complex(0, -cosbeta),
-             complex(0, -2 * dKdz * cosbeta)],
-
-            # M(2,1)=-1.0D0
-            # M(2,2)=dKdz/kK
-            # M(2,6)=dcmplx(0.0D0,-kK*cosbeta/pscale)
-            [-1, dKdz / kK, 0, 0, 0,
-             complex(0, -kK * cosbeta)],
-
-            # M(3,4)=dcmplx(-1.0D0,cosbeta*u/kK)
-            # M(3,5)=dcmplx(0.0D0,-sinbeta)
-            # M(3,6)=dcmplx(0.0D0,-2.0D0*dKdz*sinbeta/pscale)
-            [0, 0, 0, complex(-1, cosbeta * u / kK),
-             complex(0, - sinbeta),
-             complex(0, - 2 * dKdz * sinbeta)],
-            # M(4,3)=-1.0D0
-            # M(4,4)=M(2,2)
-            # M(4,6)=dcmplx(0.0D0,-kK*sinbeta/pscale)
-            [0, 0, -1, dKdz / kK, 0,
-             complex(0, -kK * sinbeta)],
-
-            # M(5,2)=dcmplx(-1.0D0/kK**2,dKdz/kK*cosbeta)
-            # M(5,4)=dcmplx(0.0D0,-dKdz/kK*sinbeta)
-            # M(5,6)=dcmplx(kK,-cosbeta*u)
-            [0, complex(-1 / kK**2, dKdz / kK * cosbeta), 0,
-             complex(0, -dKdz / kK * sinbeta), 0,
-             complex(kK, - cosbeta * u)],
-            # M(6,2)=dcmplx(0.0D0,cosbeta*pscale/kK)
-            # M(6,4)=dcmplx(0.0D0,sinbeta*pscale/kK)
-            [0, complex(0, cosbeta / kK), 0,
-             complex(0, sinbeta / kK), 0, 0]])
+        return np.array(
+            [
+                # M(1,2)=dcmplx(-1.0D0,cosbeta*u/kK)
+                # M(1,5)=dcmplx(0.0D0,-cosbeta)
+                # M(1,6)=dcmplx(0.0D0,-2.0D0*dKdz*cosbeta/pscale)
+                [0, complex(-1, cosbeta * u / kK), 0, 0, complex(0, -cosbeta), complex(0, -2 * dKdz * cosbeta)],
+                # M(2,1)=-1.0D0
+                # M(2,2)=dKdz/kK
+                # M(2,6)=dcmplx(0.0D0,-kK*cosbeta/pscale)
+                [-1, dKdz / kK, 0, 0, 0, complex(0, -kK * cosbeta)],
+                # M(3,4)=dcmplx(-1.0D0,cosbeta*u/kK)
+                # M(3,5)=dcmplx(0.0D0,-sinbeta)
+                # M(3,6)=dcmplx(0.0D0,-2.0D0*dKdz*sinbeta/pscale)
+                [0, 0, 0, complex(-1, cosbeta * u / kK), complex(0, -sinbeta), complex(0, -2 * dKdz * sinbeta)],
+                # M(4,3)=-1.0D0
+                # M(4,4)=M(2,2)
+                # M(4,6)=dcmplx(0.0D0,-kK*sinbeta/pscale)
+                [0, 0, -1, dKdz / kK, 0, complex(0, -kK * sinbeta)],
+                # M(5,2)=dcmplx(-1.0D0/kK**2,dKdz/kK*cosbeta)
+                # M(5,4)=dcmplx(0.0D0,-dKdz/kK*sinbeta)
+                # M(5,6)=dcmplx(kK,-cosbeta*u)
+                [
+                    0,
+                    complex(-1 / kK**2, dKdz / kK * cosbeta),
+                    0,
+                    complex(0, -dKdz / kK * sinbeta),
+                    0,
+                    complex(kK, -cosbeta * u),
+                ],
+                # M(6,2)=dcmplx(0.0D0,cosbeta*pscale/kK)
+                # M(6,4)=dcmplx(0.0D0,sinbeta*pscale/kK)
+                [0, complex(0, cosbeta / kK), 0, complex(0, sinbeta / kK), 0, 0],
+            ]
+        )
 
 
-@jit('complex128[:,:](int32,double,double, complex128[:,:],complex128[:,:],double,double,double,double,double,double,double)')
+@jit(
+    "complex128[:,:](int32,double,double, complex128[:,:],complex128[:,:],double,double,double,double,double,double,double)"
+)
 def rk2step(j, t, h, Ay, y1, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta):
     r"""
     Perform a single integration step of the 2nd-order Runge-Kutta (RK2) method. Refer to "Numerical Recipes" section
@@ -563,10 +633,10 @@ C3 = 4.0 / 6.0
 C4 = 2.0 / 6.0
 
 
-@jit('Tuple((complex128[:,:],complex128[:,:]))(complex128[:,:], double,double,int64,double,double,double,double,double,double,double,complex128[:],complex128[:],complex128[:],complex128[:],complex128[:],complex128[:])')
-def rk2(y, x, h, j, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta,
-        dyxu0, dyxv0, dyxw0, dyxu1, dyxv1, dyxw1
-        ):
+@jit(
+    "Tuple((complex128[:,:],complex128[:,:]))(complex128[:,:], double,double,int64,double,double,double,double,double,double,double,complex128[:],complex128[:],complex128[:],complex128[:],complex128[:],complex128[:])"
+)
+def rk2(y, x, h, j, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta, dyxu0, dyxv0, dyxw0, dyxu1, dyxv1, dyxw1):
     """
     Perform a integration step using the Modified Midpoint method, as described in Numerical Recipes, §17.3.1, with two
     substeps (n=2). The estimate is fourth-order accurate, the same as the fourth-order Runge-Kutta method, but
@@ -598,12 +668,12 @@ def rk2(y, x, h, j, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta,
     Ay = np.dot(np.ascontiguousarray(A), np.ascontiguousarray(y))
 
     y2 = rk2step(j, x, h, Ay, y, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
-    y3 = rk2step(j, x, h * .5, Ay, y, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
+    y3 = rk2step(j, x, h * 0.5, Ay, y, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
 
-    A = getM(j, x + h * .5, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
+    A = getM(j, x + h * 0.5, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
     Ay = np.dot(np.ascontiguousarray(A), np.ascontiguousarray(y3))
 
-    y4 = rk2step(j, x + h * .5, h * .5, Ay, y3, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
+    y4 = rk2step(j, x + h * 0.5, h * 0.5, Ay, y3, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
 
     yout = B1 * y4 + B2 * y2
     yerr = yout - y4
@@ -612,7 +682,7 @@ def rk2(y, x, h, j, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta,
     if j == COORD_T:
         # kz1, kzm, kz2 = self.get_kz(x + np.array([0, .5, 1]) * h)
 
-        kz1, kzm, kz2 = [get_kz(x + s * h, zeta0, kz0, lastkz, psi0, cdivkL) for s in [0., .5, 1.]]
+        kz1, kzm, kz2 = [get_kz(x + s * h, zeta0, kz0, lastkz, psi0, cdivkL) for s in [0.0, 0.5, 1.0]]
 
         if zeta0 < 0:
             # Unstable
@@ -651,30 +721,53 @@ def rk2(y, x, h, j, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta,
         a1 = phi(zeta0, x, cdivkL)
         am = phi(zeta0, xm, cdivkL)
         a2 = phi(zeta0, x2, cdivkL)
-        dyxu0 += h * \
-            np.conj(a1 * C1 * y[1, :] / x + am * C3 * y3[1, :] / xm + a2 * (C4 * y4[1, :] + C2 * y2[1, :]) / x2)
-        dyxv0 += h * \
-            np.conj(a1 * C1 * y[3, :] / x + am * C3 * y3[3, :] / xm + a2 * (C4 * y4[3, :] + C2 * y2[3, :]) / x2)
-        dyxw0 += kappa * h * \
-            np.conj(C1 * y[5, :] + C3 * y3[5, :] + C4 * y4[5, :] + C2 * y2[5, :]) * kappa
-        dyxu1 += h * \
-            np.conj((a1 * C1 * y[1, :] + am * C3 * y3[1, :]) + a2 * (C4 * y4[1, :] + C2 * y2[1, :]))
-        dyxv1 += h * \
-            np.conj((a1 * C1 * y[3, :] + am * C3 * y3[3, :]) + a2 * (C4 * y4[3, :] + C2 * y2[3, :]))
-        dyxw1 += kappa * h * \
-            np.conj((x * C1 * y[5, :] + xm * C3 * y3[5, :]) + x2 * (C4 * y4[5, :] + a2 * C2 * y2[5, :])) * kappa
+        dyxu0 += h * np.conj(
+            a1 * C1 * y[1, :] / x + am * C3 * y3[1, :] / xm + a2 * (C4 * y4[1, :] + C2 * y2[1, :]) / x2
+        )
+        dyxv0 += h * np.conj(
+            a1 * C1 * y[3, :] / x + am * C3 * y3[3, :] / xm + a2 * (C4 * y4[3, :] + C2 * y2[3, :]) / x2
+        )
+        dyxw0 += kappa * h * np.conj(C1 * y[5, :] + C3 * y3[5, :] + C4 * y4[5, :] + C2 * y2[5, :]) * kappa
+        dyxu1 += h * np.conj((a1 * C1 * y[1, :] + am * C3 * y3[1, :]) + a2 * (C4 * y4[1, :] + C2 * y2[1, :]))
+        dyxv1 += h * np.conj((a1 * C1 * y[3, :] + am * C3 * y3[3, :]) + a2 * (C4 * y4[3, :] + C2 * y2[3, :]))
+        dyxw1 += (
+            kappa
+            * h
+            * np.conj((x * C1 * y[5, :] + xm * C3 * y3[5, :]) + x2 * (C4 * y4[5, :] + a2 * C2 * y2[5, :]))
+            * kappa
+        )
     return Yright, yerr
 
 
-c2 = 'complex128[:,:],'
-c1 = 'complex128[:],'
-d = 'double,'
+c2 = "complex128[:,:],"
+c1 = "complex128[:],"
+d = "double,"
 dyx = c1 * 6
 
 
-@jit(f'''Tuple(({c2}{d}{d}{d}))({c2}{d}{d}{dyx}{d}{c2}{d}int32,{d}{d}{d}{d}{d}{d}{d})''')
-def solve2(Yleft, sleft, sright, dyxu0, dyxv0, dyxw0, dyxu1, dyxv1, dyxw1, h, yerr, acc, j,
-           kz0, lastkz, zeta0, cdivkL, psi0, cosbeta, sinbeta):
+@jit(f"""Tuple(({c2}{d}{d}{d}))({c2}{d}{d}{dyx}{d}{c2}{d}int32,{d}{d}{d}{d}{d}{d}{d})""")
+def solve2(
+    Yleft,
+    sleft,
+    sright,
+    dyxu0,
+    dyxv0,
+    dyxw0,
+    dyxu1,
+    dyxv1,
+    dyxw1,
+    h,
+    yerr,
+    acc,
+    j,
+    kz0,
+    lastkz,
+    zeta0,
+    cdivkL,
+    psi0,
+    cosbeta,
+    sinbeta,
+):
     """
     Adjust the integration step to satisfy the accuracy requirement.
 
@@ -723,12 +816,29 @@ def solve2(Yleft, sleft, sright, dyxu0, dyxv0, dyxw0, dyxu1, dyxv1, dyxw1, h, ye
     counter = 0
     while True:
         counter += 1
-        if (1.1 * h + t > t2):
+        if 1.1 * h + t > t2:
             # step, h, big enough to reach t2 -> take the final step
             h = t2 - t
             # dyerr = self.rk2(p, Y1, t, h, j)
-            Yright, dyerr = rk2(Y1, t, h, j, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta,
-                                dyxu0, dyxv0, dyxw0, dyxu1, dyxv1, dyxw1)
+            Yright, dyerr = rk2(
+                Y1,
+                t,
+                h,
+                j,
+                kz0,
+                psi0,
+                lastkz,
+                zeta0,
+                cdivkL,
+                cosbeta,
+                sinbeta,
+                dyxu0,
+                dyxv0,
+                dyxw0,
+                dyxu1,
+                dyxv1,
+                dyxw1,
+            )
 
             yerr += dyerr
             h = get_new_h2(h, acc, dyerr, Yright)
@@ -743,8 +853,25 @@ def solve2(Yleft, sleft, sright, dyxu0, dyxv0, dyxw0, dyxu1, dyxv1, dyxw1, h, ye
         else:
             # take step, h
             # dyerr = self.rk2(p, Y1, t, h, j)  # here Yright is updated, only Yright and deltaBs
-            Yright, dyerr = rk2(Y1, t, h, j, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta,
-                                dyxu0, dyxv0, dyxw0, dyxu1, dyxv1, dyxw1)
+            Yright, dyerr = rk2(
+                Y1,
+                t,
+                h,
+                j,
+                kz0,
+                psi0,
+                lastkz,
+                zeta0,
+                cdivkL,
+                cosbeta,
+                sinbeta,
+                dyxu0,
+                dyxv0,
+                dyxw0,
+                dyxu1,
+                dyxv1,
+                dyxw1,
+            )
 
             yerr += dyerr
             Y1 = Yright.copy()

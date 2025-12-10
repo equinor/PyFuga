@@ -8,10 +8,12 @@ from pyfuga.trafalgar import Trafalgar
 from .test_files import tfp
 
 
-@pytest.mark.parametrize('var', ['UL', 'UT'])
+@pytest.mark.parametrize("var", ["UL", "UT"])
 def test_trafalgar(var):
-    fourier_lut = read_lut_file(tfp + f'D080.0000_zH070.0000_2_5/Z0=0.00001000Zi=00400Zeta0=0.00E+00/{var}0314.lut',
-                                prelut_folder=tfp + 'preLUTs_Zeta0=0.00E+00_2_5')
+    fourier_lut = read_lut_file(
+        tfp + f"D080.0000_zH070.0000_2_5/Z0=0.00001000Zi=00400Zeta0=0.00E+00/{var}0314.lut",
+        prelut_folder=tfp + "preLUTs_Zeta0=0.00E+00_2_5",
+    )
 
     fuga_luts = Trafalgar(fourier_lut, nx=512, ny=128, verbose=False).make_luts(3)
 

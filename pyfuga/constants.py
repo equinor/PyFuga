@@ -2,7 +2,7 @@
 # Prelut constants
 # ======================================================================================================================
 
-Cm2 = 5.  # MO Stability constant in phi_m (stable)
+Cm2 = 5.0  # MO Stability constant in phi_m (stable)
 Cm1 = -19.0  # MO Stability constant in phi_m (unstable) Hogstrom (1988)
 n_eq = 6  # ! Number of equations
 kappa = 0.4  # Von Karman constant
@@ -20,7 +20,7 @@ zminlevel = 1.0  # First height level in output
 # ======================================================================================================================
 # Other constants
 # ======================================================================================================================
-UVW_LT = ['UL', 'UT', 'VL', 'VT', 'WL', 'WT', 'PL', 'PT']
+UVW_LT = ["UL", "UT", "VL", "VT", "WL", "WT", "PL", "PT"]
 
 # ======================================================================================================================
 # Coordinate systems

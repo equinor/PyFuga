@@ -8,20 +8,20 @@ Cm2 = -19.3
 
 def phi(zeta):
     zeta = np.atleast_1d(zeta)
-    return np.where(zeta <= 0, (1 + Cm2 * zeta)**-.25, 1 + Cm1 * zeta)
+    return np.where(zeta <= 0, (1 + Cm2 * zeta) ** -0.25, 1 + Cm1 * zeta)
 
 
-def psi(zeta, unstable=''):
+def psi(zeta, unstable=""):
     zeta = np.atleast_1d(zeta)
     ind = zeta < 0
     psi_n = np.zeros(zeta.shape)
-    aux = phi(zeta)**-1
-    if unstable == 'Wilson':
-        psi_n[ind] = 3 * np.log((1 + (1 + 3.6 * np.abs(zeta[ind])**(2 / 3))**.5))
+    aux = phi(zeta) ** -1
+    if unstable == "Wilson":
+        psi_n[ind] = 3 * np.log(1 + (1 + 3.6 * np.abs(zeta[ind]) ** (2 / 3)) ** 0.5)
     else:
-        aux2 = (1.0 + aux[ind])**2 * (1 + aux[ind]**2)
+        aux2 = (1.0 + aux[ind]) ** 2 * (1 + aux[ind] ** 2)
         psi_n[ind] = -np.log(8.0 / aux2) - 2.0 * np.arctan(Cm2 * zeta[ind] / aux2)
-    psi_n[~ind] = 1 - aux[~ind]**-1
+    psi_n[~ind] = 1 - aux[~ind] ** -1
     psi_n[zeta == 0] = 0
     return psi_n
 

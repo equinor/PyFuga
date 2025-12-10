@@ -9,7 +9,7 @@ from pyfuga.constants import kappa
 M_PI = 3.141592653589793
 
 
-class Trafalgar():
+class Trafalgar:
     def __init__(self, fourier_luts, nx=2048, ny=512, dx=20, dy=5, sigmax=80, sigmay=20, verbose=True):
 
         self.fourier_luts = fourier_luts
@@ -82,7 +82,7 @@ class Trafalgar():
         sign_dict = {"UL": 1, "VL": -1, "WL": 1, "PL": 1, "UT": -1, "VT": 1, "WT": -1, "PT": -1}
         D, zhub, z0 = fluts.diameter.item(), fluts.hubheight.item(), fluts.z0.item()
         luts_dict = {}
-        for var, sign in tqdm(sign_dict.items(), desc='Trafalgar:', disable=(not self.verbose)):
+        for var, sign in tqdm(sign_dict.items(), desc="Trafalgar:", disable=(not self.verbose)):
             if var in fluts:
 
                 kx = self.doKvectorFIT(self.nx, self.dx, 4)
@@ -94,9 +94,9 @@ class Trafalgar():
                 by = M_PI / (self.dy * self.ny) / 4
                 U = np.log(zhub / z0) / kappa
                 fuzz = U * bx * by * self.nx * self.ny / (M_PI * M_PI)
-                force = np.exp(-0.5 * (self.sigmay * ky[na])**2) * np.exp(-0.5 * (self.sigmax * kx[:, na])**2)
+                force = np.exp(-0.5 * (self.sigmay * ky[na]) ** 2) * np.exp(-0.5 * (self.sigmax * kx[:, na]) ** 2)
 
-                klen = np.sqrt(kx[:, na]**2 + ky[na]**2)
+                klen = np.sqrt(kx[:, na] ** 2 + ky[na] ** 2)
 
                 angleTab = np.arctan2(ky[na], kx[:, na])
                 kz0Tab = np.log(z0 * klen)
@@ -115,17 +115,18 @@ class Trafalgar():
                     field[0, 0] = k0 * force[0, 0] * fuzz
 
                     luts.append(self.FITFIT(field, sign, kx, ky).real)
-                luts_dict[var] = (('z', 'x', 'y'), luts)
+                luts_dict[var] = (("z", "x", "y"), luts)
                 self.ny0 = self.ny // 2
 
-        return xr.Dataset({**luts_dict,  # UL, UT, ...
-                           **{k: self.fourier_luts[k] for k in ['diameter', 'hubheight', 'z0']}},
-                          coords={'x': self.x_lst, 'y': self.y_lst, 'z': np.atleast_1d(fluts.z)},
-                          attrs=self.fourier_luts.attrs)
+        return xr.Dataset(
+            {**luts_dict, **{k: self.fourier_luts[k] for k in ["diameter", "hubheight", "z0"]}},  # UL, UT, ...
+            coords={"x": self.x_lst, "y": self.y_lst, "z": np.atleast_1d(fluts.z)},
+            attrs=self.fourier_luts.attrs,
+        )
 
     def doKvectorFIT(self, n, delta, NNN):
         c = M_PI / (n * delta) / NNN  # n*delta =nx*dx
-        return c * (np.arange(n) + .5)
+        return c * (np.arange(n) + 0.5)
 
     def FITFIT(self, field, sign, kx, ky):
         nx, dx, ny, dy = self.nx, self.dx, self.ny, self.dy
@@ -135,23 +136,23 @@ class Trafalgar():
         abx = dx * bx
         aby = dy * by
 
-        i0 = -nx / 4.
+        i0 = -nx / 4.0
 
         i = np.arange(nx)
-        phix = np.exp(1j * abx * (i * (i / 2. + i0)))
-        psix = np.exp(1j * abx / 2. * (i + i * i + i0))
+        phix = np.exp(1j * abx * (i * (i / 2.0 + i0)))
+        psix = np.exp(1j * abx / 2.0 * (i + i * i + i0))
 
         j = np.arange(ny)
-        phiy = np.exp(1j * aby * (j * j / 2.))
-        psiy = np.exp(1j * aby / 2. * (j + j * j))
+        phiy = np.exp(1j * aby * (j * j / 2.0))
+        psiy = np.exp(1j * aby / 2.0 * (j + j * j))
 
         i = np.arange(nx + 1)
 
-        auxx = np.exp(-1j * abx / 2. * i * i)
+        auxx = np.exp(-1j * abx / 2.0 * i * i)
         hhatxList = np.fft.ifft(np.r_[auxx, auxx[::-1][1:-1]])
 
         j = np.arange(ny + 1)
-        auxy = np.exp(-1j * aby / 2. * j * j)
+        auxy = np.exp(-1j * aby / 2.0 * j * j)
         hhatyList = np.fft.ifft(np.r_[auxy, auxy[::-1][1:-1]])
 
         # Over X
@@ -160,10 +161,10 @@ class Trafalgar():
         # fft here
         tmpx = np.fft.ifft(hhatxList[:, na] * ghatx, axis=0) * 2 * nx
 
-        if (sign == 1):
-            field = 2. * (psix[:, na] * tmpx[:nx]).real
+        if sign == 1:
+            field = 2.0 * (psix[:, na] * tmpx[:nx]).real
         else:  # (sign==-1)
-            field = -2. * (psix[:, na] * tmpx[:nx]).imag
+            field = -2.0 * (psix[:, na] * tmpx[:nx]).imag
 
         # Over Y
         ghaty = np.roll(np.fft.ifft(phiy[na, :] * field, n=2 * ny, axis=1)[:, ::-1], 1, 1)
@@ -171,11 +172,11 @@ class Trafalgar():
         # fft here
         tmpy = np.fft.ifft(hhatyList[na, :] * ghaty, axis=1) * 2 * ny
 
-        if (sign == 1):
-            field = 2. * (psiy[na, :] * tmpy[:, :ny]).real
+        if sign == 1:
+            field = 2.0 * (psiy[na, :] * tmpy[:, :ny]).real
         else:  # (sign==-1)
             # minus here
-            field = 2. * (psiy[na, :] * tmpy[:, :ny]).imag
+            field = 2.0 * (psiy[na, :] * tmpy[:, :ny]).imag
 
         # plt.contourf(field.T)
 

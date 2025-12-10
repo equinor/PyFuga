@@ -14,9 +14,9 @@ from .test_files import tfp
 
 
 def test_parameters():
-    p = Parameters(tfp + 'preLUTs_Zeta0=0.00E+00_2_5/')
+    p = Parameters(tfp + "preLUTs_Zeta0=0.00E+00_2_5/")
 
-    assert p.prelutname == 'preLUTs_Zeta0=0.00E+00_2_5'
+    assert p.prelutname == "preLUTs_Zeta0=0.00E+00_2_5"
     assert p.closure == 2
     assert p.kz0min == 1e-9
     assert p.kz0max == 1e-1
@@ -26,12 +26,12 @@ def test_parameters():
     assert p.nbeta == 5
     assert p.mbeta == 0
     assert p.ds == 0.05
-    assert_array_almost_equal(p.beta_lst, [0., 0.829728, 1.295116, 1.515176, 1.552644, 1.570796])
-    assert_array_almost_equal(p.kz0_lst, 10.**(np.arange(p.jmin, p.jmax + 1) / p.nkz0), 10)
+    assert_array_almost_equal(p.beta_lst, [0.0, 0.829728, 1.295116, 1.515176, 1.552644, 1.570796])
+    assert_array_almost_equal(p.kz0_lst, 10.0 ** (np.arange(p.jmin, p.jmax + 1) / p.nkz0), 10)
 
 
 def test_casedata():
-    c = CaseData(tfp + r'D080.0000_zH070.0000_2_5/Z0=0.00001000Zi=00400Zeta0=0.00E+00')
+    c = CaseData(tfp + r"D080.0000_zH070.0000_2_5/Z0=0.00001000Zi=00400Zeta0=0.00E+00")
 
     assert c.case_name == "Z0=0.00001000Zi=00400Zeta0=0.00E+00"
     assert c.radius == 40
@@ -45,9 +45,9 @@ def test_casedata():
 
 
 def test_read_prelut_list():
-    lst = read_prelut_list(tfp + 'preLUTs_Zeta0=0.00E+00_2_5', dict=False)
+    lst = read_prelut_list(tfp + "preLUTs_Zeta0=0.00E+00_2_5", dict=False)
     filename, ds, smaxx, kz0, beta, kzmax, accgoal = lst[25]
-    assert filename == '0.3333-05.0000.pre'
+    assert filename == "0.3333-05.0000.pre"
     assert ds == 0.05
     assert smaxx == 17.25000000000011
     assert kz0 == 1e-05
@@ -58,9 +58,9 @@ def test_read_prelut_list():
 
 
 def test_read_prelut_list_fmt2():
-    lst = read_prelut_list(tfp + 'prelut_list_fmt2', dict=False)
+    lst = read_prelut_list(tfp + "prelut_list_fmt2", dict=False)
     filename, ds, smaxx, kz0, beta, kzmax, accgoal = lst[25]
-    assert filename == '0.0000-07.7000.pre'
+    assert filename == "0.0000-07.7000.pre"
     assert ds == 0.05
     assert smaxx == 17.30000000000011
     assert kz0 == 3.651741272548377e-08
@@ -71,17 +71,16 @@ def test_read_prelut_list_fmt2():
 
 
 def test_read_prelut_list_smaxx():
-    lists = read_prelut_list(tfp + 'preLUTs_Zeta0=0.00E+00_1_2', dict=False)
+    lists = read_prelut_list(tfp + "preLUTs_Zeta0=0.00E+00_1_2", dict=False)
     assert_array_almost_equal(
         [list[2] for list in lists],
-        [18.4, 18.4, 18.45, 18.45, 17.25, 18.4,
-         18.4, 18.45, 18.45, 17.25, 18.4,
-         18.4, 18.45, 18.45, 17.25])
+        [18.4, 18.4, 18.45, 18.45, 17.25, 18.4, 18.4, 18.45, 18.45, 17.25, 18.4, 18.4, 18.45, 18.45, 17.25],
+    )
 
 
 def test_read_prelut_list_dict():
-    d = read_prelut_list(tfp + 'preLUTs_Zeta0=0.00E+00_2_5', dict=True)
-    ds, smaxx, kz0, beta, kzmax, accgoal = d['0.3333-05.0000.pre']
+    d = read_prelut_list(tfp + "preLUTs_Zeta0=0.00E+00_2_5", dict=True)
+    ds, smaxx, kz0, beta, kzmax, accgoal = d["0.3333-05.0000.pre"]
     assert ds == 0.05
     assert smaxx == 17.25000000000011
     assert kz0 == 1e-05
@@ -92,14 +91,18 @@ def test_read_prelut_list_dict():
 
 
 def test_read_fourier_lut():
-    lut = read_lut_file(tfp + "D080.0000_zH070.0000_2_5/Z0=0.00001000Zi=00400Zeta0=0.00E+00/UL0314.lut",
-                        prelut_folder=tfp + "preLUTs_Zeta0=0.00E+00_2_5")
+    lut = read_lut_file(
+        tfp + "D080.0000_zH070.0000_2_5/Z0=0.00001000Zi=00400Zeta0=0.00E+00/UL0314.lut",
+        prelut_folder=tfp + "preLUTs_Zeta0=0.00E+00_2_5",
+    )
     assert_almost_equal(lut.UL.isel(beta=0, kz0=0, level=0), -1642.12402757 + 569.48780155j)
 
 
 def test_read_fourier_9999():
-    lut = read_lut_file(tfp + "D080.0000_zH070.0000_1_2_9999/Z0=0.00001000Zi=00400Zeta0=1.00E+00/UL9999.lut",
-                        prelut_folder=tfp + "preLUTs_Zeta0=1.00E+00_1_2")
+    lut = read_lut_file(
+        tfp + "D080.0000_zH070.0000_1_2_9999/Z0=0.00001000Zi=00400Zeta0=1.00E+00/UL9999.lut",
+        prelut_folder=tfp + "preLUTs_Zeta0=1.00E+00_1_2",
+    )
     assert lut.z == 70
 
 

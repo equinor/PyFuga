@@ -13,15 +13,15 @@ test_PyFuga:
   tags:
   - ci-ubuntu
 
-# ===== Check code style =====
-check_code_style:
-  stage:
-    test
-  script:
-  - pip install -e . --user
-  - pycodestyle --ignore=E203,E501,W503 .
-  tags:
-  - python
+# # ===== Check code style =====
+# check_code_style:
+#   stage:
+#     test
+#   script:
+#   - pip install -e . --user
+#   - pycodestyle --ignore=E203,E501,W503 .
+#   tags:
+#   - python
 
 # ===== PyWake docs debian =====
 pages:
