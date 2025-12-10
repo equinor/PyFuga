@@ -97,6 +97,7 @@ def test_next_node():
     assert next_node.sleft == 0.05
     assert next_node.sright == 0.1
 
+    assert next_node.Rleft is not None
     # print(np.abs(next_node.Yleft @ np.conj(next_node.Rleft.T) - node.Yright).max())
     assert_allclose(next_node.Yleft @ np.conj(next_node.Rleft.T), node.Yright, rtol=1e-6, atol=1e-15)
     # print(np.abs(node.Rright @ next_node.Rleft - np.eye(6)).max())
@@ -152,7 +153,7 @@ def test_prelut_with_substations():
 def test_preluts():
     preluts = PreLUTs.from_pre_files(tfp + "preLUTs_Zeta0=0.00E+00_1_2/", zeta0=0, verbose=False)
     ref = PreLUTs.from_netcdf(tfp + "preLUTs_Zeta0=0.00E+00_1_2.nc")
-    ref.equals(preluts)
+    assert ref.equals(preluts)
     prelut = preluts.isel(beta=1, kz0=1, i=7)
 
     assert_array_almost_equal(prelut.Yleft[0, 3], -3.818665046221538e-002 - 4.092601925385363e-011j, 10)
@@ -224,6 +225,7 @@ def _make_flut(jit: bool, **kwargs):
     r, t = timeit(PreLUTGenerator(**kwargs).make_prelut, min_runs=1)()
 
     # QUICK FIX: expose old variable names for compatibility with reference files
+    assert r is not None
     r = expose_old_names(r)
 
     r = xr.combine_by_coords(
@@ -238,7 +240,7 @@ def _make_flut(jit: bool, **kwargs):
 
 
 def test_make_preluts_jit_matches_reference():
-    kwargs = dict(zeta0=0, kz0=1e-1, beta=0, kzmax=300, ds=0.05, accgoal=0.0001)
+    kwargs = {"zeta0": 0, "kz0": 1e-1, "beta": 0, "kzmax": 300, "ds": 0.05, "accgoal": 0.0001}
 
     flut_nojit, t_nojit = _make_flut(jit=False, **kwargs)
     flut_jit, t_jit = _make_flut(jit=True, **kwargs)

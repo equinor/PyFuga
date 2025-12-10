@@ -1,5 +1,4 @@
 import multiprocessing
-from _collections import defaultdict
 from pathlib import Path
 
 import numpy as np
@@ -86,10 +85,7 @@ class PreLUTs(ComplexXRDataset):
 
         args_lst = [(zeta0, kz0, beta, kzmax, ds, accgoal, jit) for beta in beta_lst for kz0 in kz0_lst]
 
-        if n_cpu == 1:
-            map_func = map
-        else:
-            map_func = multiprocessing.Pool(n_cpu).imap
+        map_func = map if n_cpu == 1 else multiprocessing.Pool(n_cpu).imap
 
         ds_lst = list(
             tqdm(
@@ -106,10 +102,12 @@ class PreLUTs(ComplexXRDataset):
 
         if compact:
 
-            data_dict = defaultdict(lambda: [])
+            data_dict = {}
 
             def append(ds):
                 for k, v in ds.items():
+                    if k not in data_dict:
+                        data_dict[k] = []
                     if len(v.dims) and v.dims[0] == "i":
                         data_dict[k].append(v.values)
                     else:
@@ -137,10 +135,19 @@ class PreLUTs(ComplexXRDataset):
                 [ds.assign_coords(i=ds.i, kz0=ds.kz0, beta=ds.beta).expand_dims(("kz0", "beta")) for ds in ds_lst]
             )
 
-            return PreLUTs(preluts, attrs={"ds": f.ds, "kzmax": f.kzmax, "zeta0": f.zeta0, "accgoal": f.accgoal})
+            return PreLUTs(
+                preluts.data_vars,
+                coords=preluts.coords,
+                attrs={
+                    "ds": f.ds,
+                    "kzmax": f.kzmax,
+                    "zeta0": f.zeta0,
+                    "accgoal": f.accgoal,
+                },
+            )
 
-    @staticmethod
-    def from_netcdf(filename):
+    @classmethod
+    def from_netcdf(cls, filename):
         ds = read_complex(filename)
         if "kz0_beta_i" in ds.dims:
             return CompactPreLUTs(ds, attrs=ds.attrs)
@@ -153,18 +160,18 @@ class CompactPreLUTs(PreLUTs):
 
     def sel(
         self,
-        kz0,
-        beta,
         indexers=None,
         method=None,
         tolerance=None,
         drop=False,
+        kz0=None,
+        beta=None,
         **indexers_kwargs,
     ):
         m = (self.beta.values == beta) & (self.kz0.values == kz0)
-        self = xr.Dataset(
+        ds = PreLUTs(
             {k: (("i",) + v.dims[1:], v.values[m]) for k, v in self.items()},
             attrs={k: v for k, v in self.attrs.items() if k not in ["kz0_lst", "beta_lst"]},
         )
-        self = self.assign_coords(i=self.i, beta=beta, kz0=kz0)
-        return PreLUTs.sel(self, indexers=indexers, method=method, tolerance=tolerance, drop=drop, **indexers_kwargs)
+        ds = ds.assign_coords(i=ds.i, beta=beta, kz0=kz0)
+        return PreLUTs.sel(ds, indexers=indexers, method=method, tolerance=tolerance, drop=drop, **indexers_kwargs)

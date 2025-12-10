@@ -46,6 +46,7 @@ def test_casedata():
 
 def test_read_prelut_list():
     lst = read_prelut_list(tfp + "preLUTs_Zeta0=0.00E+00_2_5", dict=False)
+    assert isinstance(lst, list)
     filename, ds, smaxx, kz0, beta, kzmax, accgoal = lst[25]
     assert filename == "0.3333-05.0000.pre"
     assert ds == 0.05
@@ -59,6 +60,7 @@ def test_read_prelut_list():
 
 def test_read_prelut_list_fmt2():
     lst = read_prelut_list(tfp + "prelut_list_fmt2", dict=False)
+    assert isinstance(lst, list)
     filename, ds, smaxx, kz0, beta, kzmax, accgoal = lst[25]
     assert filename == "0.0000-07.7000.pre"
     assert ds == 0.05
@@ -73,7 +75,7 @@ def test_read_prelut_list_fmt2():
 def test_read_prelut_list_smaxx():
     lists = read_prelut_list(tfp + "preLUTs_Zeta0=0.00E+00_1_2", dict=False)
     assert_array_almost_equal(
-        [list[2] for list in lists],
+        [float(list[2]) for list in lists],
         [18.4, 18.4, 18.45, 18.45, 17.25, 18.4, 18.4, 18.45, 18.45, 17.25, 18.4, 18.4, 18.45, 18.45, 17.25],
     )
 

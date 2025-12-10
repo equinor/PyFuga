@@ -67,10 +67,7 @@ def read_prelut_list(folder, dict=True):
     folder = Path(folder)
     with open(folder / "prelut_list.lst", "rb") as fid:
         fid.seek(18)
-        if fid.read(6) == b"\x00\x00\x00\x00\x00\x00":
-            n = 24
-        else:
-            n = 18
+        n = 24 if fid.read(6) == b"\x00\x00\x00\x00\x00\x00" else 18
 
         N = eof(fid) // (n + 48)
 
@@ -110,10 +107,7 @@ def read_lut_file(filename, prelut_folder):
     casedata = CaseData(os.path.dirname(filename))
     var = os.path.basename(filename)[:2]
     level = int(filename[-8:-4])
-    if level == 9999:
-        z = casedata.zhub
-    else:
-        z = casedata.z0 * np.exp(casedata.ds * level)
+    z = casedata.zhub if level == 9999 else casedata.z0 * np.exp(casedata.ds * level)
 
     lut = np.fromfile(filename, complex, -1).reshape((len(parameters.kz0_lst) + 1, len(parameters.beta_lst)))
     lut = lut[1:].T

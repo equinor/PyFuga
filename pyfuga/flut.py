@@ -52,16 +52,13 @@ class FourierLUTGenerator:
         )
 
     def make_lut(self, z0, low_level_out, high_level_out, luts=UVW_LT, n_cpu=1):
-        assert all([lut in UVW_LT for lut in luts])
+        assert all(lut in UVW_LT for lut in luts)
         zh = self.zhub
         R = self.radius
         ds, kzmax, zeta0 = [self.preluts.attrs[k] for k in ["ds", "kzmax", "zeta0"]]
 
         kz0_lst = np.sort(np.unique(self.preluts.kz0.values))
-        if len(kz0_lst) > 1:
-            nkz0 = int(np.round(1 / np.diff(np.log10(kz0_lst))[0]))
-        else:
-            nkz0 = 1
+        nkz0 = int(np.round(1 / np.diff(np.log10(kz0_lst))[0])) if len(kz0_lst) > 1 else 1
         aux = z0 * np.pi * 8.0 / R
         kz0limit = 10.0 ** (np.ceil(np.log10(aux) * nkz0) / nkz0)
 
@@ -91,13 +88,13 @@ class FourierLUTGenerator:
             # Stable and unstable
             smax = np.minimum(smax, np.log(np.abs(15 / zeta0)))
 
-        if n_cpu == 1:
-            map_func = map
-        else:
-            map_func = multiprocessing.Pool(n_cpu).imap
+        map_func = map if n_cpu == 1 else multiprocessing.Pool(n_cpu).imap
 
         beta_kz0_lst = [(beta, kz0) for beta in beta_lst for kz0 in kz0_lst]
-        if any([lut[1] == "L" for lut in luts]):
+        xL = []
+        xT = []
+
+        if any(lut[1] == "L" for lut in luts):
             args_lst = (
                 (
                     self.preluts.sel(beta=beta, kz0=kz0),
@@ -125,7 +122,7 @@ class FourierLUTGenerator:
                     desc="Fourier LUTS: Solving for longitudinal forcing",
                 )
             )
-        if any([lut[1] == "T" for lut in luts]):
+        if any(lut[1] == "T" for lut in luts):
             args_lst = (
                 (
                     self.preluts.sel(beta=beta, kz0=kz0),
@@ -155,10 +152,7 @@ class FourierLUTGenerator:
             )
 
         def get_var(s):
-            if s[1] == "L":
-                x = xL
-            else:
-                x = xT
+            x = xL if s[1] == "L" else xT
             i = {"U": 0, "V": 2, "W": 4, "P": 5}[s[0]]
             return np.reshape(x, (len(beta_lst), len(kz0_lst)) + np.shape(x)[1:])[..., i]
 

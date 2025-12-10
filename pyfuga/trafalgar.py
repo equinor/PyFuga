@@ -161,10 +161,7 @@ class Trafalgar:
         # fft here
         tmpx = np.fft.ifft(hhatxList[:, na] * ghatx, axis=0) * 2 * nx
 
-        if sign == 1:
-            field = 2.0 * (psix[:, na] * tmpx[:nx]).real
-        else:  # (sign==-1)
-            field = -2.0 * (psix[:, na] * tmpx[:nx]).imag
+        field = 2.0 * (psix[:, na] * tmpx[:nx]).real if sign == 1 else -2.0 * (psix[:, na] * tmpx[:nx]).imag
 
         # Over Y
         ghaty = np.roll(np.fft.ifft(phiy[na, :] * field, n=2 * ny, axis=1)[:, ::-1], 1, 1)
@@ -172,11 +169,7 @@ class Trafalgar:
         # fft here
         tmpy = np.fft.ifft(hhatyList[na, :] * ghaty, axis=1) * 2 * ny
 
-        if sign == 1:
-            field = 2.0 * (psiy[na, :] * tmpy[:, :ny]).real
-        else:  # (sign==-1)
-            # minus here
-            field = 2.0 * (psiy[na, :] * tmpy[:, :ny]).imag
+        field = 2.0 * (psiy[na, :] * tmpy[:, :ny]).real if sign == 1 else 2.0 * (psiy[na, :] * tmpy[:, :ny]).imag
 
         # plt.contourf(field.T)
 

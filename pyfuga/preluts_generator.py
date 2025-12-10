@@ -33,6 +33,9 @@ class PrelutNode:
 
     def __init__(self):
         self.reset_dyx()
+        self.Yright = None
+        self.Rleft = None
+        self.Yleft = None
 
     def set_s(self, sleft, sright):
         """Set the lower and upper bounds for the segment in s."""
@@ -179,10 +182,7 @@ class PreLUTGenerator:
         # Determine max s (sm) and max kz (kzm)?
         if self.zeta0 < 0:
             # Unstable
-            if self.cdivkL > 1:
-                x = 1
-            else:  # pragma: no cover
-                x = self.cdivkL**0.2
+            x = 1 if self.cdivkL > 1 else self.cdivkL**0.2
 
             while True:
                 dx = (1.0 - x**4 - self.cdivkL * x**5) / (4.0 * x**3 + self.cdivkL * 5.0 * x**4)
@@ -226,7 +226,7 @@ class PreLUTGenerator:
         # equal(first.Yleft, f'yleft{0:6.3f}')
         segment, h = self.integrate_between_stations(first, h, yerr, self.acc, COORD_T)
         # equal(segment.Yright, f'yright{0:6.3f}')
-        for s1, s2 in tqdm(list(zip(s_lst[1:], s_lst[2:])), disable=1):  # noqa: B905
+        for s1, s2 in tqdm(list(zip(s_lst[1:], s_lst[2:])), disable=True):  # noqa: B905
             self.nodes.append(segment)
             segment = segment.get_next(s1, s2)
 
@@ -240,7 +240,7 @@ class PreLUTGenerator:
         else:  # max_recs not reached
             if sm < self.smaxx:
                 self.nodes.append(segment)
-                segment.get_next(s2, s2)
+                segment.get_next(s_lst[-1], s_lst[-1])
                 segment.Yright = segment.Yleft
             # compare(segment.Yright, 'yright%6.3f' % s1)
             # if s2 < self.smaxx:
@@ -286,7 +286,7 @@ class PreLUTGenerator:
             "sleft",
             "sright",
         ]
-        var_values = [np.moveaxis([getattr(n, k) for n in self.nodes], 1, 2) for k in var_names[:3]] + [
+        var_values = [np.moveaxis(np.array([getattr(n, k) for n in self.nodes]), 1, 2) for k in var_names[:3]] + [
             np.array([getattr(n, k) for n in self.nodes]) for k in var_names[3:]
         ]
         return PreLUT(
@@ -389,11 +389,7 @@ def get_kz(t, zeta0, kz0, lastkz, psi0, cdivkL):
     """Get kz from t and stability parameter zeta0."""
 
     kz = lastkz
-    if zeta0 < 0:
-        # Unstable -psi_m at z=z0 plus a constant?
-        b0 = psi0 + np.log(Cm1 * zeta0 / 8)
-    else:
-        b0 = 0
+    b0 = psi0 + np.log(Cm1 * zeta0 / 8) if zeta0 < 0 else 0  # Unstable -psi_m at z=z0 plus a constant?
     if np.abs(zeta0) < 1e-14:
         # Neutral
         kz = kz0 * np.exp(t)
@@ -402,20 +398,14 @@ def get_kz(t, zeta0, kz0, lastkz, psi0, cdivkL):
         a = Cm2 * zeta0
         b = t + a + np.log(a)
         if b < 1:  # pragma: no cover
-            if kz < 0:
-                ax = np.exp(b)
-            else:
-                ax = a * lastkz / kz0
+            ax = np.exp(b) if kz < 0 else a * lastkz / kz0
             while True:
                 dax = (np.exp(b - ax) - ax) / (1 + ax)
                 ax = ax + dax
                 if abs(dax / ax) < 1e-14:
                     break
         else:
-            if kz < 0:  # pragma: no cover
-                ax = b
-            else:
-                ax = a * lastkz / kz0
+            ax = b if kz < 0 else a * lastkz / kz0  # pragma: no cover
             while True:
                 dax = (b - ax - np.log(ax)) / (1 + 1 / ax)
                 ax = ax + dax
@@ -430,7 +420,7 @@ def get_kz(t, zeta0, kz0, lastkz, psi0, cdivkL):
         else:
             aux = phi_inverse(lastkz, cdivkL)
             x = (cdivkL * lastkz) / ((aux**2 + 1) * (1 + aux) ** 2)
-            dx = -(2 * np.arctan(x) + np.log(x) - b) * x * (1 + x**2) / (x + 1) ** 2
+        dx = -(2 * np.arctan(x) + np.log(x) - b) * x * (1 + x**2) / (x + 1) ** 2
         while abs(dx / x) > 1e-14:
             # print(dx)
             dx = -(2 * np.arctan(x) + np.log(x) - b) * x * (1 + x**2) / (x + 1) ** 2
@@ -484,7 +474,7 @@ def getM(j, t, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta):
     if j == COORD_T:
         kz = get_kz(t, zeta0, kz0, lastkz, psi0, cdivkL)
         u = t / kappa
-    elif j == COORD_S:
+    else:  # j == COORD_S
         kz = t
         u = u0(kz, kz0, psi(zeta0, kz, cdivkL), psi0)
 

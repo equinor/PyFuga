@@ -21,6 +21,7 @@ def timeit(func, min_time=0, min_runs=1, verbose=False, line_profile=False, prof
             return res, [t]
         else:
             t_lst = []
+            res = None
             time_start = time.time()
             for _i in range(100000):
                 t0 = time.time_ns()
@@ -30,11 +31,8 @@ def timeit(func, min_time=0, min_runs=1, verbose=False, line_profile=False, prof
                     break
 
             if verbose:  # pragma: no cover
-                if hasattr(func, "__name__"):
-                    fn = func.__name__
-                else:
-                    fn = "Function"
-                print("%s: %f +/-%f (%d runs)" % (fn, np.mean(t_lst), np.std(t_lst), len(t_lst)))
+                fn = func.__name__ if hasattr(func, "__name__") else "Function"
+                print(f"{fn}: {np.mean(t_lst):f} +/-{np.std(t_lst):f} ({len(t_lst):d} runs)")
             return res, t_lst
 
     return newfunc
@@ -52,11 +50,7 @@ def line_timeit(func, profile_funcs=None):  # pragma: no cover
 
     for f in profile_funcs:
         lp.add_function(f)
-    if sys.gettrace() is None:
-        lp_wrapper = lp(func)
-    else:
-        # in debug mode
-        lp_wrapper = func
+    lp_wrapper = lp(func) if sys.gettrace() is None else func  # in debug mode if sys.gettrace() is not None
     return lambda *args, lp=lp, **kwargs: (lp_wrapper(*args, **kwargs), lp)
 
 
@@ -75,7 +69,7 @@ def print_time(f):  # pragma: no cover
     def wrap(*args, **kwargs):
         t = time.time()
         res = f(*args, **kwargs)
-        print("%-12s\t%.3fs" % (f.__name__, time.time() - t))
+        print(f"{f.__name__:<12}\t{time.time() - t:.3f}s")
         return res
 
     w = wrap

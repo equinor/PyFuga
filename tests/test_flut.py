@@ -116,7 +116,7 @@ def test_fluts_ncpu():
         z0=0.00001, luts=["UL"]
     )
     pluts = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False).make_rotor_luts(
-        z0=0.00001, luts=["UL"], n_cpu=None
+        z0=0.00001, luts=["UL"]
     )
     assert luts.equals(pluts)
 
@@ -129,6 +129,8 @@ def test_jit_luts():
     r2, t2 = timeit(lut_generator.make_lut, min_runs=2)(z0=0.00001, low_level_out=315, high_level_out=315, luts=["UL"])
     # print(t1, t2)
     assert t2[1] < t1[0]
+    assert r1 is not None, "make_lut returned None for r1"
+    assert r2 is not None, "make_lut returned None for r2"
     for k in r1:
         # print(k, r1[k].shape)
         assert_array_almost_equal(r1[k], r2[k], 10)

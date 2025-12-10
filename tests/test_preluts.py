@@ -205,7 +205,10 @@ def test_prelut_stable_and_unstable(zeta0):
 def test_prelut_stable():
 
     utils.preludium_equivalent = True
-    importlib.reload(inspect.getmodule(PreLUTGenerator))
+    module = inspect.getmodule(PreLUTGenerator)
+    if module is None:
+        raise RuntimeError("Could not determine the module for PreLUTGenerator.")
+    importlib.reload(module)
     zeta0 = 3.85e-7
     kzmax = 1
     prelut_generator = PreLUTGenerator(
@@ -217,7 +220,10 @@ def test_prelut_stable():
     prelut = expose_old_names(prelut)
 
     utils.preludium_equivalent = False
-    importlib.reload(inspect.getmodule(PreLUTGenerator))
+    module = inspect.getmodule(PreLUTGenerator)
+    if module is None:
+        raise RuntimeError("Could not determine the module for PreLUTGenerator.")
+    importlib.reload(module)
 
     ref_prelut = PreLUT.from_pre_file(tfp + "preLUTs_Zeta0=3.85E-07_1_2/0.0000-06.0000.pre", zeta0=zeta0)
     compare(prelut, ref_prelut)
@@ -233,6 +239,7 @@ def test_next_node():
     assert next_node.sleft == 0.05
     assert next_node.sright == 0.1
 
+    assert next_node.Rleft is not None
     # print(np.abs(next_node.Yleft @ np.conj(next_node.Rleft.T) - node.Yright).max())
     assert_allclose(next_node.Yleft @ np.conj(next_node.Rleft.T), node.Yright, rtol=1e-6, atol=1e-15)
     # print(np.abs(node.Rright @ next_node.Rleft - np.eye(6)).max())

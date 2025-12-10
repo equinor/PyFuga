@@ -93,8 +93,32 @@ def read_complex(*args, **kwargs):
 class ComplexXRDataset(xr.Dataset):
     __slots__ = []
 
-    def to_netcdf(self, filename):
-        save_complex(self, filename)
+    def to_netcdf(
+        self,
+        path=None,
+        mode="w",
+        format=None,
+        group=None,
+        engine=None,
+        encoding=None,
+        unlimited_dims=None,
+        compute=True,
+        invalid_netcdf=None,
+        **kwargs,
+    ):
+        return save_complex(
+            self,
+            path,
+            mode=mode,
+            format=format,
+            group=group,
+            engine=engine,
+            encoding=encoding,
+            unlimited_dims=unlimited_dims,
+            compute=compute,
+            invalid_netcdf=invalid_netcdf,
+            **kwargs,
+        )
 
     def save(self, filename):
         return self.to_netcdf(filename)

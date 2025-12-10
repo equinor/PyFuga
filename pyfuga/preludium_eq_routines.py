@@ -40,7 +40,7 @@ class PrelutNodePreludium(PrelutNode):
         #     node.dat.Rleft[j, j + 1:] = np.conj(Yleft[:, j]) @ Yleft[:, j + 1:]
         #     Yleft[:, j + 1:] = Yleft[:, j + 1:] - (Yleft[:, j] * np.conj(Yleft[:, j])[:, na]) @ Yleft[:, j + 1:]
 
-        Yleft = self.Yright.copy()
+        Yleft = np.array(self.Yright, copy=True)
         node = PrelutNodePreludium()
         node.Rleft = np.zeros_like(Yleft)
         for j in range(5):

@@ -88,9 +88,9 @@ select = [
   "F",   # pyflakes
   "I",   # import sorting (replaces isort)
   "B",   # bugbear
-  # "UP",  # pyupgrade
-  # "SIM", # simplify
-  # "C4",  # comprehensions
+  "UP",  # pyupgrade
+  "SIM", # simplify
+  "C4",  # comprehensions
 ]
 
 ignore = [
