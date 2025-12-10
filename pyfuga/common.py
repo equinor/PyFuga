@@ -18,7 +18,7 @@ def cdivkL(zeta0, kz0):
 
 
 @jit("double(double,double)")
-def dphiu(kz, cdivkl):
+def phi_inverse(kz, cdivkl):
     """
     Inverse of stability function phi_m
     for unstable conditions
@@ -33,7 +33,7 @@ def psi(zeta0, kz, cdivkl):
     if zeta0 < 0:
         # Unstable: -psi_m=-ln(1/8*(1+phi_m**-2)*(1+phi_m**-1)**2)+2*atan(phi_m**-1)-pi/2
 
-        aux = dphiu(kz, cdivkl)
+        aux = phi_inverse(kz, cdivkl)
         aux2 = (1.0 + aux) ** 2 * (1 + aux**2)
         return np.log(8.0 / aux2) + 2.0 * np.arctan(cdivkl * kz / aux2)
     else:  # Stable: -psi_m=Cm2*z/L

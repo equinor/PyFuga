@@ -9,6 +9,7 @@ from pyfuga.preluts import PreLUTs
 from pyfuga.profiling import timeit
 from pyfuga.utils import compile, get_beta_lst
 
+from .helpers import expose_old_names
 from .test_files import tfp
 
 
@@ -67,6 +68,10 @@ def test_compact_preluts():
         verbose=False,
         compact=True,
     )
+
+    # QUICK FIX: expose old variable names for compatibility with reference files
+    preluts_compact = expose_old_names(preluts_compact)
+
     preluts = PreLUTs.make_preluts(
         zeta0=0,
         kz0_lst=[1e-9, 1e-8],
@@ -78,6 +83,10 @@ def test_compact_preluts():
         verbose=False,
         compact=False,
     )
+
+    # QUICK FIX: expose old variable names for compatibility with reference files
+    preluts = expose_old_names(preluts)
+
     luts_c = FourierLUTGenerator(preluts_compact, zhub=70, diameter=80, zi=400, verbose=False).make_lut(
         z0=0.00001, low_level_out=314, high_level_out=314
     )

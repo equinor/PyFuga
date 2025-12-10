@@ -15,6 +15,7 @@ from pyfuga.preluts_generator import PrelutNode
 from pyfuga.profiling import timeit
 from pyfuga.utils import compile, get_beta, get_beta_lst, get_kz0_lst
 
+from .helpers import expose_old_names
 from .test_files import tfp
 
 
@@ -31,6 +32,10 @@ def test_prelut_neutral_all_vars():
     preluts = PreLUTs.make_preluts(
         zeta0=0, kz0_lst=[1e-9, 1e-8], beta_lst=get_beta_lst(1), kzmax=300, ds=0.05, accgoal=0.00001, verbose=False
     )
+
+    # QUICK FIX: expose old variable names for compatibility with reference files
+    preluts = expose_old_names(preluts)
+
     ref_prelut = PreLUT.from_pre_file(tfp + "preLUTs_Zeta0=0.00E+00_2_5/0.0000-09.0000.pre", zeta0=0)
 
     assert ref_prelut.ds == preluts.ds
@@ -60,6 +65,10 @@ def test_prelut_stable_and_unstable(zeta0):
     preluts = PreLUTs.make_preluts(
         zeta0=zeta0, kz0_lst=[1e-9], beta_lst=[0], kzmax=300, ds=0.05, accgoal=0.0001, verbose=False
     )
+
+    # QUICK FIX: expose old variable names for compatibility with reference files
+    preluts = expose_old_names(preluts)
+
     ref_prelut = PreLUT.from_pre_file(tfp + f"preLUTs_Zeta0={zeta0}.00E+00_1_2/0.0000-09.0000.pre", zeta0=zeta0)
 
     assert ref_prelut.ds == preluts.ds
@@ -106,6 +115,10 @@ def test_prelut_with_above_sm():
         accgoal=0.00001,
         verbose=False,
     )
+
+    # QUICK FIX: expose old variable names for compatibility with reference files
+    preluts = expose_old_names(preluts)
+
     flut = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False).make_hubheight_luts(
         z0=0.00001, luts=["UL"]
     )
@@ -121,6 +134,10 @@ def test_prelut_with_substations():
     preluts = PreLUTs.make_preluts(
         zeta0=0, kz0_lst=[1e-6], beta_lst=get_beta(np.array([0]))[:1], kzmax=300, ds=0.05, accgoal=0.0001, verbose=False
     )
+
+    # QUICK FIX: expose old variable names for compatibility with reference files
+    preluts = expose_old_names(preluts)
+
     flut = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False).make_hubheight_luts(
         z0=0.00001, luts=["UL"]
     )
@@ -171,6 +188,10 @@ def test_make_preluts():
     preluts = PreLUTs.make_preluts(
         zeta0=0, kz0_lst=kz0_lst, beta_lst=beta_lst, kzmax=0.0000001, ds=0.05, accgoal=0.0001, verbose=False
     )
+
+    # QUICK FIX: expose old variable names for compatibility with reference files
+    preluts = expose_old_names(preluts)
+
     prelut = preluts.sel(beta=beta_lst[1], kz0=kz0_lst[1], i=7)
 
     assert_array_almost_equal(prelut.Yleft[0, 3], -3.818665046221538e-002 - 4.092601925385363e-011j, 10)
@@ -201,6 +222,9 @@ def _make_flut(jit: bool, **kwargs):
         from pyfuga.preluts_generator import PreLUTGenerator
 
     r, t = timeit(PreLUTGenerator(**kwargs).make_prelut, min_runs=1)()
+
+    # QUICK FIX: expose old variable names for compatibility with reference files
+    r = expose_old_names(r)
 
     r = xr.combine_by_coords(
         [ds.assign_coords(i=ds.i, kz0=ds.kz0, beta=ds.beta).expand_dims(("kz0", "beta")) for ds in [r]]

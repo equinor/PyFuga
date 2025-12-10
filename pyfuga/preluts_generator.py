@@ -2,18 +2,8 @@ import numpy as np
 from tqdm import tqdm
 
 from pyfuga import utils
-from pyfuga.common import cdivkL, dphiu, get_new_h2, phi, psi
-from pyfuga.constants import (
-    COORD_S,
-    COORD_T,
-    Cm1,
-    Cm2,
-    Ythreshold,
-    kappa,
-    kappa2,
-    max_recs,
-    n_eq,
-)
+from pyfuga.common import cdivkL, get_new_h2, phi, phi_inverse, psi
+from pyfuga.constants import COORD_S, COORD_T, Cm1, Cm2, Ythreshold, kappa, kappa2, max_recs, n_eq
 from pyfuga.preluts import PreLUT
 from pyfuga.utils import jit
 
@@ -22,13 +12,13 @@ from pyfuga.utils import jit
 # right: (sub)station + 1 (higher height)
 # (Y+).x = b is a set of boundary condition equations.
 # R is a Gram-Smidt (or QR) transformation of Y
-# dyxu0 = Delta_b for constant longitudinal forcing
-# dyxu1 = Delta_b for longitudinal forcing proportional to kz
+# dbx_const = Delta_b for constant longitudinal forcing
+# dbx_lin = Delta_b for longitudinal forcing proportional to kz
 # Additional if transversal and/or vertical forcing is present:
-#  dyxv0 = Delta_b for constant transversal forcing
-#  dyxv1 = Delta_b for transversal forcing proportional to kz
-#  dyxw0 = Delta_b for constant vertical forcing
-#  dyxw1 = Delta_b for vertical forcing proportional to kz
+#  dby_const = Delta_b for constant transversal forcing
+#  dby_lin = Delta_b for transversal forcing proportional to kz
+#  dbz_const = Delta_b for constant vertical forcing
+#  dbz_lin = Delta_b for vertical forcing proportional to kz
 # Delta_b = integral of (Y+).f between two  (sub)stations
 # where f is the wind turbine forcing.
 
@@ -51,12 +41,12 @@ class PrelutNode:
 
     def reset_dyx(self):
         """Reset the differential error accumulators for forcing."""
-        self.dyxu0 = np.zeros(n_eq, dtype=np.complex128)
-        self.dyxv0 = np.zeros(n_eq, dtype=np.complex128)
-        self.dyxw0 = np.zeros(n_eq, dtype=np.complex128)
-        self.dyxu1 = np.zeros(n_eq, dtype=np.complex128)
-        self.dyxv1 = np.zeros(n_eq, dtype=np.complex128)
-        self.dyxw1 = np.zeros(n_eq, dtype=np.complex128)
+        self.dbx_const = np.zeros(n_eq, dtype=np.complex128)
+        self.dby_const = np.zeros(n_eq, dtype=np.complex128)
+        self.dbz_const = np.zeros(n_eq, dtype=np.complex128)
+        self.dbx_lin = np.zeros(n_eq, dtype=np.complex128)
+        self.dby_lin = np.zeros(n_eq, dtype=np.complex128)
+        self.dbz_lin = np.zeros(n_eq, dtype=np.complex128)
 
     def get_next(self, sleft, sright):
         """Generate and return the next node via QR decomposition."""
@@ -234,7 +224,7 @@ class PreLUTGenerator:
         s_lst = np.sort(np.r_[0, np.cumsum(np.full(int(self.smaxx // self.ds) + 1, self.ds)), sm])
 
         # equal(first.Yleft, f'yleft{0:6.3f}')
-        segment, h = self.solve2(first, h, yerr, self.acc, COORD_T)
+        segment, h = self.integrate_between_stations(first, h, yerr, self.acc, COORD_T)
         # equal(segment.Yright, f'yright{0:6.3f}')
         for s1, s2 in tqdm(list(zip(s_lst[1:], s_lst[2:])), disable=1):
             self.nodes.append(segment)
@@ -243,7 +233,7 @@ class PreLUTGenerator:
             # Before sm: integrate in t, after sm: integrate in s
             coordsys = COORD_T if s1 < sm else COORD_S
 
-            segment, h = self.solve2(segment, h, yerr, self.acc, coordsys)
+            segment, h = self.integrate_between_stations(segment, h, yerr, self.acc, coordsys)
             # equal(segment.Yright, f'yright{s1:6.3f}')
             if len(self.nodes) > max_recs:  # pragma: no cover
                 break
@@ -287,12 +277,12 @@ class PreLUTGenerator:
             "Yleft",
             "Rleft",
             "Rright",
-            "dyxu0",
-            "dyxu1",
-            "dyxv0",
-            "dyxv1",
-            "dyxw0",
-            "dyxw1",
+            "dbx_const",
+            "dbx_lin",
+            "dby_const",
+            "dby_lin",
+            "dbz_const",
+            "dbz_lin",
             "sleft",
             "sright",
         ]
@@ -317,7 +307,7 @@ class PreLUTGenerator:
             ...
             j: Coordinate system indicator (COORD_T for t = u0 * kappa, COORD_S for s = kz).
         """
-        Yright, yerr = rk2(
+        Yright, yerr = modified_midpoint_integration_step(
             y,
             x,
             h,
@@ -329,19 +319,19 @@ class PreLUTGenerator:
             self.cdivkL,
             self.cosbeta,
             self.sinbeta,
-            node.dyxu0,
-            node.dyxv0,
-            node.dyxw0,
-            node.dyxu1,
-            node.dyxv1,
-            node.dyxw1,
+            node.dbx_const,
+            node.dbx_lin,
+            node.dby_const,
+            node.dby_lin,
+            node.dbz_const,
+            node.dbz_lin,
         )
         node.Yright = Yright
         return yerr
 
-    def solve2(self, p, h, yerr, acc, j):
+    def integrate_between_stations(self, p, h, yerr, acc, j):
         """
-        A wrapper for the jit-compilable solve2 function to allow it to be called from within a class.
+        A wrapper for the jit-compilable integrate_between_stations function to allow it to be called from within a class.
 
         Adjust the integration step size until the accuracy requirement is met.
 
@@ -355,19 +345,19 @@ class PreLUTGenerator:
             acc: The accuracy goal for the integration.
             j: Coordinate system indicator (COORD_T for t, COORD_S for s).
         """
-        # return self.solve2_old(p, h, yerr, acc, j)
+        # return self.integrate_between_stations_old(p, h, yerr, acc, j)
         while True:
             sright = p.sright
-            Yright, h, s2, lastkz = solve2(
+            Yright, h, s2, lastkz = integrate_between_stations(
                 p.Yleft,
                 p.sleft,
                 sright,
-                p.dyxu0,
-                p.dyxv0,
-                p.dyxw0,
-                p.dyxu1,
-                p.dyxv1,
-                p.dyxw1,
+                p.dbx_const,
+                p.dby_const,
+                p.dbz_const,
+                p.dbx_lin,
+                p.dby_lin,
+                p.dbz_lin,
                 h,
                 yerr,
                 acc,
@@ -437,7 +427,7 @@ def get_kz(t, zeta0, kz0, lastkz, psi0, cdivkL):
         if kz < 0:  # pragma: no cover
             x = np.exp(b)
         else:
-            aux = dphiu(lastkz, cdivkL)
+            aux = phi_inverse(lastkz, cdivkL)
             x = (cdivkL * lastkz) / ((aux**2 + 1) * (1 + aux) ** 2)
             dx = -(2 * np.arctan(x) + np.log(x) - b) * x * (1 + x**2) / (x + 1) ** 2
         while abs(dx / x) > 1e-14:
@@ -499,7 +489,7 @@ def getM(j, t, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta):
 
     if zeta0 < 0:
         # Unstable
-        kK = kappa * kz * dphiu(kz, cdivkL)
+        kK = kappa * kz * phi_inverse(kz, cdivkL)
         dKdz = kK * (1.0 / kz + 0.25 / (1.0 / cdivkL + kz))
     else:
         # Stable and neutral
@@ -599,13 +589,13 @@ def getM(j, t, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta):
 @jit(
     "complex128[:,:](int32,double,double, complex128[:,:],complex128[:,:],double,double,double,double,double,double,double)"
 )
-def rk2step(j, t, h, Ay, y1, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta):
+def rk2_integration_step(j, t, h, Ay, y1, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta):
     r"""
-    Perform a single integration step of the 2nd-order Runge-Kutta (RK2) method. Refer to "Numerical Recipes" section
-    17.1 Runge-Kutta Method for more details.
+    Performs a single integration step of the 2nd-order Runge-Kutta (RK2) method:
+    Computes a "trial" step to the midpoint of the interval. Then uses both the values of vector Y and the matrix
 
-    Computes an "trial" step to the midpoint of the interval. Then uses both the values of vector Y and the matrix
     M (= -A^\dagger) at that midpoint to calculate the value of Y at the end of the interval.
+    Refer to "Numerical Recipes" section 17.1 Runge-Kutta Method for more details.
 
     Args:
         j: Coordinate system indicator (COORD_T for t = u0 * kappa, COORD_S for s = kz).
@@ -619,9 +609,15 @@ def rk2step(j, t, h, Ay, y1, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
     Returns:
         The updated adjoint state vector after the RK2 intermediate step.
     """
-    A = getM(j, t + h * 0.5, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
-    ym = y1 + h * Ay / 2
-    y2 = y1 + h * np.dot(np.ascontiguousarray(A), ym)
+
+    # Compute the matrix M at the midpoint
+    m = getM(j, t + h * 0.5, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
+
+    # Compute the vector Y at the midpoint using Euler's method ("trial" step)
+    y_midpoint = y1 + h * Ay / 2
+
+    # Compute the final value of Y using the midpoint values
+    y2 = y1 + h * np.dot(np.ascontiguousarray(m), y_midpoint)
     return y2
 
 
@@ -636,7 +632,25 @@ C4 = 2.0 / 6.0
 @jit(
     "Tuple((complex128[:,:],complex128[:,:]))(complex128[:,:], double,double,int64,double,double,double,double,double,double,double,complex128[:],complex128[:],complex128[:],complex128[:],complex128[:],complex128[:])"
 )
-def rk2(y, x, h, j, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta, dyxu0, dyxv0, dyxw0, dyxu1, dyxv1, dyxw1):
+def modified_midpoint_integration_step(
+    y,
+    x,
+    h,
+    j,
+    kz0,
+    psi0,
+    lastkz,
+    zeta0,
+    cdivkL,
+    cosbeta,
+    sinbeta,
+    dbx_const,
+    dby_const,
+    dbz_const,
+    dbx_lin,
+    dby_lin,
+    dbz_lin,
+):
     """
     Perform a integration step using the Modified Midpoint method, as described in Numerical Recipes, §17.3.1, with two
     substeps (n=2). The estimate is fourth-order accurate, the same as the fourth-order Runge-Kutta method, but
@@ -656,28 +670,33 @@ def rk2(y, x, h, j, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta, dyxu0, d
         cdivkL: Eddy diffusivity coefficient.
         cosbeta: Cosine of phase angle.
         sinbeta: Sine of phase angle.
-        dyxu0, dyxv0, dyxw0, dyxu1, dyxv1, dyxw1:
+        dbx_const, dby_const, dbz_const, dbx_lin, dby_lin, dbz_lin:
             Differential forcing accumulators.
 
     Returns:
         A tuple where the first element is the updated state matrix (Yright)
         and the second element is an error estimate (yerr).
     """
+    # Compute matrix M and the product MY at y1, the initial point
+    m = getM(j, x, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
+    my = np.dot(np.ascontiguousarray(m), np.ascontiguousarray(y))
 
-    A = getM(j, x, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
-    Ay = np.dot(np.ascontiguousarray(A), np.ascontiguousarray(y))
+    # Compute an estimate of y at x + h using RK2
+    y2 = rk2_integration_step(j, x, h, my, y, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
 
-    y2 = rk2step(j, x, h, Ay, y, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
-    y3 = rk2step(j, x, h * 0.5, Ay, y, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
+    # Compute an estimate of y at x + h/2 using RK2
+    y3 = rk2_integration_step(j, x, h * 0.5, my, y, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
 
-    A = getM(j, x + h * 0.5, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
-    Ay = np.dot(np.ascontiguousarray(A), np.ascontiguousarray(y3))
+    # Compute matrix M and the product MY at y3, the midpoint
+    m = getM(j, x + h * 0.5, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
+    my = np.dot(np.ascontiguousarray(m), np.ascontiguousarray(y3))
 
-    y4 = rk2step(j, x + h * 0.5, h * 0.5, Ay, y3, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
+    # Compute an estimate of y at x + h using RK2 from the midpoint
+    y4 = rk2_integration_step(j, x + h * 0.5, h * 0.5, my, y3, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
 
-    yout = B1 * y4 + B2 * y2
-    yerr = yout - y4
-    Yright = yout
+    # Combine the two estimates to get the final output and error estimate
+    yright = B1 * y4 + B2 * y2  # eq. (17.3.4) in Numerical Recipes
+    yerr = yright - y4
 
     if j == COORD_T:
         # kz1, kzm, kz2 = self.get_kz(x + np.array([0, .5, 1]) * h)
@@ -685,31 +704,36 @@ def rk2(y, x, h, j, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta, dyxu0, d
         kz1, kzm, kz2 = [get_kz(x + s * h, zeta0, kz0, lastkz, psi0, cdivkL) for s in [0.0, 0.5, 1.0]]
 
         if zeta0 < 0:
-            # Unstable
-            a1 = kz1 * dphiu(kz1, cdivkL)
-            am = kzm * dphiu(kzm, cdivkL)
-            a2 = kz2 * dphiu(kz2, cdivkL)
+            # Unstable - the constant part of the forcing matrix F_i
+            a1 = kz1 * phi_inverse(kz1, cdivkL)
+            am = kzm * phi_inverse(kzm, cdivkL)
+            a2 = kz2 * phi_inverse(kz2, cdivkL)
         else:
-            # Stable and neutral
+            # Stable and neutral - the constant part of the forcing matrix F_i
             a1 = 1 / (1 / kz1 + cdivkL)
             am = 1 / (1 / kzm + cdivkL)
             a2 = 1 / (1 / kz2 + cdivkL)
-        # dyxu0=dyxu0+h*(conjg(a1*C1*y(2,:)+am*C3*y3(2,:)+a2*(C4*y4(2,:)+C2*y2(2,:))))
-        # dyxv0=dyxv0+h*(conjg(a1*C1*y(4,:)+am*C3*y3(4,:)+a2*(C4*y4(4,:)+C2*y2(4,:))))
-        # dyxw0=dyxw0+h*(conjg(a1*C1*y(6,:)+am*C3*y3(6,:)+a2*(C4*y4(6,:)+C2*y2(6,:))))*kappa
-        # dyxu1=dyxu1+h*(conjg(kz1*a1*C1*y(2,:)+kzm*am*C3*y3(2,:)+kz2*a2*(C4*y4(2,:)+C2*y2(2,:))))
-        # dyxv1=dyxv1+h*(conjg(kz1*a1*C1*y(4,:)+kzm*am*C3*y3(4,:)+kz2*a2*(C4*y4(4,:)+C2*y2(4,:))))
-        # dyxw1=dyxw1+h*(conjg(kz1*a1*C1*y(6,:)+kzm*am*C3*y3(6,:)+kz2*a2*(C4*y4(6,:)+C2*y2(6,:))))*kappa
-        dyxu0 += h * (np.conj(a1 * C1 * y[1, :] + am * C3 * y3[1, :] + a2 * (C4 * y4[1, :] + C2 * y2[1, :])))
-        dyxv0 += h * (np.conj(a1 * C1 * y[3, :] + am * C3 * y3[3, :] + a2 * (C4 * y4[3, :] + C2 * y2[3, :])))
-        dyxw0 += h * (np.conj(a1 * C1 * y[5, :] + am * C3 * y3[5, :] + a2 * (C4 * y4[5, :] + C2 * y2[5, :]))) * kappa
-        dyxu1 += h * (
+
+        # dbx_const=dbx_const+h*(conjg(a1*C1*y(2,:)+am*C3*y3(2,:)+a2*(C4*y4(2,:)+C2*y2(2,:))))
+        # dby_const=dby_const+h*(conjg(a1*C1*y(4,:)+am*C3*y3(4,:)+a2*(C4*y4(4,:)+C2*y2(4,:))))
+        # dbz_const=dbz_const+h*(conjg(a1*C1*y(6,:)+am*C3*y3(6,:)+a2*(C4*y4(6,:)+C2*y2(6,:))))*kappa
+        # dbx_lin=dbx_lin+h*(conjg(kz1*a1*C1*y(2,:)+kzm*am*C3*y3(2,:)+kz2*a2*(C4*y4(2,:)+C2*y2(2,:))))
+        # dby_lin=dby_lin+h*(conjg(kz1*a1*C1*y(4,:)+kzm*am*C3*y3(4,:)+kz2*a2*(C4*y4(4,:)+C2*y2(4,:))))
+        # dbz_lin=dbz_lin+h*(conjg(kz1*a1*C1*y(6,:)+kzm*am*C3*y3(6,:)+kz2*a2*(C4*y4(6,:)+C2*y2(6,:))))*kappa
+
+        # Update the differential forcing accumulators using Simpson's rule
+        dbx_const += h * (np.conj(a1 * C1 * y[1, :] + am * C3 * y3[1, :] + a2 * (C4 * y4[1, :] + C2 * y2[1, :])))
+        dby_const += h * (np.conj(a1 * C1 * y[3, :] + am * C3 * y3[3, :] + a2 * (C4 * y4[3, :] + C2 * y2[3, :])))
+        dbz_const += (
+            h * (np.conj(a1 * C1 * y[5, :] + am * C3 * y3[5, :] + a2 * (C4 * y4[5, :] + C2 * y2[5, :]))) * kappa
+        )
+        dbx_lin += h * (
             np.conj(kz1 * a1 * C1 * y[1, :] + kzm * am * C3 * y3[1, :] + kz2 * a2 * (C4 * y4[1, :] + C2 * y2[1, :]))
         )
-        dyxv1 += h * (
+        dby_lin += h * (
             np.conj(kz1 * a1 * C1 * y[3, :] + kzm * am * C3 * y3[3, :] + kz2 * a2 * (C4 * y4[3, :] + C2 * y2[3, :]))
         )
-        dyxw1 += (
+        dbz_lin += (
             h
             * (np.conj(kz1 * a1 * C1 * y[5, :] + kzm * am * C3 * y3[5, :] + kz2 * a2 * (C4 * y4[5, :] + C2 * y2[5, :])))
             * kappa
@@ -721,22 +745,24 @@ def rk2(y, x, h, j, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta, dyxu0, d
         a1 = phi(zeta0, x, cdivkL)
         am = phi(zeta0, xm, cdivkL)
         a2 = phi(zeta0, x2, cdivkL)
-        dyxu0 += h * np.conj(
+
+        # Update the differential forcing accumulators using Simpson's rule
+        dbx_const += h * np.conj(
             a1 * C1 * y[1, :] / x + am * C3 * y3[1, :] / xm + a2 * (C4 * y4[1, :] + C2 * y2[1, :]) / x2
         )
-        dyxv0 += h * np.conj(
+        dby_const += h * np.conj(
             a1 * C1 * y[3, :] / x + am * C3 * y3[3, :] / xm + a2 * (C4 * y4[3, :] + C2 * y2[3, :]) / x2
         )
-        dyxw0 += kappa * h * np.conj(C1 * y[5, :] + C3 * y3[5, :] + C4 * y4[5, :] + C2 * y2[5, :]) * kappa
-        dyxu1 += h * np.conj((a1 * C1 * y[1, :] + am * C3 * y3[1, :]) + a2 * (C4 * y4[1, :] + C2 * y2[1, :]))
-        dyxv1 += h * np.conj((a1 * C1 * y[3, :] + am * C3 * y3[3, :]) + a2 * (C4 * y4[3, :] + C2 * y2[3, :]))
-        dyxw1 += (
+        dbz_const += kappa * h * np.conj(C1 * y[5, :] + C3 * y3[5, :] + C4 * y4[5, :] + C2 * y2[5, :]) * kappa
+        dbx_lin += h * np.conj((a1 * C1 * y[1, :] + am * C3 * y3[1, :]) + a2 * (C4 * y4[1, :] + C2 * y2[1, :]))
+        dby_lin += h * np.conj((a1 * C1 * y[3, :] + am * C3 * y3[3, :]) + a2 * (C4 * y4[3, :] + C2 * y2[3, :]))
+        dbz_lin += (
             kappa
             * h
             * np.conj((x * C1 * y[5, :] + xm * C3 * y3[5, :]) + x2 * (C4 * y4[5, :] + a2 * C2 * y2[5, :]))
             * kappa
         )
-    return Yright, yerr
+    return yright, yerr
 
 
 c2 = "complex128[:,:],"
@@ -746,16 +772,16 @@ dyx = c1 * 6
 
 
 @jit(f"""Tuple(({c2}{d}{d}{d}))({c2}{d}{d}{dyx}{d}{c2}{d}int32,{d}{d}{d}{d}{d}{d}{d})""")
-def solve2(
+def integrate_between_stations(
     Yleft,
     sleft,
     sright,
-    dyxu0,
-    dyxv0,
-    dyxw0,
-    dyxu1,
-    dyxv1,
-    dyxw1,
+    dbx_const,
+    dby_const,
+    dbz_const,
+    dbx_lin,
+    dby_lin,
+    dbz_lin,
     h,
     yerr,
     acc,
@@ -769,16 +795,21 @@ def solve2(
     sinbeta,
 ):
     """
-    Adjust the integration step to satisfy the accuracy requirement.
+    Integrates the adjoint system between two stations using the Modified Midpoint Method with adaptive step size
+    control.
 
-    Repeatedly applies RK2 integration to evolve the state until the error is below
-    the accuracy goal, adjusting the step size if necessary.
+    Measures the error for each step, (d)yerr, and adjusts the following step size (h) accordingly to meet the accuracy
+    requirement (acc).
+
+    If it is the last step to reach the next station, the step size is adjusted to exactly reach that point.
+
+    Measures the norm of the state vector after each step; if the norm exceeds a threshold, a substation is created.
 
     Args:
         Yleft: State matrix at the lower bound of the segment.
         sleft: s-coordinate of the lower bound of the current segment.
         sright: s-coordinate of the upper bound of the current segment.
-        dyxu0, dyxv0, dyxw0, dyxu1, dyxv1, dyxw1:
+        dbx_const, dby_const, dbz_const, dbx_lin, dby_lin, dbz_lin:
             Forcing differential accumulators.
         h: Initial integration step size.
         yerr: Current accumulated error.
@@ -816,11 +847,11 @@ def solve2(
     counter = 0
     while True:
         counter += 1
-        if 1.1 * h + t > t2:
+        if t + 1.1 * h > t2:
             # step, h, big enough to reach t2 -> take the final step
             h = t2 - t
             # dyerr = self.rk2(p, Y1, t, h, j)
-            Yright, dyerr = rk2(
+            Yright, dyerr = modified_midpoint_integration_step(
                 Y1,
                 t,
                 h,
@@ -832,12 +863,12 @@ def solve2(
                 cdivkL,
                 cosbeta,
                 sinbeta,
-                dyxu0,
-                dyxv0,
-                dyxw0,
-                dyxu1,
-                dyxv1,
-                dyxw1,
+                dbx_const,
+                dby_const,
+                dbz_const,
+                dbx_lin,
+                dby_lin,
+                dbz_lin,
             )
 
             yerr += dyerr
@@ -853,7 +884,7 @@ def solve2(
         else:
             # take step, h
             # dyerr = self.rk2(p, Y1, t, h, j)  # here Yright is updated, only Yright and deltaBs
-            Yright, dyerr = rk2(
+            Yright, dyerr = modified_midpoint_integration_step(
                 Y1,
                 t,
                 h,
@@ -865,12 +896,12 @@ def solve2(
                 cdivkL,
                 cosbeta,
                 sinbeta,
-                dyxu0,
-                dyxv0,
-                dyxw0,
-                dyxu1,
-                dyxv1,
-                dyxw1,
+                dbx_const,
+                dby_const,
+                dbz_const,
+                dbx_lin,
+                dby_lin,
+                dbz_lin,
             )
 
             yerr += dyerr
