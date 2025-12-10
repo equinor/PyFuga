@@ -232,7 +232,7 @@ def solve_layers(args):
             ]
         )
         for ijf0, ijf1, ijf2, fac0_1, fac1_1, fac0_2, fac1_2 in zip(
-            ijf0_l, ijf1_l, ijf2_l, fac0_1_l, fac1_1_l, fac0_2_l, fac1_2_l
+            ijf0_l, ijf1_l, ijf2_l, fac0_1_l, fac1_1_l, fac0_2_l, fac1_2_l, strict=True
         )
     ]
 
@@ -310,7 +310,7 @@ def solve_layer(
         )
     )  # cl to cl+1
 
-    for Ux_step, RR in zip(Ux_step_lst, Rright[icl_m1:icl_p1, :3, :3]):
+    for Ux_step, RR in zip(Ux_step_lst, Rright[icl_m1:icl_p1, :3, :3]):  # noqa: B905
         Yx_3.append(np.dot(np.ascontiguousarray(RR.T), Yx_3[-1] + Ux_step))
 
     # cl+1 to max level
@@ -339,7 +339,7 @@ def solve_layer(
             (+dYx_0[icl:icl_m1:-1, 3:] * fac0_1 - dYx_1[icl:icl_m1:-1, 3:] * fac1_1),
         )
     )  # cl to cl-1
-    for Ux_step, RL in zip(Ux_step_lst, Rleft[icl_p1 + 1 : icl_m1 + 1 : -1, :, 3:]):
+    for Ux_step, RL in zip(Ux_step_lst, Rleft[icl_p1 + 1 : icl_m1 + 1 : -1, :, 3:]):  # noqa: B905
         Yx_6.append(np.concatenate((Yx_3.pop(), np.dot(np.ascontiguousarray(RL.T), Yx_6[-1]) + Ux_step)))
 
     # cl-1 to min_level
@@ -351,12 +351,12 @@ def solve_layer(
     return [
         (np.ascontiguousarray(YL.T) @ Yx_6)
         for YL, Yx_6 in list(
-            zip(
+            zip(  # noqa: B905
                 # YL[1:][new_level],
-                [v for v, nl in zip(YL[1:], new_level) if nl],
+                [v for v, nl in zip(YL[1:], new_level) if nl],  # noqa: B905
                 # same as np.array(Yx_6[::-1][1:])[new_level] which is not working with
                 # numba jit
-                [v for v, nl in zip(Yx_6[::-1][1:], new_level) if nl],
+                [v for v, nl in zip(Yx_6[::-1][1:], new_level) if nl],  # noqa: B905
             )
         )
     ]

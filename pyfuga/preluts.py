@@ -48,7 +48,7 @@ class PreLUTs(ComplexXRDataset):
 
         folder = Path(folder)
 
-        fn, ds, smaxx, kz0, beta, kzmax, accgoal = list(zip(*read_prelut_list(folder, dict=False)))
+        fn, ds, smaxx, kz0, beta, kzmax, accgoal = list(zip(*read_prelut_list(folder, dict=False), strict=True))
         assert all(ds[0] == np.array(ds))
         assert all(kzmax[0] == np.array(kzmax))
         dat_lst = [read_pre_file(folder / f) for f in tqdm(fn, disable=(not verbose))]

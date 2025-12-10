@@ -40,7 +40,13 @@ def z0_from_TI(TI, zref, zeta0, z0_limit=1e-5):
     else:
         # I had to solve it numerically for unstable conditions
         x = np.array(
-            [fsolve(lambda x: x / np.exp(psi(x * zeta0) - psi(zeta0)) - np.exp(1 / ti), zref / 0.001)[0] for ti in TI]
+            [
+                fsolve(
+                    lambda x, ti=ti: (x / np.exp(psi(x * zeta0) - psi(zeta0)) - np.exp(1 / ti)),
+                    zref / 0.001,
+                )[0]
+                for ti in TI
+            ]
         )
         z0 = zref / x
     z0[z0 < z0_limit] = z0_limit

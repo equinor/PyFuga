@@ -5,7 +5,10 @@ import time
 import numpy as np
 
 
-def timeit(func, min_time=0, min_runs=1, verbose=False, line_profile=False, profile_funcs=[]):
+def timeit(func, min_time=0, min_runs=1, verbose=False, line_profile=False, profile_funcs=None):
+    if profile_funcs is None:
+        profile_funcs = []
+
     @functools.wraps(func)
     def newfunc(*args, **kwargs):
         if line_profile and sys.gettrace() is None:  # pragma: no cover
@@ -19,7 +22,7 @@ def timeit(func, min_time=0, min_runs=1, verbose=False, line_profile=False, prof
         else:
             t_lst = []
             time_start = time.time()
-            for i in range(100000):
+            for _i in range(100000):
                 t0 = time.time_ns()
                 res = func(*args, **kwargs)
                 t_lst.append((time.time_ns() - t0) * 1e-9)
@@ -31,14 +34,18 @@ def timeit(func, min_time=0, min_runs=1, verbose=False, line_profile=False, prof
                     fn = func.__name__
                 else:
                     fn = "Function"
-                print("%s: %f +/-%f (%d runs)" % (fn, np.mean(t_lst), np.std(t_lst), i + 1))
+                print("%s: %f +/-%f (%d runs)" % (fn, np.mean(t_lst), np.std(t_lst), len(t_lst)))
             return res, t_lst
 
     return newfunc
 
 
-def line_timeit(func, profile_funcs=[]):  # pragma: no cover
+def line_timeit(func, profile_funcs=None):  # pragma: no cover
+    if profile_funcs is None:
+        profile_funcs = []
     from line_profiler import LineProfiler
+
+    lp = LineProfiler()
 
     lp = LineProfiler()
     lp.timer_unit = 1e-6

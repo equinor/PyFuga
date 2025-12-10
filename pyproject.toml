@@ -26,6 +26,7 @@ tests = [
   "pytest>=8.3",
   "pytest-cov>=6.0",
   "memory_profiler>=0.61.0",
+  "line_profiler>=5.0.0",
 ]
 
 lint = [
@@ -86,7 +87,7 @@ select = [
   "W",   # pycodestyle warnings
   "F",   # pyflakes
   "I",   # import sorting (replaces isort)
-  # "B",   # bugbear
+  "B",   # bugbear
   # "UP",  # pyupgrade
   # "SIM", # simplify
   # "C4",  # comprehensions

@@ -226,7 +226,7 @@ class PreLUTGenerator:
         # equal(first.Yleft, f'yleft{0:6.3f}')
         segment, h = self.integrate_between_stations(first, h, yerr, self.acc, COORD_T)
         # equal(segment.Yright, f'yright{0:6.3f}')
-        for s1, s2 in tqdm(list(zip(s_lst[1:], s_lst[2:])), disable=1):
+        for s1, s2 in tqdm(list(zip(s_lst[1:], s_lst[2:])), disable=1):  # noqa: B905
             self.nodes.append(segment)
             segment = segment.get_next(s1, s2)
 
@@ -291,7 +291,7 @@ class PreLUTGenerator:
         ]
         return PreLUT(
             {
-                **{n: (("i", "j", "k")[: len(v.shape)], v) for n, v in zip(var_names, var_values)},
+                **{n: (("i", "j", "k")[: len(v.shape)], v) for n, v in zip(var_names, var_values, strict=True)},
                 "beta": self.beta,
                 "kz0": self.kz0,
                 **{"level": (("i",), np.round(var_values[-2] / self.ds, 3).astype(int))},
