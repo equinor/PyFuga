@@ -80,7 +80,7 @@ class Trafalgar:
         kz0_lst = fluts.kz0.values
 
         sign_dict = {"UL": 1, "VL": -1, "WL": 1, "PL": 1, "UT": -1, "VT": 1, "WT": -1, "PT": -1}
-        D, zhub, z0 = fluts.diameter.item(), fluts.hubheight.item(), fluts.z0.item()
+        _, zhub, z0 = fluts.diameter.item(), fluts.hubheight.item(), fluts.z0.item()
         luts_dict = {}
         for var, sign in tqdm(sign_dict.items(), desc="Trafalgar:", disable=(not self.verbose)):
             if var in fluts:

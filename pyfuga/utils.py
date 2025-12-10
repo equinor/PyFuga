@@ -4,6 +4,7 @@ import time
 
 import numpy as np
 import xarray as xr
+from memory_profiler import profile
 from numba.core.decorators import njit
 
 debugging = sys.gettrace() is not None

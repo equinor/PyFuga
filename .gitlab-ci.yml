@@ -1,56 +1,46 @@
 image: continuumio/anaconda3
 
-# ===== TEST PyWake debian=====
+# ===== Test PyFuga =====
 test_PyFuga:
-  image: continuumio/anaconda3
-  stage:
-    test
-  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
+  stage: test
   script:
-  - pip install -e . --user
-  - pip install pytest-cov --user
-  - pytest --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc --import-mode=importlib
+    - python -m pip install --upgrade pip --user
+    - python -m pip install ".[tests]" --user
+    - python -m pytest --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc --import-mode=importlib
+  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
   tags:
   - ci-ubuntu
 
-# # ===== Check code style =====
-# check_code_style:
-#   stage:
-#     test
-#   script:
-#   - pip install -e . --user
-#   - pycodestyle --ignore=E203,E501,W503 .
-#   tags:
-#   - python
-
-# ===== Ruff imports =====
-ruff_imports:
+# ===== Check formatting with Black =====
+check_black:
   stage: test
-  image: continuumio/anaconda3
   script:
-    - pip install ruff --user
-    - python -m ruff check --select I
+    - python -m pip install --upgrade pip --user
+    - python -m pip install ".[lint]" --user
+    - python -m black --check .
   tags:
     - python
 
-# ===== Build PyFuga docs debian =====
+# ===== Check imports and linting with Ruff =====
+check_ruff:
+  stage: test
+  script:
+    - python -m pip install --upgrade pip --user
+    - python -m pip install ".[lint]" --user
+    - python -m ruff check .
+  tags:
+    - python
+
+# ===== Build PyFuga docs =====
 pages:
-  image: continuumio/anaconda3
-  stage:
-    deploy
+  stage: deploy
   script:
   - apt-get update
   - apt-get -y install make pandoc
-  - pip install -e . --user
-  - pip install sphinx==8.1.3
-  - pip install nbsphinx
-  - pip install sphinx_rtd_theme
-  - pip install sphinx-rtd-dark-mode
-  - pip install sphinxcontrib-bibtex
-  - pip install sphinx-multiversion
-  - pip install sphinx-copybutton
+  - python -m pip install --upgrade pip --user
+  - python -m pip install ".[docs]" --user
   - cd docs
-  - sphinx-build -b html . _build
+  - python -m sphinx-build -b html . _build
   # - sphinx-multiversion . _build
   - cd ../
   - mv docs/_build public/
