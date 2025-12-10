@@ -23,7 +23,17 @@ test_PyFuga:
 #   tags:
 #   - python
 
-# ===== PyWake docs debian =====
+# ===== Ruff imports =====
+ruff_imports:
+  stage: test
+  image: continuumio/anaconda3
+  script:
+    - pip install ruff --user
+    - python -m ruff check --select I
+  tags:
+    - python
+
+# ===== Build PyFuga docs debian =====
 pages:
   image: continuumio/anaconda3
   stage:
