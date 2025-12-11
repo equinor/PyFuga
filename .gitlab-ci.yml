@@ -1,54 +1,83 @@
 image: continuumio/anaconda3
 
-# ===== Test PyFuga =====
+# ===== Test stage =====
+
+# ----- Test PyFuga -----
 test_PyFuga:
   stage: test
   script:
-    - python -m pip install --upgrade pip --user
-    - python -m pip install ".[tests]" --user
+    - python -m pip install --upgrade pip
+    - python -m pip install ".[tests]"
     - python -m pytest --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc --import-mode=importlib
   coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
   tags:
   - ci-ubuntu
 
-# ===== Check formatting with Black =====
+# ----- Check formatting with Black -----
 check_black:
   stage: test
   script:
-    - python -m pip install --upgrade pip --user
-    - python -m pip install ".[lint]" --user
+    - python -m pip install --upgrade pip
+    - python -m pip install ".[lint]"
     - python -m black --check .
   tags:
     - python
 
-# ===== Check imports and linting with Ruff =====
+# ----- Check imports and linting with Ruff -----
 check_ruff:
   stage: test
   script:
-    - python -m pip install --upgrade pip --user
-    - python -m pip install ".[lint]" --user
+    - python -m pip install --upgrade pip
+    - python -m pip install ".[lint]"
     - python -m ruff check .
   tags:
     - python
 
-# ===== Build PyFuga docs =====
+# ----- Build docs on every push (for preview / CI sanity) -----
+docs:build:
+  stage: test
+  script:
+    - apt-get update
+    - apt-get -y install make pandoc
+    - python -m pip install --upgrade pip
+    - python -m pip install ".[docs]"
+    - cd docs
+    - sphinx-build -b html . _build  # for branch builds, a simple single-version build is enough
+  artifacts:
+    paths:
+      - docs/_build
+    expire_in: 1 week
+  tags:
+    - ci-ubuntu
+  except:
+    - main  # main will use the Pages job below
+
+# ===== Deploy stage =====
+
+# ----- Build PyFuga docs for GitLab Pages (official site) -----
 pages:
   stage: deploy
   script:
   - apt-get update
   - apt-get -y install make pandoc
-  - python -m pip install --upgrade pip --user
-  - python -m pip install ".[docs]" --user
+  - python -m pip install --upgrade pip
+  - python -m pip install ".[docs]"
+
+  # --- Make sure sphinx-multiversion can see refs ------------
+  # Fetch complete history (in case job is still shallow)
+  - git fetch --unshallow --tags || git fetch --tags
+  # Fetch all remote branches as local remote-tracking branches
+  - git fetch origin "+refs/heads/*:refs/remotes/origin/*"
+  # -----------------------------------------------------------
+
   - cd docs
-  - python -m sphinx-build -b html . _build
-  # - sphinx-multiversion . _build
-  - cd ../
+  - sphinx-multiversion . _build
+  - cd ..
   - mv docs/_build public/
   artifacts:
     paths:
       - public
   tags:
-  - ci-ubuntu
+    - ci-ubuntu
   only:
     - main
-    - /^docs.*$/

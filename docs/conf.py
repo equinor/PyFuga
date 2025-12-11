@@ -49,8 +49,11 @@ language = "en"
 # -- sphinx-multiversion configuration ---------------------------------------
 
 # Only build docs for main and tags that start with "v"
-smv_branch_whitelist = r"^(main|master)$"
-smv_tag_whitelist = r"^v.*$"
+smv_branch_whitelist = r"^(main)$"
+smv_tag_whitelist = r"^v\d+\.\d+(\.\d+)?$"
+
+# Use remote branches from origin, not only local ones
+smv_remote_whitelist = r"^origin$"
 
 # Optional, but nice: directory name for each version under _build
 # (default is something similar)

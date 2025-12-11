@@ -4,7 +4,15 @@ import time
 
 import numpy as np
 import xarray as xr
-from memory_profiler import profile
+
+try:
+    from memory_profiler import profile
+except ImportError:  # pragma: no cover - trivial no-op fallback
+    # Fallback: define a no-op decorator so code can run without memory_profiler
+    def profile(func):
+        return func
+
+
 from numba.core.decorators import njit
 
 debugging = sys.gettrace() is not None
