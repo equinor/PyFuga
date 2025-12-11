@@ -72,6 +72,20 @@ pages:
 
   - cd docs
   - sphinx-multiversion . _build
+
+  # --- Choose default ref for root index.html safely ---------
+  # Find latest tag (if any)
+  - git fetch --tags
+  - LATEST_TAG=$(git describe --tags "$(git rev-list --tags --max-count=1)" 2>/dev/null || echo "")
+
+  # Use latest tag *only if* sphinx-multiversion built docs for it, else fallback to main
+  - if [ -n "$LATEST_TAG" ] && [ -d "_build/$LATEST_TAG" ]; then DEFAULT_REF="$LATEST_TAG"; else DEFAULT_REF="main"; fi
+  - echo "Using DEFAULT_REF=${DEFAULT_REF}"
+
+  # Create root index.html from template
+  - sed "s/TAG/${DEFAULT_REF}/g" root_index_template.html > _build/index.html
+  # -----------------------------------------------------------
+  
   - cd ..
   - mv docs/_build public/
   artifacts:
