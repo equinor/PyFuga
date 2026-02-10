@@ -74,3 +74,9 @@ html_theme_options = {
 mathjax3_config = {
     "tex": {"tags": "all", "useLabelIds": True},
 }
+
+# -- CI build configuration ---------------------------------------------------
+
+# Don't execute notebooks in CI; they're tested separately via pytest+nbconvert
+if os.environ.get("CI", "").lower() in {"1", "true"}:
+    nbsphinx_execute = "never"

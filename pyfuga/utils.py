@@ -45,8 +45,9 @@ def compile(jit=True):
             "pyfuga.flut",
             "pyfuga.preluts_generator",
         ]:
-            # if m in jit_modules:
-            importlib.reload(sys.modules[m])
+            mod = sys.modules.get(m)
+            if mod is not None:
+                importlib.reload(mod)
         if numba_jit:
             print(f"JIT compiled in {time.time() - t}s")
 

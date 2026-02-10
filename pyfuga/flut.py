@@ -188,7 +188,9 @@ def solve_layers(args):
         low_level_out,
         high_level_out,
     ) = args
-    assert forcing in "LT"
+    if forcing not in ("L", "T"):
+        raise ValueError(f"forcing must be 'L' or 'T', got {forcing!r}")
+
     forcing = forcing.replace("L", "u").replace("T", "v")
     ds = prelut.ds
     jf_l = np.arange(lowerjf + 1, upperjf)
@@ -210,8 +212,12 @@ def solve_layers(args):
     YL = prelut.Yleft.values
     Rright = prelut.Rright.values
     Rleft = prelut.Rleft.values
-    dYx_0 = prelut[f"dyx{forcing}0"].values
-    dYx_1 = prelut[f"dyx{forcing}1"].values
+    if forcing == "u":
+        dYx_0 = prelut["dbx_const"].values
+        dYx_1 = prelut["dbx_lin"].values
+    else:  # forcing == "v"
+        dYx_0 = prelut["dby_const"].values
+        dYx_1 = prelut["dby_lin"].values
     levels = prelut.level.values.astype(int)
 
     fac0_1_l = z[0] / (kappa * k * (z[1] - z[0]))

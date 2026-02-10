@@ -144,9 +144,6 @@ def test_prelut_neutral_all_vars():
         verbose=False,
     )
 
-    # QUICK FIX: expose old variable names for compatibility with reference files
-    preluts = expose_old_names(preluts)
-
     ref_prelut = PreLUT.from_pre_file(tfp + "preLUTs_Zeta0=0.00E+00_2_5/0.0000-09.0000.pre", zeta0=0)
 
     assert ref_prelut.ds == preluts.ds
@@ -178,9 +175,6 @@ def test_prelut_stable_and_unstable(zeta0):
     preluts = PreLUTs.make_preluts(
         zeta0=zeta0, kz0_lst=[1e-9], beta_lst=[0], kzmax=300, ds=0.05, accgoal=0.0001, jit=False, verbose=False
     )
-
-    # QUICK FIX: expose old variable names for compatibility with reference files
-    preluts = expose_old_names(preluts)
 
     ref_prelut = PreLUT.from_pre_file(tfp + f"preLUTs_Zeta0={zeta0}.00E+00_1_2/0.0000-09.0000.pre", zeta0=zeta0)
 
@@ -260,9 +254,6 @@ def test_prelut_with_above_sm():
         verbose=False,
     )
 
-    # QUICK FIX: expose old variable names for compatibility with reference files
-    preluts = expose_old_names(preluts)
-
     flut = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False).make_hubheight_luts(
         z0=0.00001, luts=["UL"]
     )
@@ -285,9 +276,6 @@ def test_prelut_with_substations():
         jit=False,
         verbose=False,
     )
-
-    # QUICK FIX: expose old variable names for compatibility with reference files
-    preluts = expose_old_names(preluts)
 
     flut = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False).make_hubheight_luts(
         z0=0.00001, luts=["UL"]

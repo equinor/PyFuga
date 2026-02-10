@@ -10,6 +10,10 @@ test_PyFuga:
     - python -m pip install ".[tests]"
     - python -m pytest --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc --import-mode=importlib
   coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
+  artifacts:
+    paths:
+      - tests/notebook_outputs/*.html
+    when: always
   tags:
   - ci-ubuntu
 
@@ -19,6 +23,7 @@ check_black:
   script:
     - python -m pip install --upgrade pip
     - python -m pip install ".[lint]"
+    - python -m black --version
     - python -m black --check .
   tags:
     - python

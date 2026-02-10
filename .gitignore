@@ -25,6 +25,9 @@ pixi*
 .venv*
 .vscode/
 
+# Notebook execution artefacts
+tests/notebook_outputs/
+
 # Test files
 pyfuga_tests/test_files/*
 !pyfuga_tests/test_files/__init__.py

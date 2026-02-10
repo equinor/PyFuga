@@ -10,7 +10,7 @@ This is the python version of the FUGA LUT generator (Previuosly computed by Pre
 
 ## Quick start
 
-See [QuickStart.ipynb](QuickStart.ipynb)
+See [QuickStart.ipynb](docs/examples/01_QuickStart.ipynb)
 
 ## Difference compared to old fortran / cpp implementation
 

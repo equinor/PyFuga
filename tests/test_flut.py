@@ -9,7 +9,7 @@ from pyfuga.preluts import PreLUTs
 from pyfuga.profiling import timeit
 from pyfuga.utils import compile, get_beta_lst
 
-from .helpers import expose_old_names
+from .helpers import expose_new_names
 from .test_files import tfp
 
 
@@ -20,6 +20,7 @@ def test_make_hubheight_luts(zeta0):
         prelut_folder=tfp + f"preLUTs_Zeta0={zeta0}.00E+00_1_2",
     )
     preluts = PreLUTs.from_netcdf(tfp + f"preLUTs_Zeta0={zeta0}.00E+00_1_2.nc")
+    preluts = expose_new_names(preluts)
     luts = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False).make_hubheight_luts(
         z0=0.00001, luts=["UL"]
     )
@@ -31,6 +32,7 @@ def test_make_hubheight_luts(zeta0):
 
 def test_make_hubheight_luts_lo_eq_hi():
     preluts = PreLUTs.from_netcdf(tfp + "preLUTs_Zeta0=0.00E+00_1_2.nc")
+    preluts = expose_new_names(preluts)
     z0 = 70 / np.exp(315 * 0.05)
     luts = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False).make_hubheight_luts(
         z0=z0, luts=["UL"]
@@ -44,6 +46,7 @@ def test_make_hubheight_luts_lo_eq_hi():
 
 def test_all_vars():
     preluts = PreLUTs.from_netcdf(tfp + "preLUTs_Zeta0=0.00E+00_2_5.nc")
+    preluts = expose_new_names(preluts)
     luts = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False).make_lut(
         z0=0.00001, low_level_out=314, high_level_out=314
     )
@@ -69,9 +72,6 @@ def test_compact_preluts():
         compact=True,
     )
 
-    # QUICK FIX: expose old variable names for compatibility with reference files
-    preluts_compact = expose_old_names(preluts_compact)
-
     preluts = PreLUTs.make_preluts(
         zeta0=0,
         kz0_lst=[1e-9, 1e-8],
@@ -83,9 +83,6 @@ def test_compact_preluts():
         verbose=False,
         compact=False,
     )
-
-    # QUICK FIX: expose old variable names for compatibility with reference files
-    preluts = expose_old_names(preluts)
 
     luts_c = FourierLUTGenerator(preluts_compact, zhub=70, diameter=80, zi=400, verbose=False).make_lut(
         z0=0.00001, low_level_out=314, high_level_out=314
@@ -103,6 +100,7 @@ def test_compact_preluts():
 
 def test_rotor_luts():
     preluts = PreLUTs.from_netcdf(tfp + "preLUTs_Zeta0=0.00E+00_2_5.nc")
+    preluts = expose_new_names(preluts)
     luts = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False).make_rotor_luts(
         z0=0.00001, luts=["UL"]
     )
@@ -112,6 +110,7 @@ def test_rotor_luts():
 
 def test_fluts_ncpu():
     preluts = PreLUTs.from_netcdf(tfp + "preLUTs_Zeta0=0.00E+00_2_5.nc")
+    preluts = expose_new_names(preluts)
     luts = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False).make_rotor_luts(
         z0=0.00001, luts=["UL"]
     )
@@ -123,6 +122,7 @@ def test_fluts_ncpu():
 
 def test_jit_luts():
     preluts = PreLUTs.from_netcdf(tfp + "preLUTs_Zeta0=0.00E+00_2_5.nc")
+    preluts = expose_new_names(preluts)
     lut_generator = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False)
     r1, t1 = timeit(lut_generator.make_lut)(z0=0.00001, low_level_out=315, high_level_out=315, luts=["UL"])
     compile(jit=True)
@@ -134,3 +134,28 @@ def test_jit_luts():
     for k in r1:
         # print(k, r1[k].shape)
         assert_array_almost_equal(r1[k], r2[k], 10)
+
+
+def test_solve_layers_invalid_forcing_raises_valueerror():
+    from pyfuga.flut import solve_layers
+
+    args = (
+        None,  # prelut (won't be used if forcing check happens first)
+        0.0,  # beta
+        0.0,  # kz0
+        1.0,  # z0
+        70.0,  # zhub
+        40.0,  # radius
+        "X",  # forcing (invalid)
+        0,  # lowerjf
+        0,  # upperjf
+        0,  # minlevel
+        0,  # maxlevel
+        0,  # low_level_out
+        0,  # high_level_out
+    )
+
+    import pytest
+
+    with pytest.raises(ValueError, match=r"forcing must be 'L' or 'T'"):
+        solve_layers(args)

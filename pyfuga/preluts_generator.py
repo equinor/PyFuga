@@ -577,10 +577,8 @@ def getM(j, t, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta):
         )
 
 
-@jit(
-    "complex128[:,:](int32,double,double, complex128[:,:],complex128[:,:], \
-        double,double,double,double,double,double,double)"
-)
+@jit("complex128[:,:](int32,double,double, complex128[:,:],complex128[:,:], \
+        double,double,double,double,double,double,double)")
 def rk2_integration_step(j, t, h, Ay, y1, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta):
     r"""
     Performs a single integration step of the 2nd-order Runge-Kutta (RK2) method:
@@ -621,11 +619,9 @@ C3 = 4.0 / 6.0
 C4 = 2.0 / 6.0
 
 
-@jit(
-    "Tuple((complex128[:,:],complex128[:,:]))(complex128[:,:], double,double,int64,\
+@jit("Tuple((complex128[:,:],complex128[:,:]))(complex128[:,:], double,double,int64,\
     double,double,double,double,double,double,double,\
-    complex128[:],complex128[:],complex128[:],complex128[:],complex128[:],complex128[:])"
-)
+    complex128[:],complex128[:],complex128[:],complex128[:],complex128[:],complex128[:])")
 def modified_midpoint_integration_step(
     y,
     x,
