@@ -3,16 +3,17 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "PyFuga"
+name = "pyfuga"
 version = "0.1.0"
 description = "Linearised CFD wake model (PyFuga)"
 readme = "README.md"
 authors = [
-  { name = "PyFuga team", email = "njoga@dtu.dk" },
+  { name = "PyFuga team", email = "lalc@dtu.dk" },
 ]
-requires-python = "==3.12.*"
+requires-python = ">=3.10,<3.13"
 dependencies = [
-  "numpy>=1.26",
+  "numpy>=1.26,<2; python_version < '3.12'",
+  "numpy>=1.26; python_version >= '3.12'",
   "scipy>=1.10",
   "matplotlib>=3.10.8",
   "xarray>=2025.6.1",
@@ -106,3 +107,13 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["pyfuga"]
+
+# --------------------------------------------------------------------------------------------------
+# Pytest configuration
+# --------------------------------------------------------------------------------------------------
+
+[tool.pytest.ini_options]
+markers = [
+  "local: mark test as local-only (not run in CI)",
+]
+

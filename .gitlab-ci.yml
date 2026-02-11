@@ -1,28 +1,57 @@
-image: continuumio/anaconda3
+stages:
+  - test
+  - deploy
+
+image: python:3.12-slim
+
+# ===== Cap resource limits for CI jobs =====
+variables:
+  OMP_NUM_THREADS: "1"
+  OPENBLAS_NUM_THREADS: "1"
+  MKL_NUM_THREADS: "1"
+  VECLIB_MAXIMUM_THREADS: "1"
+  NUMEXPR_NUM_THREADS: "1"
+
+# ===== Defaults / reusable bits =====
+.default_python_job: &default_python_job
+  before_script:
+    - python -V
+    - python -m pip install --root-user-action=ignore --upgrade pip
+    - python -m pip install --root-user-action=ignore uv
 
 # ===== Test stage =====
 
 # ----- Test PyFuga -----
 test_PyFuga:
   stage: test
+  image: python:${PYTHON_VERSION}-slim
+  parallel:
+    matrix:
+      - PYTHON_VERSION: ["3.10", "3.11", "3.12"]
+  <<: *default_python_job
   script:
-    - python -m pip install --upgrade pip
-    - python -m pip install ".[tests]"
-    - python -m pytest --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc --import-mode=importlib
+    # Install test extras
+    - uv pip install --system ".[tests]"
+
+    # Debug versions in CI logs
+    - python -c "import numpy, numba, llvmlite; print("numpy", numpy.__version__); print("numba", numba.__version__); print("llvmlite", llvmlite.__version__)"
+
+    # Run tests with coverage
+    - python -m pytest --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc --import-mode=importlib -m "not local" tests/
   coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
   artifacts:
     paths:
       - tests/notebook_outputs/*.html
     when: always
   tags:
-  - ci-ubuntu
+    - python
 
 # ----- Check formatting with Black -----
 check_black:
   stage: test
+  <<: *default_python_job
   script:
-    - python -m pip install --upgrade pip
-    - python -m pip install ".[lint]"
+    - uv pip install --system ".[lint]"
     - python -m black --version
     - python -m black --check .
   tags:
@@ -31,9 +60,10 @@ check_black:
 # ----- Check imports and linting with Ruff -----
 check_ruff:
   stage: test
+  <<: *default_python_job
   script:
-    - python -m pip install --upgrade pip
-    - python -m pip install ".[lint]"
+    - uv pip install --system ".[lint]"
+    - python -m ruff --version
     - python -m ruff check .
   tags:
     - python
@@ -41,11 +71,11 @@ check_ruff:
 # ----- Build docs on every push (for preview / CI sanity) -----
 docs:build:
   stage: test
+  <<: *default_python_job
   script:
     - apt-get update
     - apt-get -y install make pandoc
-    - python -m pip install --upgrade pip
-    - python -m pip install ".[docs]"
+    - uv pip install --system ".[docs]"
     - cd docs
     - sphinx-build -b html . _build  # for branch builds, a simple single-version build is enough
   artifacts:
@@ -53,7 +83,7 @@ docs:build:
       - docs/_build
     expire_in: 1 week
   tags:
-    - ci-ubuntu
+    - python
   except:
     - main  # main will use the Pages job below
 
@@ -62,11 +92,11 @@ docs:build:
 # ----- Build PyFuga docs for GitLab Pages (official site) -----
 pages:
   stage: deploy
+  <<: *default_python_job
   script:
   - apt-get update
-  - apt-get -y install make pandoc
-  - python -m pip install --upgrade pip
-  - python -m pip install ".[docs]"
+  - apt-get -y install make pandoc git
+  - uv pip install --system ".[docs]" 
 
   # --- Make sure sphinx-multiversion can see refs ------------
   # Fetch complete history (in case job is still shallow)
@@ -97,6 +127,6 @@ pages:
     paths:
       - public
   tags:
-    - ci-ubuntu
+    - python
   only:
     - main
