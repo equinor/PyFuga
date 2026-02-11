@@ -12,8 +12,7 @@ authors = [
 ]
 requires-python = ">=3.10,<3.13"
 dependencies = [
-  "numpy>=1.26,<2; python_version < '3.12'",
-  "numpy>=1.26; python_version >= '3.12'",
+  "numpy>=1.26,<2",
   "scipy>=1.10",
   "matplotlib>=3.10.8",
   "xarray>=2025.6.1",
@@ -35,8 +34,8 @@ tests = [
 ]
 
 lint = [
-  "ruff==0.14.8",
-  "black[jupyter]==26.1.0",
+  "ruff>0.14",
+  "black[jupyter]>=26.1.0",
   "mypy>=1.19.1",
 ]
 
@@ -49,17 +48,91 @@ docs = [
   "sphinxcontrib-bibtex>=2.6",
   "sphinx-multiversion>=0.2.4",
   "sphinx-copybutton>=0.5.2",
-  "ipykernel>=6.29,<7",
+  "ipykernel>=6.29",
 ]
 
 # Convenience group for local development
 dev = [
-  "PyFuga[tests,lint,docs]",
+  "pyfuga[tests,lint,docs]",
   "pre-commit"
 ]
 
 [tool.setuptools]
 packages = ["pyfuga"]
+
+# --------------------------------------------------------------------------------------------------
+# Pixi configuration
+# --------------------------------------------------------------------------------------------------
+
+[tool.pixi.project]
+channels = ["conda-forge"]
+platforms = ["linux-64", "win-64", "osx-arm64", "osx-64"]
+
+[tool.pixi.dependencies]
+pip = ">=25.2,<26"
+
+[tool.pixi.pypi-dependencies]
+pyfuga = { path = ".", editable = true, extras = ["dev"] }
+
+[tool.pixi.tasks]
+# Use Pixi to run the tools from the editable install
+test = "pytest --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc --import-mode=importlib"
+lint = "ruff check ."
+fmt-check = "black --check ."
+
+docs = "rm -rf docs/_build && rm -rf docs/api/generated && NUMBA_DISABLE_JIT=1 sphinx-build -b html docs docs/_build"
+
+docs-multi = { cmd = [
+  "bash", "-lc",
+  """
+  set -euo pipefail
+
+  git fetch --unshallow --tags 2>/dev/null || git fetch --tags
+  git fetch origin "+refs/heads/*:refs/remotes/origin/*"
+
+  NUMBA_DISABLE_JIT=1 sphinx-multiversion docs docs/_build
+
+  git fetch --tags
+  LATEST_TAG="$(git describe --tags "$(git rev-list --tags --max-count=1)" 2>/dev/null || echo "")"
+
+  if [ -n "$LATEST_TAG" ] && [ -d "docs/_build/$LATEST_TAG" ]; then
+    DEFAULT_REF="$LATEST_TAG"
+  else
+    DEFAULT_REF="main"
+  fi
+
+  echo "Using DEFAULT_REF=${DEFAULT_REF}"
+  sed "s/TAG/${DEFAULT_REF}/g" docs/root_index_template.html > docs/_build/index.html
+  """
+] }
+
+serve-docs = "python -m http.server --directory docs/_build 8000"
+
+docs-autobuild = """
+sphinx-autobuild docs docs/_build \
+  --port 8000 \
+  --watch pyfuga \
+  --open-browser
+"""
+
+style = { depends-on = ["fmt-check", "lint"] }
+ci = { depends-on = ["style", "test", "docs"] }
+full-ci = { depends-on = ["style", "test", "docs-multi"] }
+
+# Pin per-environment Python versions (so Pixi doesn't pick 3.14 etc.)
+[tool.pixi.feature.py310.dependencies]
+python = "3.10.*"
+
+[tool.pixi.feature.py311.dependencies]
+python = "3.11.*"
+
+[tool.pixi.feature.py312.dependencies]
+python = "3.12.*"
+
+[tool.pixi.environments]
+py310 = ["py310"]
+py311 = ["py311"]
+py312 = ["py312"]
 
 # --------------------------------------------------------------------------------------------------
 # Black configuration
@@ -116,4 +189,3 @@ known-first-party = ["pyfuga"]
 markers = [
   "local: mark test as local-only (not run in CI)",
 ]
-
