@@ -27,14 +27,16 @@ test_PyFuga:
   image: python:${PYTHON_VERSION}-slim
   parallel:
     matrix:
-      - PYTHON_VERSION: ["3.10", "3.11", "3.12"]
+      - PYTHON_VERSION: ["3.10", "3.11", "3.12", "3.13", "3.14"]
   <<: *default_python_job
   script:
-    # Install test extras
-    - uv pip install --system ".[tests]"
-
-    # Debug versions in CI logs
-    - python -c "import numpy, numba, llvmlite; print("numpy", numpy.__version__); print("numba", numba.__version__); print("llvmlite", llvmlite.__version__)"
+    # Install PyFuga with test dependencies and version-specific constraints
+    - |
+      PYV="${PYTHON_VERSION/./}"          # "3.10" -> "310"
+      CONSTRAINT="constraints/py${PYV}.txt"
+      test -f "${CONSTRAINT}" || (echo "Missing constraints file: ${CONSTRAINT}"; exit 1)
+      echo "Using constraints: ${CONSTRAINT}"
+      uv pip install --system -c "${CONSTRAINT}" ".[tests]"
 
     # Run tests with coverage
     - python -m pytest --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc --import-mode=importlib -m "not local" tests/

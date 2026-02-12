@@ -10,9 +10,9 @@ readme = "README.md"
 authors = [
   { name = "PyFuga team", email = "lalc@dtu.dk" },
 ]
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.10, <3.15"
 dependencies = [
-  "numpy>=1.26,<2",
+  "numpy>=1.26",
   "scipy>=1.10",
   "matplotlib>=3.10.8",
   "xarray>=2025.6.1",
@@ -122,17 +122,30 @@ full-ci = { depends-on = ["style", "test", "docs-multi"] }
 # Pin per-environment Python versions (so Pixi doesn't pick 3.14 etc.)
 [tool.pixi.feature.py310.dependencies]
 python = "3.10.*"
+numpy = ">=1.26,<2"
 
 [tool.pixi.feature.py311.dependencies]
 python = "3.11.*"
+numpy = ">=1.26,<2"
 
 [tool.pixi.feature.py312.dependencies]
 python = "3.12.*"
+numpy = ">=1.26,<2.4"
+
+[tool.pixi.feature.py313.dependencies]
+python = "3.13.*"
+numpy = ">=2.3.2,<2.4"
+
+[tool.pixi.feature.py314.dependencies]
+python = "3.14.*"
+numpy = ">=2.3.2,<2.4"
 
 [tool.pixi.environments]
 py310 = ["py310"]
 py311 = ["py311"]
 py312 = ["py312"]
+py313 = ["py313"]
+py314 = ["py314"]
 
 # --------------------------------------------------------------------------------------------------
 # Black configuration
