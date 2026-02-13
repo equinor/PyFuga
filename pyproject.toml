@@ -122,11 +122,11 @@ full-ci = { depends-on = ["style", "test", "docs-multi"] }
 # Pin per-environment Python versions (so Pixi doesn't pick 3.14 etc.)
 [tool.pixi.feature.py310.dependencies]
 python = "3.10.*"
-numpy = ">=1.26,<2"
+numpy = ">=1.26,<2.4"
 
 [tool.pixi.feature.py311.dependencies]
 python = "3.11.*"
-numpy = ">=1.26,<2"
+numpy = ">=1.26,<2.4"
 
 [tool.pixi.feature.py312.dependencies]
 python = "3.12.*"
