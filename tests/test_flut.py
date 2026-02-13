@@ -1,3 +1,5 @@
+import multiprocessing as mp
+
 import numpy as np
 import pytest
 from numpy.testing import assert_array_almost_equal, assert_array_equal
@@ -159,3 +161,51 @@ def test_solve_layers_invalid_forcing_raises_valueerror():
 
     with pytest.raises(ValueError, match=r"forcing must be 'L' or 'T'"):
         solve_layers(args)
+
+
+def test_make_lut_parallel_runs_twice_cleanly():
+    preluts = PreLUTs.from_netcdf(tfp + "preLUTs_Zeta0=0.00E+00_1_2.nc")
+    preluts = expose_new_names(preluts)
+
+    gen = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False)
+
+    # Run twice to catch "Pool not closed" issues that often show up on second run
+    gen.make_lut(z0=0.1, low_level_out=47, high_level_out=165, luts=["UL"], n_cpu=2)
+    gen.make_lut(z0=0.1, low_level_out=47, high_level_out=165, luts=["UL"], n_cpu=2)
+
+
+def test_make_lut_serial_does_not_construct_pool(monkeypatch):
+    called = {"pool": 0}
+
+    def fake_pool(*args, **kwargs):
+        called["pool"] += 1
+        raise AssertionError("Pool should not be constructed in serial mode")
+
+    monkeypatch.setattr(mp.get_context("spawn"), "Pool", fake_pool)
+
+    preluts = PreLUTs.from_netcdf(tfp + "preLUTs_Zeta0=0.00E+00_1_2.nc")
+    preluts = expose_new_names(preluts)
+
+    gen = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False)
+    gen.make_lut(z0=0.00001, low_level_out=314, high_level_out=314, luts=["UL"], n_cpu=1)
+
+    assert called["pool"] == 0
+
+
+def test_make_lut_parallel_uses_spawn_context(monkeypatch):
+    real_get_context = mp.get_context
+    seen = {"arg": None}
+
+    def spy_get_context(arg=None):
+        seen["arg"] = arg
+        return real_get_context(arg)
+
+    monkeypatch.setattr(mp, "get_context", spy_get_context)
+
+    preluts = PreLUTs.from_netcdf(tfp + "preLUTs_Zeta0=0.00E+00_1_2.nc")
+    preluts = expose_new_names(preluts)
+
+    gen = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False)
+    gen.make_lut(z0=0.00001, low_level_out=314, high_level_out=314, luts=["UL"], n_cpu=2)
+
+    assert seen["arg"] == "spawn"

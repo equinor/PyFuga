@@ -1,5 +1,6 @@
-import multiprocessing
+import multiprocessing as mp
 import warnings
+from contextlib import nullcontext
 
 import numpy as np
 from numpy import linalg
@@ -88,68 +89,82 @@ class FourierLUTGenerator:
             # Stable and unstable
             smax = np.minimum(smax, np.log(np.abs(15 / zeta0)))
 
-        map_func = map if n_cpu == 1 else multiprocessing.Pool(n_cpu).imap
-
         beta_kz0_lst = [(beta, kz0) for beta in beta_lst for kz0 in kz0_lst]
+
+        # Choose serial vs parallel mapping
+        if n_cpu in (None, 1):
+            pool_cm = nullcontext()
+            map_func = map
+        else:
+            ctx = mp.get_context("spawn")  # or "forkserver"
+            pool_cm = ctx.Pool(processes=n_cpu)
+            map_func = pool_cm.imap
+
         xL = []
         xT = []
 
-        if any(lut[1] == "L" for lut in luts):
-            args_lst = (
-                (
-                    self.preluts.sel(beta=beta, kz0=kz0),
-                    beta,
-                    kz0,
-                    z0,
-                    self.zhub,
-                    self.radius,
-                    "L",
-                    lowerjf,
-                    upperjf,
-                    minlevel,
-                    maxlevel,
-                    low_level_out,
-                    high_level_out,
-                )
-                for beta, kz0 in beta_kz0_lst
-            )
+        with pool_cm as pool:
+            # If parallel, map_func should come from the pool
+            if n_cpu not in (None, 1) and pool is not None:
+                map_func = pool.imap
 
-            xL = list(
-                tqdm(
-                    map_func(solve_layers, args_lst),
-                    total=len(beta_kz0_lst),
-                    disable=(not self.verbose),
-                    desc="Fourier LUTS: Solving for longitudinal forcing",
+            if any(lut[1] == "L" for lut in luts):
+                args_lst = (
+                    (
+                        self.preluts.sel(beta=beta, kz0=kz0),
+                        beta,
+                        kz0,
+                        z0,
+                        self.zhub,
+                        self.radius,
+                        "L",
+                        lowerjf,
+                        upperjf,
+                        minlevel,
+                        maxlevel,
+                        low_level_out,
+                        high_level_out,
+                    )
+                    for beta, kz0 in beta_kz0_lst
                 )
-            )
-        if any(lut[1] == "T" for lut in luts):
-            args_lst = (
-                (
-                    self.preluts.sel(beta=beta, kz0=kz0),
-                    beta,
-                    kz0,
-                    z0,
-                    self.zhub,
-                    self.radius,
-                    "T",
-                    lowerjf,
-                    upperjf,
-                    minlevel,
-                    maxlevel,
-                    low_level_out,
-                    high_level_out,
-                )
-                for beta, kz0 in beta_kz0_lst
-            )
 
-            xT = list(
-                tqdm(
-                    map_func(solve_layers, args_lst),
-                    total=len(beta_kz0_lst),
-                    disable=(not self.verbose),
-                    desc="Fourier LUTS: Solving for transversal forcing",
+                xL = list(
+                    tqdm(
+                        map_func(solve_layers, args_lst),
+                        total=len(beta_kz0_lst),
+                        disable=(not self.verbose),
+                        desc="Fourier LUTS: Solving for longitudinal forcing",
+                    )
                 )
-            )
+
+            if any(lut[1] == "T" for lut in luts):
+                args_lst = (
+                    (
+                        self.preluts.sel(beta=beta, kz0=kz0),
+                        beta,
+                        kz0,
+                        z0,
+                        self.zhub,
+                        self.radius,
+                        "T",
+                        lowerjf,
+                        upperjf,
+                        minlevel,
+                        maxlevel,
+                        low_level_out,
+                        high_level_out,
+                    )
+                    for beta, kz0 in beta_kz0_lst
+                )
+
+                xT = list(
+                    tqdm(
+                        map_func(solve_layers, args_lst),
+                        total=len(beta_kz0_lst),
+                        disable=(not self.verbose),
+                        desc="Fourier LUTS: Solving for transversal forcing",
+                    )
+                )
 
         def get_var(s):
             x = xL if s[1] == "L" else xT

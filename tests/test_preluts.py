@@ -1,5 +1,6 @@
 import importlib
 import inspect
+import multiprocessing as mp
 import os
 
 import matplotlib.pyplot as plt
@@ -353,3 +354,28 @@ def test_make_preluts():
     assert_array_equal(prelut.sleft, 0.35)
     assert_array_almost_equal(prelut.sright, 0.4, 15)
     assert_array_equal(prelut.level, 7)
+
+
+def test_make_preluts_parallel_uses_spawn_context(monkeypatch):
+    real_get_context = mp.get_context
+    seen = {"arg": None}
+
+    def spy_get_context(arg=None):
+        seen["arg"] = arg
+        return real_get_context(arg)
+
+    monkeypatch.setattr(mp, "get_context", spy_get_context)
+
+    PreLUTs.make_preluts(
+        zeta0=0,
+        kz0_lst=[1e-6],
+        beta_lst=get_beta(np.array([0]))[:1],
+        kzmax=300,
+        ds=0.05,
+        accgoal=0.0001,
+        jit=False,
+        verbose=False,
+        n_cpu=2,
+    )
+
+    assert seen["arg"] == "spawn"

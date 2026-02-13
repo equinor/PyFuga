@@ -1,4 +1,4 @@
-import multiprocessing
+import multiprocessing as mp
 from pathlib import Path
 
 import numpy as np
@@ -85,16 +85,28 @@ class PreLUTs(ComplexXRDataset):
 
         args_lst = [(zeta0, kz0, beta, kzmax, ds, accgoal, jit) for beta in beta_lst for kz0 in kz0_lst]
 
-        map_func = map if n_cpu == 1 else multiprocessing.Pool(n_cpu).imap
-
-        ds_lst = list(
-            tqdm(
-                map_func(PreLUT.make_prelut_args, args_lst),
-                total=len(args_lst),
-                disable=(not verbose),
-                desc="Generating preluts",
+        if n_cpu in (None, 1):
+            iterator = map(PreLUT.make_prelut_args, args_lst)
+            ds_lst = list(
+                tqdm(
+                    iterator,
+                    total=len(args_lst),
+                    disable=(not verbose),
+                    desc="Generating preluts",
+                )
             )
-        )
+        else:
+            ctx = mp.get_context("spawn")  # or "forkserver"
+            with ctx.Pool(processes=n_cpu) as pool:
+                iterator = pool.imap(PreLUT.make_prelut_args, args_lst, chunksize=1)
+                ds_lst = list(
+                    tqdm(
+                        iterator,
+                        total=len(args_lst),
+                        disable=(not verbose),
+                        desc="Generating preluts",
+                    )
+                )
 
         f = ds_lst[0]  # first
         for k in ["ds", "kzmax", "zeta0"]:

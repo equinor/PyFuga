@@ -2,7 +2,7 @@ import numpy as np
 
 from pyfuga.utils import jit
 
-from .constants import Cm1, Cm2
+from .constants import CM_STABLE, CM_UNSTABLE
 
 
 @jit("double(double,double)")
@@ -12,9 +12,9 @@ def cdivkL(zeta0, kz0):
         return 0.0
     else:
         if zeta0 < 0:  # Unstable
-            return zeta0 / kz0 * Cm1
+            return zeta0 / kz0 * CM_UNSTABLE
         else:  # Stable
-            return zeta0 / kz0 * Cm2
+            return zeta0 / kz0 * CM_STABLE
 
 
 @jit("double(double,double)")

@@ -2,8 +2,8 @@
 # Prelut constants
 # ======================================================================================================================
 
-Cm2 = 5.0  # MO Stability constant in phi_m (stable)
-Cm1 = -19.0  # MO Stability constant in phi_m (unstable) Hogstrom (1988)
+CM_STABLE = 5.0  # MO Stability constant in phi_m (stable)
+CM_UNSTABLE = -19.0  # MO Stability constant in phi_m (unstable) Hogstrom (1988)
 n_eq = 6  # ! Number of equations
 kappa = 0.4  # Von Karman constant
 kappa2 = 0.16  # Square of kappa

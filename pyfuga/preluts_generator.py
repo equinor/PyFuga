@@ -3,7 +3,7 @@ from tqdm import tqdm
 
 from pyfuga import utils
 from pyfuga.common import cdivkL, get_new_h2, phi, phi_inverse, psi
-from pyfuga.constants import COORD_S, COORD_T, Cm1, Cm2, Ythreshold, kappa, kappa2, max_recs, n_eq
+from pyfuga.constants import CM_STABLE, CM_UNSTABLE, COORD_S, COORD_T, Ythreshold, kappa, kappa2, max_recs, n_eq
 from pyfuga.preluts import PreLUT
 from pyfuga.utils import jit
 
@@ -389,13 +389,13 @@ def get_kz(t, zeta0, kz0, lastkz, psi0, cdivkL):
     """Get kz from t and stability parameter zeta0."""
 
     kz = lastkz
-    b0 = psi0 + np.log(Cm1 * zeta0 / 8) if zeta0 < 0 else 0  # Unstable -psi_m at z=z0 plus a constant?
+    b0 = psi0 + np.log(CM_UNSTABLE * zeta0 / 8) if zeta0 < 0 else 0  # Unstable -psi_m at z=z0 plus a constant?
     if np.abs(zeta0) < 1e-14:
         # Neutral
         kz = kz0 * np.exp(t)
     elif zeta0 > 0:
         # Stable
-        a = Cm2 * zeta0
+        a = CM_STABLE * zeta0
         b = t + a + np.log(a)
         if b < 1:  # pragma: no cover
             ax = np.exp(b) if kz < 0 else a * lastkz / kz0
