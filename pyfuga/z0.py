@@ -2,9 +2,7 @@ import numpy as np
 from scipy.optimize import fsolve, root_scalar
 from scipy.special import lambertw
 
-from pyfuga.constants import CM_STABLE
-
-CM_UNSTABLE = -19.3  # DIFFERENT FROM constants.py. See issue #30 in pyfuga repo.
+from pyfuga.constants import CM_STABLE, CM_UNSTABLE
 
 
 def phi(zeta):

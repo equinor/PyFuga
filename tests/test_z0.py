@@ -15,7 +15,7 @@ def test_phi():
     if 0:
         plt.plot(zeta, phi(zeta))
         plt.show()
-    assert_array_almost_equal(phi(zeta), [0.764, 0.792, 0.825, 0.867, 0.922, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5], 3)
+    assert_array_almost_equal(phi(zeta), [0.766, 0.794, 0.827, 0.868, 0.923, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5], 3)
 
 
 def test_psi():
@@ -27,7 +27,7 @@ def test_psi():
         plt.plot(zeta, psi(zeta, "Wilson"), label="Wilson")
         plt.legend()
         plt.show()
-    assert_array_almost_equal(psi(zeta[::5]), [0.326, 0.276, 0.221, 0.159, 0.087, 0.0, -0.1, -0.2, -0.3, -0.4, -0.5], 3)
+    assert_array_almost_equal(psi(zeta[::5]), [0.322, 0.273, 0.218, 0.157, 0.085, 0.0, -0.1, -0.2, -0.3, -0.4, -0.5], 3)
     assert_array_almost_equal(
         psi(zeta[::5], "Wilson"), [2.541, 2.488, 2.427, 2.355, 2.261, 0.0, -0.1, -0.2, -0.3, -0.4, -0.5], 3
     )

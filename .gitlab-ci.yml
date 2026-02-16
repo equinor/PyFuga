@@ -102,7 +102,8 @@ pytest_pyfuga_default_python_version:
         - .coveragerc
       when: on_success
       allow_failure: false
-    - when: never
+    - when: manual
+      allow_failure: true
 
 # ----- Test PyFuga (full matrix, only when required) -----
 pytest_pyfuga_all_python_versions:
