@@ -7,9 +7,8 @@ name = "pyfuga"
 version = "0.1.0"
 description = "Linearised CFD wake model (PyFuga)"
 readme = "README.md"
-authors = [
-  { name = "PyFuga team", email = "lalc@dtu.dk" },
-]
+authors = [{ name = "PyFuga team", email = "lalc@dtu.dk" }]
+# Note: Keep in sync with [tool.pyfuga] min-python-version and supported-python-versions
 requires-python = ">=3.10, <3.15"
 dependencies = [
   "numpy>=1.26",
@@ -30,14 +29,10 @@ tests = [
   "line_profiler>=5.0.0",
   "nbconvert>=7.16.6,<8",
   "ipykernel>=6.29,<7",
-  "jupyter_client>=8.6,<9"
+  "jupyter_client>=8.6,<9",
 ]
 
-lint = [
-  "ruff>0.14",
-  "black[jupyter]>=26.1.0",
-  "mypy>=1.19.1",
-]
+lint = ["ruff>0.14", "black[jupyter]>=26.1.0", "mypy>=1.19.1"]
 
 docs = [
   "sphinx>=8.1,<9",
@@ -52,10 +47,7 @@ docs = [
 ]
 
 # Convenience group for local development
-dev = [
-  "pyfuga[tests,lint,docs]",
-  "pre-commit"
-]
+dev = ["pyfuga[tests,lint,docs]", "pre-commit"]
 
 [tool.setuptools]
 packages = ["pyfuga"]
@@ -84,7 +76,8 @@ fmt-check = "black --check ."
 docs = "rm -rf docs/_build && rm -rf docs/api/generated && NUMBA_DISABLE_JIT=1 sphinx-build -b html docs docs/_build"
 
 docs-multi = { cmd = [
-  "bash", "-lc",
+  "bash",
+  "-lc",
   """
   set -euo pipefail
 
@@ -104,7 +97,7 @@ docs-multi = { cmd = [
 
   echo "Using DEFAULT_REF=${DEFAULT_REF}"
   sed "s/TAG/${DEFAULT_REF}/g" docs/root_index_template.html > docs/_build/index.html
-  """
+  """,
 ] }
 
 serve-docs = "python -m http.server --directory docs/_build 8000"
@@ -154,7 +147,7 @@ py314 = ["py314"]
 
 [tool.black]
 line-length = 120
-target-version = ["py312"]
+target-version = ["py310"]
 extend-exclude = """
 (
   ^docs/_build/
@@ -174,7 +167,7 @@ extend-exclude = """
 
 [tool.ruff]
 line-length = 120
-target-version = "py312"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = [
@@ -189,17 +182,25 @@ select = [
 ]
 
 ignore = [
-  "E203",  # whitespace before ':', conflicts with black
+  "E203", # whitespace before ':', conflicts with black
 ]
 
 [tool.ruff.lint.isort]
 known-first-party = ["pyfuga"]
 
 # --------------------------------------------------------------------------------------------------
+# PyFuga project configuration
+# --------------------------------------------------------------------------------------------------
+
+[tool.pyfuga]
+# Minimum supported Python version (used for linting target-version)
+min-python-version = "3.10"
+# All supported Python versions (used for CI/testing matrix)
+supported-python-versions = ["3.10", "3.11", "3.12", "3.13", "3.14"]
+
+# --------------------------------------------------------------------------------------------------
 # Pytest configuration
 # --------------------------------------------------------------------------------------------------
 
 [tool.pytest.ini_options]
-markers = [
-  "local: mark test as local-only (not run in CI)",
-]
+markers = ["local: mark test as local-only (not run in CI)"]

@@ -3,6 +3,15 @@ stages:
   - test
   - deploy
 
+# ===== Reusable configurations =====
+# Supported Python versions (defined in pyproject.toml [tool.pyfuga])
+.python_versions: &python_versions
+  - "3.10"
+  - "3.11"
+  - "3.12"
+  - "3.13"
+  - "3.14"
+
 # ===== Cap resource limits for CI jobs =====
 variables:
   OMP_NUM_THREADS: "1"
@@ -37,7 +46,7 @@ build_ci_image:
   cache: []
   parallel:
     matrix:
-      - PYTHON_VERSION: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+      - PYTHON_VERSION: *python_versions
       - TARGET: ["base", "docs"]
   variables:
     CI_IMAGE_REPO: "${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_VERSION}-uv"
@@ -150,7 +159,7 @@ pytest_pyfuga_all_python_versions:
   image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_VERSION}-uv:latest
   parallel:
     matrix:
-      - PYTHON_VERSION: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+      - PYTHON_VERSION: *python_versions
   <<: *default_python_job
   script:
     # Install PyFuga with test dependencies and version-specific constraints
