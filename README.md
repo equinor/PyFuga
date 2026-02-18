@@ -1,80 +1,161 @@
 # PyFuga
 
-
-## Description
-This is the python version of the FUGA LUT generator (Previuosly computed by Preludium and Trafalgar).
-
-
 [![pipeline status](https://gitlab.windenergy.dtu.dk/TOPFARM/cuttingedge/pywake/fuga/pyfuga/badges/main/pipeline.svg)](https://gitlab.windenergy.dtu.dk/TOPFARM/cuttingedge/pywake/fuga/pyfuga/-/commits/main)
 [![coverage report](https://gitlab.windenergy.dtu.dk/TOPFARM/cuttingedge/pywake/fuga/pyfuga/badges/main/coverage.svg)](https://gitlab.windenergy.dtu.dk/TOPFARM/cuttingedge/pywake/fuga/pyfuga/-/commits/main)
+[![documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://topfarm.pages.windenergy.dtu.dk/cuttingedge/pywake/fuga/PyFuga/)
 
-## Quick start
+
+## Overview
+**PyFuga** is the Python implementation of the **Fuga** look-up table (LUT) generator previously computed by Preludium and Trafalgar. Fuga is a fast linearised CFD model for predicting the wind-turbine wake fields and wake interactions in wind farms. Fuga solves the linearised RANS equations in a **mixed-spectral formulation**, using a modified "chasing method" to integrate a six-component ODE system. It produces look-up tables that enable efficient and accurate reconstruction of wake fields.
+
+PyFuga is part of the [**PyWake**](https://gitlab.windenergy.dtu.dk/TOPFARM/PyWake) ecosystem and provides the LUTs required to run PyWake's Fuga wake deficit model.
+
+### Relationship to yaw modelling
+
+PyFuga computes look-up tables for a single, unyawed turbine only. Yaw-induced wake deflection is handled in PyWake. For implementation details, see PyWake's [FugaDeflection](https://gitlab.windenergy.dtu.dk/TOPFARM/PyWake) documentation.
 
 See [QuickStart.ipynb](docs/examples/01_QuickStart.ipynb)
 
-## Difference compared to old fortran / cpp implementation
+## Documentation
 
-- Prelut
-  - QR decompostion using np.linalg.qr. This method orthonormalize analogous to the fortran implementation, but the 
-results are not equal. I.e. the prelut data cannot be compared directly
-  - The fortran code has an extra `h`-term in get_new_h2, which makes the step too small. This additional term has been removed
-- Trafalgar
-  - interpolation changed from linear to cubic 
+Full documentation (work in progress) is available here:
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+🔗 **https://topfarm.pages.windenergy.dtu.dk/cuttingedge/pywake/fuga/PyFuga/**
+
+The documentation aims to provide:
+
+- a **high-level description** of the theory behind Fuga (with appendices for more detail),  
+- the **QuickStart guide**,  
+- the **API reference**,  
+- a forthcoming **User Guide** (workflow, LUT generation, integration with PyWake),  
+- a forthcoming **Developer Guide** (code structure, numerical routines, contributing).
+
+This will be the primary source for understanding how PyFuga works and how to use it effectively.
+
+## Quick start
+
+A minimal example is available in **[QuickStart.ipynb](docs/examples/01_QuickStart.ipynb)**.
+
+## Look-up tables (LUTs)
+
+PyFuga produces several intermediate look-up tables, referred to as **PreLUTs** and **fLUTs**, before generating the final look-up tables (LUTs) used by PyWake. The final LUTs contain turbine-induced perturbation fields evaluated during wind-farm simulations.
+
+The intermediate stages are internal and only need to be set up when generating LUTs for a new turbine or atmospheric configuration.
+
+## Differences from the legacy Fortran / C++ implementation
+
+### PreLUT generation
+
+- Uses `numpy.linalg.qr` for QR decomposition.
+
+    This mirrors the logic of the original code but not its exact floating-point behaviour, meaning PreLUTs are **not numerically identical** to legacy outputs.
+
+- Removes an additional `h` term in `get_new_h2` present in the Fortran code, which caused unnecessarily small integration steps.
+
+### Trafalgar
+
+- Interpolation changed from linear to cubic.
 
 ## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+
+Install via pip:
+
+```bash
+pip install pyfuga
+```
+
+## Development quickstart
+```bash
+git clone git@gitlab.windenergy.dtu.dk:TOPFARM/cuttingedge/pywake/fuga/pyfuga.git
+cd pyfuga
+python -m pip install -U pip
+python -m pip install -e ".[dev]"
+pre-commit install
+```
+
+### Windows (Conda)
+
+Create and activate an environment first:
+```powershell
+conda create -n pyfuga python=3.12 -y
+conda activate pyfuga
+```
+
+Then follow the development steps above
+```powershell
+python -m pip install -U pip
+python -m pip install -e ".[dev]"
+pre-commit install
+```
+
+> Tip: always use `python -m pip ...` to ensure you install into the active environment.
+
+Alternatively, you can create the environment from `environment.yml`:
+
+```powershell
+conda env create -f environment.yml
+conda activate pyfuga
+python -m pip install -U pip
+python -m pip install -e ".[dev]"
+pre-commit install
+```
 
 ## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+A full usage guide will be added in the documentation.
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+For now, please refer to [**QuickStart.ipynb**](docs/examples/01_QuickStart.ipynb).
 
 ## Contributing
 
-- We use **Black** for formatting.
-  - Default line length: 120 characters.
-  - Use `#fmt: off` / `#fmt: on` sparingly for genuinely hard-to-read edge cases (such as jitted functions with many inputs).
+1. Install dev dependencies: `python -m pip install -e ".[dev]"`
+2. Install hooks once: `pre-commit install`
+3. Before pushing: `pre-commit run --all-files` and `pytest`
 
-- We use **Ruff** for linting and import sorting.
-  - Configuration is in `pyproject.toml`.
-  - Import order follow's Ruff's isort rules with `pyfuga` as first-party code.
+If CI fails on formatting, run `pre-commit run --all-files`, commit the changes, and push again.
 
-- We use [pre-commit](https://pre-commit.com/) to keep imports and formatting consistent.
-  ```bash
-  pip install pre-commit
-  pre-commit install
-  ```
+### Code style
 
-  Then `isort` (and other hooks) will run automatically on staged files when you commit. You can also run all hooks manually with:
-  ```bash
-  pre-commit run --all-files
-  ```
+- **Black** for formatting (line length: 120).
+- **Ruff** for linting and import sorting (`pyproject.toml` configuration; `pyfuga` is first-party).
 
-- Recommended workflow:
-  - Install pre-commit: `pip install pre-commit`.
-  - Run `pre-commit install` once in your clone.
-  - Optionally, run `pre-commit run --all-files` before large refactors.
+### Tests
 
-- Type checking and editor diagnostics still use **Pylance** in VS Code.
+```bash
+pytest
+```
 
-State if you are open to contributions and what your requirements are for accepting them.
+### Common commands
+```bash
+pre-commit run --all-files
+pytest
+```
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+### Optional helper
+```bash
+python scripts/dev.py doctor
+python scripts/dev.py fmt
+python scripts/dev.py test
+```
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+The `doctor` command prints information about your Python environment and git hooks, which can help diagnose setup issues.
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+> For more details, see [CONTRIBUTING.md](CONTRIBUTING.md)
 
-## License
-For open source projects, say how it is licensed.
+## Support
+
+Issues and feature requests can be submitted through the project's GitLab issue tracker.
+
+## Authors and acknowledgements
+
+PyFuga is developed at **DTU Wind and Energy Systems** and builds on the Fuga model described in the technical report by Søren Ott, Mads Mølgaard Pedersen, Gunnar Chr. Larsen, Leonardo Alcayaga, Nils Gaukroger, Elvira Jarmbæk Jacobsen, and colleagues.
+
+The PyFuga project would like to acknowledge **Equinor ASA** for their support of the project over many years.
+
+## Licence
+
+This project is released under the terms of the licence in the [`LICENSE`](LICENSE) file.
 
 ## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+
+Active development as part of the PyWake suite. PyFuga continues to evolve alongside ongoing improvements to the Fuga model and its numerical implementation.

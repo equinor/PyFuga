@@ -76,6 +76,7 @@ pyfuga = { path = ".", editable = true, extras = ["dev"] }
 
 [tool.pixi.tasks]
 # Use Pixi to run the tools from the editable install
+doctor = "python scripts/dev.py doctor"
 test = "pytest --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc --import-mode=importlib"
 lint = "ruff check ."
 fmt-check = "black --check ."

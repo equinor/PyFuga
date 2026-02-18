@@ -11,6 +11,14 @@ variables:
   VECLIB_MAXIMUM_THREADS: "1"
   NUMEXPR_NUM_THREADS: "1"
   PYTHON_DEFAULT_VERSION: "3.12"
+  UV_CACHE_DIR: "$CI_PROJECT_DIR/.cache/uv"
+  UV_LINK_MODE: "copy"
+
+cache:
+  key: "uv-${CI_JOB_IMAGE}"
+  paths:
+    - .cache/uv/
+  policy: pull-push
 
 # ===== Workflow =====
 workflow:
@@ -26,11 +34,14 @@ build_ci_image:
   image:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
+  cache: []
   parallel:
     matrix:
       - PYTHON_VERSION: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+      - TARGET: ["base", "docs"]
   variables:
-    CI_IMAGE_TAG: "${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_VERSION}-uv:latest"
+    CI_IMAGE_REPO: "${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_VERSION}-uv"
+    CI_IMAGE_REPO_DOCS: "${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_VERSION}-uv-docs"
   script:
     # Authenticate to the GitLab registry using the built-in CI variables
     - mkdir -p /kaniko/.docker
@@ -47,11 +58,26 @@ build_ci_image:
       EOF
 
     # Build and push
-    - /kaniko/executor
-      --context "${CI_PROJECT_DIR}"
-      --dockerfile "${CI_PROJECT_DIR}/ci/Dockerfile"
-      --build-arg "PYTHON_VERSION=${PYTHON_VERSION}"
-      --destination "${CI_IMAGE_TAG}"
+    - |
+      if [ "$TARGET" = "base" ]; then
+        REPO="${CI_IMAGE_REPO}"
+        BUILD_TARGET="base"
+      else
+        REPO="${CI_IMAGE_REPO_DOCS}"
+        BUILD_TARGET="docs"
+      fi
+
+      DEST_SHA="${REPO}:${CI_COMMIT_SHA}"
+      DEST_LATEST="${REPO}:latest"
+
+      /kaniko/executor \
+        --context "$CI_PROJECT_DIR" \
+        --dockerfile "$CI_PROJECT_DIR/ci/Dockerfile" \
+        --build-arg "PYTHON_VERSION=${PYTHON_VERSION}" \
+        --target "$BUILD_TARGET" \
+        --destination "$DEST_SHA" \
+        --destination "$DEST_LATEST" \
+
   rules:
     # Rebuild automatically when the Dockerfile changes
     - changes:
@@ -69,7 +95,17 @@ image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv:latest
 
 # ===== Defaults / reusable bits =====
 .default_python_job: &default_python_job
+  tags:
+    - linux
   before_script:
+    - export UV_CACHE_DIR="${UV_CACHE_DIR:-$CI_PROJECT_DIR/.cache/uv}"
+    - export UV_LINK_MODE="${UV_LINK_MODE:-copy}"
+    - echo "UV_CACHE_DIR=$UV_CACHE_DIR"
+    - df -h
+    - du -sh /cache 2>/dev/null || true
+    - du -sh "$UV_CACHE_DIR" 2>/dev/null || true
+    - du -sh /root/.cache 2>/dev/null || true
+    - du -sh "$CI_PROJECT_DIR" || true
     - python -V
     - uv --version
 
@@ -85,7 +121,10 @@ pytest_pyfuga_default_python_version:
       CONSTRAINT="constraints/py${PYV}.txt"
       test -f "${CONSTRAINT}" || (echo "Missing constraints file: ${CONSTRAINT}"; exit 1)
       echo "Using constraints: ${CONSTRAINT}"
-      uv pip install --system -c "${CONSTRAINT}" ".[tests]"
+      VENV_DIR=".venv-${CI_JOB_ID}"
+      uv venv "${VENV_DIR}"
+      . "${VENV_DIR}/bin/activate"
+      uv pip install -c "${CONSTRAINT}" ".[tests]"
     - python -m pytest --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc --import-mode=importlib -m "not local" tests/
   coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
   artifacts:
@@ -120,7 +159,10 @@ pytest_pyfuga_all_python_versions:
       CONSTRAINT="constraints/py${PYV}.txt"
       test -f "${CONSTRAINT}" || (echo "Missing constraints file: ${CONSTRAINT}"; exit 1)
       echo "Using constraints: ${CONSTRAINT}"
-      uv pip install --system -c "${CONSTRAINT}" ".[tests]"
+      VENV_DIR=".venv-${CI_JOB_ID}"
+      uv venv "${VENV_DIR}"
+      . "${VENV_DIR}/bin/activate"
+      uv pip install -c "${CONSTRAINT}" ".[tests]"
 
     # Run tests with coverage
     - python -m pytest --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc --import-mode=importlib -m "not local" tests/
@@ -130,13 +172,17 @@ pytest_pyfuga_all_python_versions:
       - tests/notebook_outputs/*.html
     when: always
   rules:
+    # Don't run the matrix job for the default Python (covered by the previous job)
+    - if: "$PYTHON_VERSION == $PYTHON_DEFAULT_VERSION"
+      when: never
+
     # Run on main (post-merge) to keep main honest
     - if: '$CI_COMMIT_BRANCH == "main"'
       when: on_success
       allow_failure: false
-    
+
     # Run on tags/releases
-    - if: '$CI_COMMIT_TAG'
+    - if: "$CI_COMMIT_TAG"
       when: on_success
       allow_failure: false
 
@@ -149,7 +195,10 @@ check_formatting_and_linting:
   stage: test
   <<: *default_python_job
   script:
-    - uv pip install --system ".[lint]"
+    - VENV_DIR=".venv-${CI_JOB_ID}"
+    - uv venv "${VENV_DIR}"
+    - . "${VENV_DIR}/bin/activate"
+    - uv pip install ".[lint]"
     - python -m black --version
     - python -m black --check .
     - python -m ruff --version
@@ -159,10 +208,14 @@ check_formatting_and_linting:
 build_docs_preview:
   stage: test
   <<: *default_python_job
+  image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv-docs:latest
   script:
-    - uv pip install --system ".[docs]"
+    - VENV_DIR=".venv-${CI_JOB_ID}"
+    - uv venv "${VENV_DIR}"
+    - . "${VENV_DIR}/bin/activate"
+    - uv pip install ".[docs]"
     - cd docs
-    - sphinx-build -b html . _build  # for branch builds, a simple single-version build is enough
+    - sphinx-build -b html . _build # for branch builds, a simple single-version build is enough
   artifacts:
     paths:
       - docs/_build
@@ -171,16 +224,16 @@ build_docs_preview:
     # Never run on main, since main will use the Pages job below to build the full multiversion docs for the official site
     - if: '$CI_COMMIT_BRANCH == "main"'
       when: never
-    
+
     # Also skip on tags, since they will also trigger the Pages job which builds the full multiversion docs
-    - if: '$CI_COMMIT_TAG'
+    - if: "$CI_COMMIT_TAG"
       when: never
-    
+
     # Auto if branch name contains "docs"
-    - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH =~ /docs/i'
+    - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH =~ /^docs\//'
       when: on_success
       allow_failure: false
-    
+
     # Otherwise manual
     - when: manual
       allow_failure: true
@@ -191,34 +244,38 @@ build_docs_preview:
 build_docs_for_pages:
   stage: deploy
   <<: *default_python_job
+  image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv-docs:latest
   script:
-  - uv pip install --system ".[docs]" 
+    - VENV_DIR=".venv-${CI_JOB_ID}"
+    - uv venv "${VENV_DIR}"
+    - . "${VENV_DIR}/bin/activate"
+    - uv pip install ".[docs]"
 
-  # --- Make sure sphinx-multiversion can see refs ------------
-  # Fetch complete history (in case job is still shallow)
-  - git fetch --unshallow --tags || git fetch --tags
-  # Fetch all remote branches as local remote-tracking branches
-  - git fetch origin "+refs/heads/*:refs/remotes/origin/*"
-  # -----------------------------------------------------------
+    # --- Make sure sphinx-multiversion can see refs ------------
+    # Fetch complete history (in case job is still shallow)
+    - git fetch --unshallow --tags || git fetch --tags
+    # Fetch all remote branches as local remote-tracking branches
+    - git fetch origin "+refs/heads/*:refs/remotes/origin/*"
+    # -----------------------------------------------------------
 
-  - cd docs
-  - sphinx-multiversion . _build
+    - cd docs
+    - sphinx-multiversion . _build
 
-  # --- Choose default ref for root index.html safely ---------
-  # Find latest tag (if any)
-  - git fetch --tags
-  - LATEST_TAG=$(git describe --tags "$(git rev-list --tags --max-count=1)" 2>/dev/null || echo "")
+    # --- Choose default ref for root index.html safely ---------
+    # Find latest tag (if any)
+    - git fetch --tags
+    - LATEST_TAG=$(git describe --tags "$(git rev-list --tags --max-count=1)" 2>/dev/null || echo "")
 
-  # Use latest tag *only if* sphinx-multiversion built docs for it, else fallback to main
-  - if [ -n "$LATEST_TAG" ] && [ -d "_build/$LATEST_TAG" ]; then DEFAULT_REF="$LATEST_TAG"; else DEFAULT_REF="main"; fi
-  - echo "Using DEFAULT_REF=${DEFAULT_REF}"
+    # Use latest tag *only if* sphinx-multiversion built docs for it, else fallback to main
+    - if [ -n "$LATEST_TAG" ] && [ -d "_build/$LATEST_TAG" ]; then DEFAULT_REF="$LATEST_TAG"; else DEFAULT_REF="main"; fi
+    - echo "Using DEFAULT_REF=${DEFAULT_REF}"
 
-  # Create root index.html from template
-  - sed "s/TAG/${DEFAULT_REF}/g" root_index_template.html > _build/index.html
-  # -----------------------------------------------------------
-  
-  - cd ..
-  - mv docs/_build public/
+    # Create root index.html from template
+    - sed "s/TAG/${DEFAULT_REF}/g" root_index_template.html > _build/index.html
+    # -----------------------------------------------------------
+
+    - cd ..
+    - mv docs/_build public/
   artifacts:
     paths:
       - public
