@@ -1,43 +1,30 @@
-/tests/test_files/__pycache__/*.pyc
+# Python
+__pycache__/
 *.pyc
-/.pytest_cache/
-/pypreludium/.coverage
-/pyfuga.egg-info
-/*.project
-/fuga/tests/test_files/D080.0000_zH070.0000_16_32
-/fuga/tests/test_files/preLUTs_Zeta0=0.00E+00_16_32
-/*.nc
-finito
-snyd.txt
-WTdata.txt
-CaseData.txt
-levels.txt
-progress.txt
-/pyfuga/tests/test_files/preLUTs_Zeta0=0.00E+00_16_32
-__pycache__
-docs/_build/
-docs/api/generated/
-pixi*
-.coverage
-.pixi/*
-*.nc
+
+# Virtual Environments
 .venv*
+pixi*
+.pixi/
 
-# Docker build artefacts
+# Build & Distribution
 build/
+dist/
+pyfuga.egg-info/
+*.whl
+*.tar.gz
 
-# Notebook execution artefacts
+# Testing
+.pytest_cache/
+.coverage
 tests/notebook_outputs/
 
-# Test files
-pyfuga_tests/test_files/*
-!pyfuga_tests/test_files/__init__.py
+# Documentation
+docs/_build/
+docs/api/generated/
 
-# Build files
-dist/
+# IDE & Editors
+*.project
 
-# Wheel files
-*.whl
-
-# Tar gz files
-*.tar.gz
+# Application Data (NetCDF files)
+*.nc
