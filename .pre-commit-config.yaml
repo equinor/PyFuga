@@ -11,5 +11,5 @@ repos:
     rev: v0.14.8
     hooks:
       - id: ruff-check
-        name: ruff-imports
-        args: [--select, I, --fix, --exit-non-zero-on-fix]
+        name: ruff
+        args: [--fix, --exit-non-zero-on-fix]

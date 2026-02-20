@@ -24,11 +24,11 @@ pixi run test
 Useful tasks:
 
 ```bash
-pixi run fmt-check
-pixi run lint
+pixi run fmt
+pixi run check-fmt
 pixi run test
-pixi run docs
-pixi run full-ci
+pixi run build-docs
+pixi run ci
 ```
 
 ## 2. Alternative setup (without Pixi)
@@ -97,23 +97,20 @@ Ensure formatting and tests pass locally.
 ### With Pixi
 
 ```bash
-pixi run full-ci
+pixi run ci
 ```
 
 ### Without Pixi
 
 ```bash
-python scripts/dev.py fmt
-python scripts/dev.py test
+python scripts/dev.py ci
 ```
 
-If formatting fails:
+If formatting is needed:
 
 ```bash
-pre-commit run --all-files
+python scripts/dev.py fmt
 ```
-
-Commit the changes and push again.
 
 ## 5. Writing tests
 
@@ -135,25 +132,25 @@ Update documentation accordingly.
 Build docs locally:
 
 ```bash
-pixi run docs
+pixi run build-docs
 ```
 
 or 
 
 ```bash
-python scripts/dev.py docs
+python scripts/dev.py build-docs
 ```
 
 If you want live-preview, use:
 
 ```bash
-pixi run docs-autobuild
+pixi run autobuild-docs
 ```
 
 or
 
 ```bash
-python scripts/dev.py docs-autobuild
+python scripts/dev.py autobuild-docs
 ```
 
 

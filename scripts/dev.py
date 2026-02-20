@@ -16,10 +16,12 @@ The goals are:
 Available commands:
 
     doctor            Show environment and git hook diagnostics.
-    fmt               Run pre-commit on all files.
+    fmt               Format code (black + ruff --fix).
+    check-fmt         Check formatting without fixing (black + ruff).
     test [args]       Run pytest, forwarding any additional arguments.
-    docs              Build HTML documentation (requires .[docs]).
-    docs-autobuild    Run live-reloading documentation preview.
+    build-docs        Build HTML documentation (requires .[docs]).
+    autobuild-docs    Run live-reloading documentation preview.
+    ci                Run all CI checks locally (formatting, tests + building docs).
 
 This script does not manage environments. Contributors are expected to:
 
@@ -104,9 +106,9 @@ def doctor() -> None:
     print()
 
     print("Common fixes:")
-    print("  - Install hooks: pre-commit install")
     print('  - Install dev deps: python -m pip install -e ".[dev]"')
-    print("  - Run formatting: pre-commit run --all-files")
+    print("  - Run formatting: python scripts/dev.py fmt")
+    print("  - Install git hooks: pre-commit install")
 
 
 def ensure_tool(name: str, install_hint: str) -> None:
@@ -114,11 +116,18 @@ def ensure_tool(name: str, install_hint: str) -> None:
         raise SystemExit(f"Missing tool: {name}\n\nFix:\n  {install_hint}")
 
 
+def cmd_check_fmt() -> None:
+    ensure_tool("black", 'python -m pip install -e ".[dev]"')
+    ensure_tool("ruff", 'python -m pip install -e ".[dev]"')
+    _run(["black", "--check", "."])
+    _run(["ruff", "check", "."])
+
+
 def cmd_fmt() -> None:
-    ensure_tool("pre-commit", 'python -m pip install -e ".[dev]"')
-    if not _is_git_repo():
-        raise SystemExit("Not a git repository (missing .git). pre-commit needs git metadata.")
-    _run(["pre-commit", "run", "--all-files"])
+    ensure_tool("black", 'python -m pip install -e ".[dev]"')
+    ensure_tool("ruff", 'python -m pip install -e ".[dev]"')
+    _run(["black", "."])
+    _run(["ruff", "check", ".", "--fix"])
 
 
 def cmd_test(args: list[str]) -> None:
@@ -126,7 +135,7 @@ def cmd_test(args: list[str]) -> None:
     _run([sys.executable, "-m", "pytest", *args])
 
 
-def cmd_docs() -> None:
+def cmd_build_docs() -> None:
     # Keep it simple: assumes docs deps are installed (.[docs])
     ensure_tool("sphinx-build", 'python -m pip install -e ".[docs]"')
 
@@ -139,10 +148,10 @@ def cmd_docs() -> None:
     _run(["sphinx-build", "-b", "html", "docs", "docs/_build"], env=env)
 
 
-def cmd_docs_autobuild() -> None:
+def cmd_autobuild_docs() -> None:
     """
     Run sphinx-autobuild for live documentation preview.
-    Equivalent to: pixi run docs-autobuild
+    Equivalent to: pixi run autobuild-docs
     """
     ensure_tool(
         "sphinx-autobuild",
@@ -171,23 +180,37 @@ def cmd_docs_autobuild() -> None:
     )
 
 
+def cmd_ci() -> None:
+    """
+    Run all CI checks locally (formatting, linting, tests).
+    Equivalent to: pixi run ci
+    """
+    cmd_check_fmt()
+    cmd_test([])
+    cmd_build_docs()
+
+
 def main(argv: list[str]) -> None:
     if len(argv) < 2 or argv[1] in {"-h", "--help"}:
         print(
             "Usage: python scripts/dev.py <command> [args]\n\n"
             "Commands:\n"
             "  doctor            Show environment + git hook diagnostics\n"
-            "  fmt               Run pre-commit on all files\n"
+            "  fmt               Format code (black + ruff --fix)\n"
+            "  check-fmt         Check formatting without fixing\n"
             "  test [pytest args] Run pytest (passes args through)\n"
-            "  docs              Build HTML docs (requires .[docs])\n\n"
-            "  docs-autobuild    Run live-reloading documentation preview (requires .[docs])\n"
+            "  build-docs        Build HTML docs (requires .[docs])\n\n"
+            "  autobuild-docs    Run live-reloading documentation preview (requires .[docs])\n"
+            "  ci                Run all CI checks locally (formatting, tests + building docs)\n\n"
             "Examples:\n"
             "  python scripts/dev.py doctor\n"
             "  python scripts/dev.py fmt\n"
+            "  python scripts/dev.py check-fmt\n"
             "  python scripts/dev.py test -q\n"
             '  python scripts/dev.py test -m "not local"\n'
-            "  python scripts/dev.py docs\n"
-            "  python scripts/dev.py docs-autobuild\n"
+            "  python scripts/dev.py build-docs\n"
+            "  python scripts/dev.py autobuild-docs\n"
+            "  python scripts/dev.py ci\n"
         )
         raise SystemExit(0)
 
@@ -197,12 +220,16 @@ def main(argv: list[str]) -> None:
         doctor()
     elif cmd == "fmt":
         cmd_fmt()
+    elif cmd == "check-fmt":
+        cmd_check_fmt()
     elif cmd == "test":
         cmd_test(rest)
-    elif cmd == "docs":
-        cmd_docs()
-    elif cmd == "docs-autobuild":
-        cmd_docs_autobuild()
+    elif cmd == "build-docs":
+        cmd_build_docs()
+    elif cmd == "autobuild-docs":
+        cmd_autobuild_docs()
+    elif cmd == "ci":
+        cmd_ci()
     else:
         raise SystemExit(f"Unknown command: {cmd} (try --help)")
 
