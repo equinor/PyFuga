@@ -90,6 +90,20 @@ docs/update-quickstart
 docs/improve-developer-guide
 ```
 
+## 3.3 Daily workflow
+
+For a detailed Git workflow guide covering sync, conflicts, and troubleshooting, see [Git Workflow Guide](docs/git_workflow.md).
+
+**Quick summary:**
+
+1. Start your session: `git fetch` to check for remote updates
+2. If behind the remote: `git rebase @{u}` to sync your branch
+3. Make your changes and test locally
+4. Before pushing: Ensure formatting and tests pass (see section 4 below)
+5. Push: `git push`
+
+For common scenarios (branch behind, conflicts, undoing changes, comparing versions) and how to debug CI failures, see the [Git Workflow Guide](docs/git_workflow.md).
+
 ## 4. Before opening a Merge Request
 
 Ensure formatting and tests pass locally.
