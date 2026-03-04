@@ -7,6 +7,7 @@ This guide explains how to use Git for PyFuga development. It's written for peop
 ## Git Mental Model
 
 Think of Git as a system that helps you:
+
 1. **Track changes** to your code over time
 2. **Save checkpoints** (commits) of working versions
 3. **Work on separate branches** without affecting the main code
@@ -17,7 +18,7 @@ Think of Git as a system that helps you:
 **Working Tree**  
 Your actual files on disk – where you make edits.
 
-```
+```text
 ┌─────────────────────┐
 │   Working Tree      │  Your files (modified, added, deleted)
 │  (your computer)    │
@@ -27,7 +28,7 @@ Your actual files on disk – where you make edits.
 **Staging Area**  
 A space between your working tree and commits. You choose which changes to keep via `git add` before committing.
 
-```
+```text
 ┌─────────────────────┐
 │   Working Tree      │
 │                     │
@@ -41,7 +42,7 @@ A space between your working tree and commits. You choose which changes to keep 
 **Commit**  
 A saved checkpoint of your code at a point in time. Each commit has a message describing the change (e.g., "Add yaw LUT support").
 
-```
+```text
 ┌─────────────────────┐
 │   Working Tree      │
 └─────────────────────┘
@@ -55,7 +56,7 @@ A saved checkpoint of your code at a point in time. Each commit has a message de
 **Branch**  
 A separate line of development. Each branch has its own set of commits. The main branch is usually called `main` (or `master`); you create feature branches for new work.
 
-```
+```text
 main:    ○──○──○──○
 
 feature: ○──○──○  (branches off from main)
@@ -64,7 +65,7 @@ feature: ○──○──○  (branches off from main)
 **Remote**  
 A copy of the repository on a server (e.g., GitLab). Allows collaboration and backup.
 
-```
+```text
 Your computer (local):         GitLab (remote):
 ┌──────────────┐              ┌──────────────┐
 │  main branch │  ←→ sync ←→  │  main branch │
@@ -81,7 +82,8 @@ Your computer (local):         GitLab (remote):
 **What it does:** Shows the current state of your working tree and staging area.
 
 **Example output:**
-```
+
+```text
 On branch feature/my-changes
 Your branch is 3 commits behind origin/feature/my-changes.
 
@@ -93,6 +95,7 @@ Untracked files:
 ```
 
 **Understanding the output:**
+
 - `origin` is the remote repository (e.g., GitLab). All your branches exist both locally (on your computer) and remotely.
 - `origin/feature/my-changes` is your branch as it exists on the remote.
 - "3 commits behind" means the remote has 3 commits you haven't pulled yet.
@@ -100,6 +103,7 @@ Untracked files:
 **When to use:** Before committing, before pushing, whenever you want to see what's changed.
 
 **Command:**
+
 ```bash
 git status
 ```
@@ -111,6 +115,7 @@ git status
 **What it does:** Downloads updates from the remote repository. Does NOT change your local files – just checks what's new on the remote.
 
 **Example:**
+
 ```bash
 git fetch origin
 ```
@@ -124,7 +129,8 @@ This checks if your branch has fallen behind the remote version.
 **What it does:** Shows a visual history of all commits on all branches.
 
 **Example output:**
-```
+
+```text
 * 3a4b5c6 (HEAD -> feature/my-changes) Add yaw LUT support
 * 7d8e9f0 Fix PreLUT indexing
 | * 1a2b3c4 (origin/main) Update README
@@ -134,6 +140,7 @@ This checks if your branch has fallen behind the remote version.
 ```
 
 **Understanding the output:**
+
 - `*` = a commit on the current branch
 - `|` = a line showing the history of another branch
 - `7d8e9f0` = the commit hash (unique identifier). Use the first 7 characters to reference a commit.
@@ -147,6 +154,7 @@ This checks if your branch has fallen behind the remote version.
 **When to use:** To understand the commit history and what others have done. The graph shows which commits belong to which branches.
 
 **Command:**
+
 ```bash
 git log --oneline --decorate --graph --all
 ```
@@ -160,21 +168,25 @@ git log --oneline --decorate --graph --all
 **Examples:**
 
 See changes in your current working tree (not yet staged):
+
 ```bash
 git diff
 ```
 
 See changes you've staged (ready to commit):
+
 ```bash
 git diff --staged
 ```
 
 See changes between your branch and the remote:
+
 ```bash
 git diff origin/feature/my-changes
 ```
 
 See changes in a specific file:
+
 ```bash
 git diff pyfuga/utils.py
 ```
@@ -192,7 +204,8 @@ git diff pyfuga/utils.py
 **Why use it?** Keeps the commit history clean and linear (instead of creating merge commits).
 
 **Mental model:**
-```
+
+```text
 Before rebase:
   local:   ○──○──○ (your work)
   remote:  ○──○────○──○ (new remote commits)
@@ -206,6 +219,7 @@ After rebase:
 Your commits are re-applied on top of the remote's latest.
 
 **Command:**
+
 ```bash
 git rebase @{u}
 ```
@@ -223,6 +237,7 @@ git rebase @{u}
 **Why use it?** Safer than rebase; preserves full history. Use this if rebase fails or if you're not comfortable with rebasing.
 
 **Command:**
+
 ```bash
 git merge @{u}
 ```
@@ -234,6 +249,7 @@ git merge @{u}
 **What it does:** Temporarily saves your changes (both staged and unstaged) so you can have a clean working tree.
 
 **Example:**
+
 ```bash
 git stash
 ```
@@ -241,9 +257,31 @@ git stash
 Your changes are saved. You can then `git rebase` or switch branches safely.
 
 **To restore:**
+
 ```bash
 git stash pop
 ```
+
+---
+
+### `git push --force-with-lease`
+
+**What it does:** Pushes your branch after rewriting history (for example, after `git rebase`), but with a safety check.
+
+**Why use it?** After a rebase, your local commits get new hashes, so a normal `git push` is often rejected as a non-fast-forward update. `--force-with-lease` updates the remote branch to your rebased history **only if** the remote branch still matches what you last fetched.
+
+**Command:**
+
+```bash
+git push --force-with-lease
+```
+
+**Important safety note:**
+
+- `git push --force` can overwrite other people's remote commits if the remote moved.
+- `git push --force-with-lease` refuses to push in that case, so you don't accidentally delete teammates' work.
+
+**When to use:** When you already pushed a branch, then rebased it locally (for example onto updated `main`), and now need to update the remote branch to match your rebased history.
 
 ---
 
@@ -261,9 +299,10 @@ git status
 ```
 
 Check if your branch is behind:
+
 - If you see `Your branch is X commits behind origin/...`, you need to sync.
 
-### 2. Sync with Remote (if behind)
+### 2. Sync Your Working Branch with Its Remote (if behind)
 
 If your branch is behind:
 
@@ -274,6 +313,7 @@ git rebase @{u}
 This brings your branch up to date.
 
 **If you have unsaved changes:** Stash them first:
+
 ```bash
 git stash
 git rebase @{u}
@@ -282,28 +322,62 @@ git stash pop
 
 **If rebase fails:** See "Resolving Conflicts" below.
 
-### 3. Make Your Changes
+### 3. Check `main` for New Changes, Then Rebase Your Branch onto `main`
+
+Even if your feature branch is up to date with `origin/feature/...`, `main` may have moved. Check and update `main`, then rebase your working branch onto it.
+
+**If your working branch is dirty (recommended safe flow):**
+
+```bash
+git stash
+git switch main
+git fetch
+git status
+git pull --ff-only
+git switch feature/my-changes
+git rebase main
+git stash pop
+```
+
+**If your working branch is clean:**
+
+```bash
+git switch main
+git fetch
+git status
+git pull --ff-only
+git switch feature/my-changes
+git rebase main
+```
+
+`git pull --ff-only` updates `main` without creating a merge commit. Rebasing onto updated `main` keeps your branch current with the latest integration branch.
+
+### 4. Make Your Changes
 
 Edit files, create new features, fix bugs.
 
 Check your progress:
+
 ```bash
 git status
 ```
 
 See the exact changes:
+
 ```bash
 git diff
 ```
 
-### 4. Commit Your Changes (after testing)
+### 5. Commit Your Changes (after testing)
 
 Stage your changes:
+
 ```bash
 git add pyfuga/utils.py  # or git add . for all changes
 ```
 
 Commit with a descriptive message:
+
 ```bash
 git commit -m "feature: add yaw LUT interpolation support"
 ```
@@ -311,16 +385,18 @@ git commit -m "feature: add yaw LUT interpolation support"
 Use the same message style as CONTRIBUTING.md describes.
 
 **Run tests before committing:**
+
 ```bash
 python scripts/dev.py test
 ```
 
 Or with Pixi:
+
 ```bash
 pixi run test
 ```
 
-### 5. Before Pushing
+### 6. Before Pushing
 
 Make sure everything passes locally:
 
@@ -331,17 +407,31 @@ python scripts/dev.py test       # Run tests
 ```
 
 Or with Pixi:
+
 ```bash
 pixi run ci
 ```
 
-### 6. Push to Remote
+### 7. Push to Remote
 
 Once all checks pass:
 
 ```bash
 git push
 ```
+
+If you rebased after previously pushing this branch, use:
+
+```bash
+git push --force-with-lease
+```
+
+This safely updates the remote branch to your rebased history.
+
+**Why this matters (especially in VS Code Source Control):**
+
+- After a rebase, using a generic "Sync Changes" flow may attempt a pull/merge when what you actually need is to update the remote to your rewritten local history.
+- If you do not push your rebased branch correctly, you can end up with confusing extra merge commits or a branch history that no longer matches what you tested locally.
 
 Your changes are now on the remote, and you can open a Merge Request (MR).
 
@@ -380,6 +470,7 @@ git rebase @{u}             # Integrate remote commits into your branch
 **Solution:**
 
 Same as above:
+
 ```bash
 git rebase @{u}
 ```
@@ -403,7 +494,47 @@ python scripts/dev.py test # Test to make sure everything works
 
 ---
 
-### Scenario 4: "I want to see what changed between my version and the original"
+### Scenario 4: "My feature branch is up to date, but `main` changed"
+
+**What this means:** Your branch may be current versus `origin/feature/...`, but not current versus `main`.
+
+**Solution:**
+
+```bash
+git stash                  # Only if you have local uncommitted changes
+git switch main
+git fetch
+git status                # Check whether main is behind origin/main
+git pull --ff-only
+git switch feature/my-changes
+git rebase main
+git stash pop             # Only if you stashed earlier
+```
+
+If you already pushed your feature branch before this rebase, finish with:
+
+```bash
+git push --force-with-lease
+```
+
+---
+
+### Scenario 5: "I rebased locally and now push is rejected"
+
+**What this means:** Rebase rewrote commit hashes, so remote history and local history no longer fast-forward.
+
+**Solution:**
+
+```bash
+git fetch
+git push --force-with-lease
+```
+
+**Why not plain `--force`?** `--force` can overwrite teammates' new commits; `--force-with-lease` protects against that by refusing if remote changed since your last fetch.
+
+---
+
+### Scenario 6: "I want to see what changed between my version and the original"
 
 **What this means:** You want to compare your current branch with `main`, or with the remote version.
 
@@ -423,7 +554,7 @@ git diff HEAD~1            # Compare with your last commit
 
 ---
 
-### Scenario 5: "I made a copy of a file to see the original"
+### Scenario 7: "I made a copy of a file to see the original"
 
 **What this means:** You might have done something like `cp utils.py utils.py.bak` to keep the original around while editing.
 
@@ -462,6 +593,7 @@ def new_function():
 **To fix in VS Code (easiest):**
 
 VS Code highlights conflicts visually with interactive buttons:
+
 1. Open the conflicted file – you'll see **Accept Current Change**, **Accept Incoming Change**, and **Accept Both Changes** buttons above each conflict
 2. Click the button for what you want (or manually edit the file)
 3. Manually verify the result makes sense (especially if you chose "Accept Both")
@@ -479,6 +611,7 @@ VS Code highlights conflicts visually with interactive buttons:
 **If it's too complicated:**
 
 Start over:
+
 ```bash
 git rebase --abort
 git merge @{u}
@@ -497,6 +630,7 @@ When CI fails, the error message tells you what went wrong. Here's how to debug 
 **Error in CI:** "Black formatting check failed" or "Ruff linting failed"
 
 **Fix locally:**
+
 ```bash
 python scripts/dev.py fmt
 ```
@@ -504,6 +638,7 @@ python scripts/dev.py fmt
 This auto-fixes most formatting issues. Commit the changes and push again.
 
 **Debug:** To see what's wrong without fixing:
+
 ```bash
 python scripts/dev.py check-fmt
 ```
@@ -515,6 +650,7 @@ python scripts/dev.py check-fmt
 **Error in CI:** "pytest failed" or "Some tests errored"
 
 **Fix locally:**
+
 ```bash
 python scripts/dev.py test
 ```
@@ -522,12 +658,14 @@ python scripts/dev.py test
 This runs the full test suite. You'll see which tests failed and why.
 
 **Debug specific test:**
+
 ```bash
 python scripts/dev.py test -k test_name  # Run a specific test
 python scripts/dev.py test -v            # Verbose output
 ```
 
 If tests pass locally but fail in CI, it might be:
+
 - Python version mismatch (check `python --version`)
 - Missing dependency (check your environment)
 - Platform-specific issue (Linux vs Windows vs macOS)
@@ -541,6 +679,7 @@ For help, see the documentation build section in [CONTRIBUTING.md](../CONTRIBUTI
 **Error in CI:** "Sphinx build failed" or "Documentation build errored"
 
 **Fix locally:**
+
 ```bash
 python scripts/dev.py build-docs
 ```
@@ -548,6 +687,7 @@ python scripts/dev.py build-docs
 Check the error message carefully. It usually points to the file and line with the problem.
 
 Common issues:
+
 - Broken link in `.rst` file
 - Missing reference (e.g., `:class:\MyClass\` but `MyClass` doesn't exist)
 - Incorrect reStructuredText syntax
@@ -563,6 +703,7 @@ git log --oneline --decorate --graph --all
 ```
 
 Alias it for easier access:
+
 ```bash
 git config --global alias.lg "log --oneline --decorate --graph --all"
 git lg  # Now you can use this shorthand
@@ -583,11 +724,13 @@ Your changes are back in the staging area but not committed.
 ### See branches
 
 List all branches (local and remote):
+
 ```bash
 git branch -a
 ```
 
 Create a new branch:
+
 ```bash
 git switch -c feature/my-new-feature
 ```
@@ -605,14 +748,16 @@ git branch -d feature/old-feature
 ## Summary: One-Command Reference
 
 | Task | Command |
-|------|---------|
+| ---- | ------- |
 | Check status | `git status` |
 | See changes | `git diff` |
 | See history | `git log --oneline --decorate --graph --all` |
 | Sync with remote | `git fetch` then `git rebase @{u}` |
+| Update local `main` | `git switch main` then `git pull --ff-only` |
 | Stage changes | `git add <file>` |
 | Commit | `git commit -m "<message>"` |
 | Push | `git push` |
+| Push after rebase | `git push --force-with-lease` |
 | Stash changes | `git stash` |
 | Restore stash | `git stash pop` |
 
