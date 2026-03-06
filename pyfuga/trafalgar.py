@@ -4,7 +4,7 @@ from numpy import newaxis as na
 from scipy.interpolate import RectBivariateSpline
 from tqdm import tqdm
 
-from pyfuga.constants import kappa
+from pyfuga.constants import KAPPA
 
 M_PI = 3.141592653589793
 
@@ -92,7 +92,7 @@ class Trafalgar:
 
                 bx = M_PI / (self.dx * self.nx) / 4
                 by = M_PI / (self.dy * self.ny) / 4
-                U = np.log(zhub / z0) / kappa
+                U = np.log(zhub / z0) / KAPPA
                 fuzz = U * bx * by * self.nx * self.ny / (M_PI * M_PI)
                 force = np.exp(-0.5 * (self.sigmay * ky[na]) ** 2) * np.exp(-0.5 * (self.sigmax * kx[:, na]) ** 2)
 

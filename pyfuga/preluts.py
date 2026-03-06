@@ -72,8 +72,22 @@ class PreLUTs(ComplexXRDataset):
         if all_vars:
             var_name_lst = f.keys()
         else:
+            var_name_lst = [
+                "Y_lower",
+                "R_lower",
+                "R_upper",
+                "dbx_const",
+                "dbx_lin",
+                "dby_const",
+                "dby_lin",
+                "level",
+            ]
+
+        try:
+            dim_dat_dict = {k: get_var(k) for k in var_name_lst}
+        except KeyError:
             var_name_lst = ["Yleft", "Rleft", "Rright", "dyxu0", "dyxu1", "dyxv0", "dyxv1", "level"]
-        dim_dat_dict = {k: get_var(k) for k in var_name_lst}
+            dim_dat_dict = {k: get_var(k) for k in var_name_lst}
         return PreLUTs(
             {**dim_dat_dict},
             coords={"kz0": kz0_lst, "beta": beta_lst, "i": range(max_nodes)},

@@ -7,7 +7,7 @@ from numpy import linalg
 from numpy import newaxis as na
 from tqdm import tqdm
 
-from pyfuga.constants import UVW_LT, kappa, zminlevel
+from pyfuga.constants import FIRST_Z_OUTPUT, KAPPA, UVW_LT
 from pyfuga.utils import ComplexXRDataset, jit
 
 
@@ -67,7 +67,7 @@ class FourierLUTGenerator:
 
         upperjf = int(np.floor(np.log((zh + R) / z0) / ds))  # ceiling->floor
         lowerjf = int(np.ceil(np.log((zh - R) / z0) / ds))  # floor->ceiling
-        minlevel = int(np.floor(np.log(np.maximum(zminlevel / z0, 1)) / ds))
+        minlevel = int(np.floor(np.log(np.maximum(FIRST_Z_OUTPUT / z0, 1)) / ds))
         maxlevel = int(np.ceil(np.log(self.zi / z0) / ds))
 
         if low_level_out < minlevel + 1:  # pragma: no cover
@@ -206,7 +206,7 @@ def solve_layers(args):
     if forcing not in ("L", "T"):
         raise ValueError(f"forcing must be 'L' or 'T', got {forcing!r}")
 
-    forcing = forcing.replace("L", "u").replace("T", "v")
+    axis = forcing.replace("L", "x").replace("T", "y")
     ds = prelut.ds
     jf_l = np.arange(lowerjf + 1, upperjf)
 
@@ -224,21 +224,17 @@ def solve_layers(args):
 
     ijf0_l, ijf1_l, ijf2_l = np.searchsorted(prelut.level, [jf_l - 1, jf_l, jf_l + 1])
 
-    YL = prelut.Yleft.values
-    Rright = prelut.Rright.values
-    Rleft = prelut.Rleft.values
-    if forcing == "u":
-        dYx_0 = prelut["dbx_const"].values
-        dYx_1 = prelut["dbx_lin"].values
-    else:  # forcing == "v"
-        dYx_0 = prelut["dby_const"].values
-        dYx_1 = prelut["dby_lin"].values
+    YL = prelut.Y_lower.values
+    Rright = prelut.R_upper.values
+    Rleft = prelut.R_lower.values
+    dYx_0 = prelut[f"db{axis}_const"].values
+    dYx_1 = prelut[f"db{axis}_lin"].values
     levels = prelut.level.values.astype(int)
 
-    fac0_1_l = z[0] / (kappa * k * (z[1] - z[0]))
-    fac1_1_l = 1 / (kappa * (z[1] - z[0]) * k**2)
-    fac0_2_l = z[2] / (kappa * k * (z[1] - z[2]))
-    fac1_2_l = 1 / (kappa * (z[1] - z[2]) * k**2)
+    fac0_1_l = z[0] / (KAPPA * k * (z[1] - z[0]))
+    fac1_1_l = 1 / (KAPPA * (z[1] - z[0]) * k**2)
+    fac0_2_l = z[2] / (KAPPA * k * (z[1] - z[2]))
+    fac1_2_l = 1 / (KAPPA * (z[1] - z[2]) * k**2)
     output = [
         np.concatenate(
             [

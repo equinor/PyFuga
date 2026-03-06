@@ -73,7 +73,6 @@ def test_compact_preluts():
         verbose=False,
         compact=True,
     )
-
     preluts = PreLUTs.make_preluts(
         zeta0=0,
         kz0_lst=[1e-9, 1e-8],

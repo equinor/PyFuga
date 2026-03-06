@@ -13,7 +13,7 @@ from pyfuga.constants import UVW_LT
 from pyfuga.file_readers import read_lut_file
 from pyfuga.flut import FourierLUTGenerator
 from pyfuga.preluts import PreLUT, PreLUTs
-from pyfuga.preluts_generator import PreLUTGenerator, PrelutNode
+from pyfuga.preluts_generator import PreLUTGenerator, PreLUTNode
 from pyfuga.utils import compile, get_beta, get_beta_lst, get_kz0_lst
 
 from .helpers import expose_old_names
@@ -204,6 +204,19 @@ def test_prelut_stable():
     if module is None:
         raise RuntimeError("Could not determine the module for PreLUTGenerator.")
     importlib.reload(module)
+
+    # Debugging
+    from pyfuga.preluts_generator.nodes import PreLUTNodeFirst  # noqa: I001
+    from pyfuga.preludium_eq_routines import PrelutNodePreludium
+
+    print("mro:", PreLUTNodeFirst.mro())
+    print("is subclass:", issubclass(PreLUTNodeFirst, PrelutNodePreludium))
+
+    from pyfuga.preludium_eq_routines import get_new_h2_Preludium
+    from pyfuga.preluts_generator.generator import get_new_h2
+
+    print(get_new_h2 is get_new_h2_Preludium)
+
     zeta0 = 3.85e-7
     kzmax = 1
     prelut_generator = PreLUTGenerator(
@@ -225,20 +238,22 @@ def test_prelut_stable():
 
 
 def test_next_node():
-    node = PrelutNode()
+    node = PreLUTNode()
 
     prelut = PreLUT.from_pre_file(tfp + "preLUTs_Zeta0=0.00E+00_1_2/0.0000-09.0000.pre", zeta0=0)
     i = 1
-    node.Yright = prelut.Yleft[i].values @ np.conj(prelut.Rleft[i].T).values
-    next_node = node.get_next(0.05, 0.1)
-    assert next_node.sleft == 0.05
-    assert next_node.sright == 0.1
+    node.Y_upper = prelut.Yleft[i].values @ np.conj(prelut.Rleft[i].T).values
+    next_node = node.generate_next_node(0.05, 0.1)
+    assert next_node.log_s_lower == 0.05
+    assert next_node.log_s_upper == 0.1
 
-    assert next_node.Rleft is not None
-    # print(np.abs(next_node.Yleft @ np.conj(next_node.Rleft.T) - node.Yright).max())
-    assert_allclose(next_node.Yleft @ np.conj(next_node.Rleft.T), node.Yright, rtol=1e-6, atol=1e-15)
-    # print(np.abs(node.Rright @ next_node.Rleft - np.eye(6)).max())
-    assert_allclose(node.Rright @ next_node.Rleft, np.eye(6), atol=1e-16)
+    assert next_node.R_lower is not None
+    # print(np.abs(next_node.Y_lower @ np.conj(next_node.Rleft.T) - node.Yright).max())
+    assert node.Y_upper is not None
+    assert_allclose(next_node.Y_lower @ np.conj(next_node.R_lower.T), node.Y_upper, rtol=1e-6, atol=1e-15)
+    # print(np.abs(node.R_upper @ next_node.R_lower - np.eye(6)).max())
+    assert node.R_upper is not None
+    assert_allclose(node.R_upper @ next_node.R_lower, np.eye(6), atol=1e-16)
 
 
 def test_prelut_with_above_sm():

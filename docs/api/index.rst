@@ -8,6 +8,7 @@ This section documents the public API of PyFuga.
    :recursive:
 
    pyfuga._fuga
+   pyfuga.preluts_generator
    pyfuga.preluts
    pyfuga.flut
    pyfuga.trafalgar

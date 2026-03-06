@@ -7,6 +7,12 @@ OLD_TO_NEW = {
     "dyxv1": "dby_lin",
     "dyxw0": "dbz_const",
     "dyxw1": "dbz_lin",
+    "sleft": "log_s_lower",
+    "sright": "log_s_upper",
+    "Yright": "Y_upper",
+    "Rleft": "R_lower",
+    "Rright": "R_upper",
+    "Yleft": "Y_lower",
 }
 
 NEW_TO_OLD = {new: old for old, new in OLD_TO_NEW.items()}
@@ -14,8 +20,7 @@ NEW_TO_OLD = {new: old for old, new in OLD_TO_NEW.items()}
 
 def expose_old_names(ds: xr.Dataset) -> xr.Dataset:
     """
-    Return a view of the dataset with old variable names (dyxu0, etc.)
-    for compatibility with older code/tests.
+    Return a view of the dataset with old variable names (dyxu0, etc.) for compatibility with older code/tests.
     """
     rename = {new: old for new, old in NEW_TO_OLD.items() if new in ds.data_vars}
     if rename:
@@ -25,7 +30,7 @@ def expose_old_names(ds: xr.Dataset) -> xr.Dataset:
 
 def expose_new_names(ds: xr.Dataset) -> xr.Dataset:
     """
-    Return a view of the dataset with new variable names (dbx_const, etc.)
+    Return a view of the dataset with new variable names (dbx_const, etc.) for compatibility with newer code/tests.
     """
     rename = {old: new for old, new in OLD_TO_NEW.items() if old in ds.data_vars}
     if rename:
