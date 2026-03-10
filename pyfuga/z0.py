@@ -32,10 +32,19 @@ def psi(zeta, unstable=""):
 
 
 def _g_unstable(x, ti, zeta0):
+    x_arr = np.asarray(x, dtype=float)
+
     # x must be positive; if a solver probes x<=0, make g invalid/very negative
-    if np.any(np.asarray(x) <= 0):
-        return -np.inf
-    return x / np.exp(psi(x * zeta0) - psi(zeta0)) - np.exp(1.0 / ti)
+    if np.any(x_arr <= 0):
+        return -np.inf if np.ndim(x_arr) == 0 else np.full_like(x_arr, -np.inf, dtype=float)
+
+    g = x_arr / np.exp(psi(x_arr * zeta0) - psi(zeta0)) - np.exp(1.0 / ti)
+
+    # root_scalar/brentq requires scalar output when input x is scalar
+    if np.ndim(x_arr) == 0:
+        return float(np.asarray(g).reshape(-1)[0])
+
+    return np.asarray(g, dtype=float)
 
 
 def _solve_x_unstable(ti, zeta0, zref, z0_limit):

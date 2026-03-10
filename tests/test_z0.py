@@ -141,6 +141,18 @@ def test__g_unstable_rejects_nonpositive_x_with_infinite_value():
     assert val0 < 0 and valneg < 0
 
 
+def test__g_unstable_array_input_returns_array():
+    ti = 0.12
+    zeta0 = -6e-7
+    x_arr = np.array([1000.0, 5000.0, 10000.0])
+
+    result = _g_unstable(x_arr, ti, zeta0)
+
+    assert isinstance(result, np.ndarray)
+    assert result.shape == x_arr.shape
+    assert np.isfinite(result).all()
+
+
 def test__solve_x_unstable_uses_fallback_bracket_between_xhi_good_and_xmax(monkeypatch):
     ti = 0.12
     zeta0 = -6e-7
