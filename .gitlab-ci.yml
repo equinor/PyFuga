@@ -20,11 +20,12 @@ variables:
   VECLIB_MAXIMUM_THREADS: "1"
   NUMEXPR_NUM_THREADS: "1"
   PYTHON_DEFAULT_VERSION: "3.12"
+  PYTHON_DEFAULT_VERSION_TAG: "312"
   UV_CACHE_DIR: "$CI_PROJECT_DIR/.cache/uv"
   UV_LINK_MODE: "copy"
 
 cache:
-  key: "uv-${CI_JOB_IMAGE}"
+  key: "uv-${CI_PROJECT_ID}-${CI_JOB_NAME}"
   paths:
     - .cache/uv/
   policy: pull-push
@@ -180,6 +181,35 @@ pytest_pyfuga_default_python_version:
         - constraints/**/*
         - pyproject.toml
         - .coveragerc
+        - .gitlab-ci.yml
+      when: on_success
+      allow_failure: false
+    - when: manual
+      allow_failure: true
+
+# ----- Test PyFuga on Windows (Stage 1: default Python only) -----
+pytest_pyfuga_windows_default_python_version:
+  stage: test
+  image: registry.windenergy.dtu.dk/dockerimages/windows-python:ltsc2019_py${PYTHON_DEFAULT_VERSION_TAG}
+  cache: []
+  tags:
+    - docker-windows
+  script:
+    # Install PyFuga with test dependencies and pinned constraints for Python 3.12
+    - pip install -c "constraints/py${PYTHON_DEFAULT_VERSION_TAG}.txt" ".[tests]"
+
+    # Run the same test command as the default Linux CI job
+    - python -m pytest --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc --import-mode=importlib -m "not local" tests/
+  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
+  rules:
+    # Only on changed code
+    - changes:
+        - pyfuga/**/*
+        - tests/**/*
+        - constraints/**/*
+        - pyproject.toml
+        - .coveragerc
+        - .gitlab-ci.yml
       when: on_success
       allow_failure: false
     - when: manual
