@@ -8,8 +8,23 @@ version = "0.1.0"
 description = "Linearised CFD wake model (PyFuga)"
 readme = "README.md"
 authors = [{ name = "PyFuga team", email = "lalc@dtu.dk" }]
+license = "MIT"
 # Note: Keep in sync with [tool.pyfuga] min-python-version and supported-python-versions
 requires-python = ">=3.10, <3.15"
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Scientific/Engineering",
+]
 dependencies = [
   "numpy>=1.26",
   "scipy>=1.10",
@@ -20,6 +35,11 @@ dependencies = [
   "h5py>=3.15.1",
   "numba>=0.63.1",
 ]
+
+[project.urls]
+Repository = "https://gitlab.windenergy.dtu.dk/TOPFARM/cuttingedge/pywake/fuga/pyfuga"
+Documentation = "https://topfarm.pages.windenergy.dtu.dk/cuttingedge/pywake/fuga/PyFuga/"
+Issues = "https://gitlab.windenergy.dtu.dk/TOPFARM/cuttingedge/pywake/fuga/pyfuga/-/issues"
 
 [project.optional-dependencies]
 tests = [
@@ -50,7 +70,7 @@ docs = [
 dev = ["pyfuga[tests,lint,docs]", "pre-commit"]
 
 [tool.setuptools]
-packages = ["pyfuga"]
+packages = { find = { include = ["pyfuga*"], exclude = ["constraints*", "tests*", "docs*", "build*"] } }
 
 # --------------------------------------------------------------------------------------------------
 # Pixi configuration

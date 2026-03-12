@@ -134,3 +134,28 @@ docs_preview:
     # Otherwise manual
     - when: manual
       allow_failure: true
+
+# ----- Build and validate release artifacts (no publish) -----
+build_release_artifacts:
+  stage: test
+  extends: .default_python_job
+  script:
+    - VENV_DIR=".venv-${CI_JOB_ID}"
+    - uv venv "${VENV_DIR}"
+    - . "${VENV_DIR}/bin/activate"
+    - uv pip install build twine
+    - python -m build
+    - python -m twine check dist/*
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 week
+  rules:
+    # Always validate artifacts for tags/releases
+    - if: "$CI_COMMIT_TAG"
+      when: on_success
+      allow_failure: false
+
+    # Optional manual run on branches
+    - when: manual
+      allow_failure: true

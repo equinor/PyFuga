@@ -7545,7 +7545,7 @@ packages:
 - pypi: ./
   name: pyfuga
   version: 0.1.0
-  sha256: a842cb371d1904783691a51e8699c072fe378ca0bfc2e9694314bf41c9180286
+  sha256: 97d1bb445b54919beaff603e0809b813c4617911492612bbf25824907aa629b5
   requires_dist:
   - numpy>=1.26
   - scipy>=1.10
