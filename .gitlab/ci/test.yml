@@ -1,0 +1,136 @@
+# ===== Test stage =====
+
+# ----- Test PyFuga (quick, every push) -----
+test_linux_default:
+  stage: test
+  extends:
+    - .default_python_job
+    - .pytest_coverage
+    - .pytest_notebook_html_artifacts
+    - .rules_on_code_changes
+  script:
+    - |
+      PYV="${PYTHON_DEFAULT_VERSION/./}"          # "3.12" -> "312"
+      CONSTRAINT="constraints/py${PYV}.txt"
+      test -f "${CONSTRAINT}" || (echo "Missing constraints file: ${CONSTRAINT}"; exit 1)
+      echo "Using constraints: ${CONSTRAINT}"
+      VENV_DIR=".venv-${CI_JOB_ID}"
+      uv venv "${VENV_DIR}"
+      . "${VENV_DIR}/bin/activate"
+      uv pip install -c "${CONSTRAINT}" ".[tests]"
+    - python -m pytest --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc --import-mode=importlib -m "not local" tests/
+
+# ----- Test PyFuga on Windows (Stage 1: default Python only) -----
+test_windows_default:
+  extends:
+    - .windows_test_job
+    - .rules_on_code_changes
+  script:
+    # Run tests in the matching Pixi environment for the default Python version
+    - $PixiEnv = "py$env:PYTHON_DEFAULT_VERSION_TAG"
+    - pixi --version
+    - pixi install --frozen -e $PixiEnv
+    - pixi run -e $PixiEnv test
+
+# Windows test matrix.
+# Built against the shared image published from the windows-pixi ltsc2019 branch
+# at registry.windenergy.dtu.dk/dockerimages/windows-pixi:ltsc2019.
+# Keep this list aligned with the Pixi environments defined in pyproject.toml.
+
+# ----- Test PyFuga on Windows (full matrix, manual) -----
+test_windows_matrix:
+  extends:
+    - .windows_test_job
+    - .rules_python_matrix_default_excluded
+  parallel:
+    matrix:
+      - PYTHON_VERSION: "3.10"
+        PIXI_ENV: "py310"
+      - PYTHON_VERSION: "3.11"
+        PIXI_ENV: "py311"
+      - PYTHON_VERSION: "3.12"
+        PIXI_ENV: "py312"
+      - PYTHON_VERSION: "3.13"
+        PIXI_ENV: "py313"
+      - PYTHON_VERSION: "3.14"
+        PIXI_ENV: "py314"
+  script:
+    # Run tests in the version-specific Pixi environment
+    - pixi --version
+    - pixi install --frozen -e $env:PIXI_ENV
+    - pixi run -e $env:PIXI_ENV test
+
+# ----- Test PyFuga (full matrix, only when required) -----
+test_linux_matrix:
+  stage: test
+  image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_VERSION}-uv:latest
+  parallel:
+    matrix:
+      - PYTHON_VERSION: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+  extends:
+    - .default_python_job
+    - .pytest_coverage
+    - .pytest_notebook_html_artifacts
+    - .rules_python_matrix_default_excluded
+  script:
+    # Install PyFuga with test dependencies and version-specific constraints
+    - |
+      PYV="${PYTHON_VERSION/./}"          # "3.10" -> "310"
+      CONSTRAINT="constraints/py${PYV}.txt"
+      test -f "${CONSTRAINT}" || (echo "Missing constraints file: ${CONSTRAINT}"; exit 1)
+      echo "Using constraints: ${CONSTRAINT}"
+      VENV_DIR=".venv-${CI_JOB_ID}"
+      uv venv "${VENV_DIR}"
+      . "${VENV_DIR}/bin/activate"
+      uv pip install -c "${CONSTRAINT}" ".[tests]"
+
+    # Run tests with coverage
+    - python -m pytest --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc --import-mode=importlib -m "not local" tests/
+
+# ----- Check formatting, imports and linting with Black and Ruff -----
+lint:
+  stage: test
+  extends: .default_python_job
+  script:
+    - VENV_DIR=".venv-${CI_JOB_ID}"
+    - uv venv "${VENV_DIR}"
+    - . "${VENV_DIR}/bin/activate"
+    - uv pip install ".[lint]"
+    - python -m black --version
+    - python -m black --check .
+    - python -m ruff --version
+    - python -m ruff check .
+
+# ----- Build docs on every push (for preview / CI sanity) -----
+docs_preview:
+  stage: test
+  extends: .default_python_job
+  image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv-docs:latest
+  script:
+    - VENV_DIR=".venv-${CI_JOB_ID}"
+    - uv venv "${VENV_DIR}"
+    - . "${VENV_DIR}/bin/activate"
+    - uv pip install ".[docs]"
+    - cd docs
+    - sphinx-build -b html . _build # for branch builds, a simple single-version build is enough
+  artifacts:
+    paths:
+      - docs/_build
+    expire_in: 1 week
+  rules:
+    # Never run on main, since main will use the Pages job below to build the full multiversion docs for the official site
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: never
+
+    # Also skip on tags, since they will also trigger the Pages job which builds the full multiversion docs
+    - if: "$CI_COMMIT_TAG"
+      when: never
+
+    # Auto if branch name contains "docs"
+    - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH =~ /^docs\//'
+      when: on_success
+      allow_failure: false
+
+    # Otherwise manual
+    - when: manual
+      allow_failure: true

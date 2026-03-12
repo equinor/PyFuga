@@ -1,0 +1,125 @@
+# Shared CI configuration (variables, workflow, and reusable hidden jobs).
+
+# ===== Cap resource limits for CI jobs =====
+variables:
+  OMP_NUM_THREADS: "1"
+  OPENBLAS_NUM_THREADS: "1"
+  MKL_NUM_THREADS: "1"
+  VECLIB_MAXIMUM_THREADS: "1"
+  NUMEXPR_NUM_THREADS: "1"
+  PYTHON_DEFAULT_VERSION: "3.12"
+  PYTHON_DEFAULT_VERSION_TAG: "312"
+  UV_CACHE_DIR: "$CI_PROJECT_DIR/.cache/uv"
+  UV_LINK_MODE: "copy"
+
+cache:
+  key: "uv-${CI_PROJECT_ID}-${CI_JOB_NAME}"
+  paths:
+    - .cache/uv/
+  policy: pull-push
+
+# ===== Workflow =====
+workflow:
+  rules:
+    # Don't use merge request pipelines
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: never
+    - when: always
+
+# ===== Set default Python version =====
+image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv:latest
+
+# ===== Reusable hidden jobs =====
+# ----- Shared rules -----
+.rules_on_code_changes:
+  rules:
+    - changes:
+        - pyfuga/**/*
+        - tests/**/*
+        - constraints/**/*
+        - ".gitlab/ci/**/*"
+        - pixi.lock
+        - pyproject.toml
+        - .coveragerc
+        - .gitlab-ci.yml
+      when: on_success
+      allow_failure: false
+    - when: manual
+      allow_failure: true
+
+.rules_python_matrix_default_excluded:
+  rules:
+    - if: "$PYTHON_VERSION == $PYTHON_DEFAULT_VERSION"
+      when: never
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: on_success
+      allow_failure: false
+    - if: "$CI_COMMIT_TAG"
+      when: on_success
+      allow_failure: false
+    - when: manual
+      allow_failure: false
+
+# ----- Shared pytest outputs -----
+.pytest_coverage:
+  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
+
+.pytest_notebook_html_artifacts:
+  artifacts:
+    paths:
+      - tests/notebook_outputs/*.html
+    when: always
+
+# ----- Shared job templates -----
+.default_python_job:
+  tags:
+    - docker
+    - ubuntu
+    - linux
+  before_script:
+    # Environment setup
+    - export UV_CACHE_DIR="${UV_CACHE_DIR:-$CI_PROJECT_DIR/.cache/uv}"
+    - export UV_LINK_MODE="${UV_LINK_MODE:-copy}"
+    - echo "UV_CACHE_DIR=$UV_CACHE_DIR"
+
+    # Runner identification
+    - echo "=== Runner Info ==="
+    - echo "Hostname:$(hostname)"
+    - echo "Runner:${CI_RUNNER_DESCRIPTION:-unknown}"
+    - echo "Runner ID:${CI_RUNNER_ID:-unknown}"
+    - echo "Runner tags:${CI_RUNNER_TAGS:-unknown}"
+
+    # Disk space monitoring
+    - echo "=== Disk Space ==="
+    - df -h
+    - echo "=== Disk Inodes ==="
+    - df -i | head -n 1; df -i | grep -E '(/dev/|Filesystem)' || true
+
+    # Memory monitoring
+    - echo "=== Memory Usage ==="
+    - free -h || true
+
+    # Docker info (if accessible)
+    - echo "=== Docker Info ==="
+    - docker info 2>/dev/null | grep -E '(Storage Driver|Docker Root Dir|Logging Driver|Cgroup)' || echo "Docker info not accessible (expected in jobs)"
+    - docker system df 2>/dev/null || echo "Docker system df not accessible (expected in jobs)"
+
+    # Cache sizes
+    - echo "=== Cache Sizes ==="
+    - du -sh /cache 2>/dev/null || true
+    - du -sh "$UV_CACHE_DIR" 2>/dev/null || true
+    - du -sh /root/.cache 2>/dev/null || true
+    - du -sh "$CI_PROJECT_DIR" || true
+
+    # Tool versions
+    - echo "=== Tool Versions ==="
+    - python -V
+    - uv --version
+
+.windows_test_job:
+  extends: .pytest_coverage
+  stage: test
+  image: registry.windenergy.dtu.dk/dockerimages/windows-pixi:ltsc2019
+  cache: []
+  tags:
+    - docker-windows
