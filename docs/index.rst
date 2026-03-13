@@ -139,7 +139,7 @@ Contents
     theory/linearisation
     theory/mixed_spectral
     theory/numerics
-    theory/FFIT
+    theory/ffit
     theory/yawed_extension
     theory/notation
     theory/references

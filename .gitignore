@@ -36,6 +36,7 @@ docs/api/generated/
 
 # IDE & Editors
 *.project
+*.bak
 
 # Application Data (NetCDF files)
 *.nc

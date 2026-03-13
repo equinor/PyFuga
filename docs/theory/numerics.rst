@@ -555,3 +555,8 @@ Thus, the modification of the Chasing method amounts to performing the QR decomp
            return Yright, h, s1, lastkz  # Return early to create substation
 
 In ``preluts_generator``, we store the :math:`\mathbf{Q}` and :math:`\mathbf{R}` matrices at each station for later use. In ``flut``, when propagating downward from :math:`z_{ih}` to :math:`z_0`, we apply these transformations in sequence. To find :math:`\mathbf{X}(z_j)` from :math:`\mathbf{X}(z_{j+1})`, we use the relation :math:`\mathbf{X}(z_j) = \mathbf{Q}(z_j) \mathbf{b}(z_j)` where :math:`\mathbf{b}(z_j) = \mathbf{R}_j^{-1} \mathbf{b}(z_{j+1})`. This allows us to propagate the solution downward while maintaining both numerical stability and the correct boundary condition structure throughout the domain.
+
+Appendix: Numerical solution
+----------------------------
+
+See :download:`appendices/numerical_solution.pdf` for the detailed derivation of the numerical solution.

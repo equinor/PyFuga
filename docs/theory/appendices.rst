@@ -8,3 +8,5 @@ theory presented in the main documentation.
 - :download:`Appendix A <appendices/linearisation.pdf>`: *Linearisation using perturbation theory*
 - :download:`Appendix B <appendices/s_to_t.pdf>`: *Transition between independent variables*
 - :download:`Appendix C <appendices/mixed_spectral.pdf>`: *Governing equations in mixed-spectral form*
+- :download:`Appendix D <appendices/numerical_solution.pdf>`: *Numerical solution*
+- :download:`Appendix E <appendices/ffit_derivation.pdf>`: *FFIT - Detailed Algebra*
