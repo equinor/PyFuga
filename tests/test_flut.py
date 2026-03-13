@@ -6,7 +6,7 @@ from numpy.testing import assert_array_almost_equal, assert_array_equal
 
 from pyfuga.constants import UVW_LT
 from pyfuga.file_readers import read_lut_file
-from pyfuga.flut import FourierLUTGenerator
+from pyfuga.flut import FourierLUTGenerator, solve_layer
 from pyfuga.preluts import PreLUTs
 from pyfuga.profiling import timeit
 from pyfuga.utils import compile, get_beta_lst
@@ -208,3 +208,105 @@ def test_make_lut_parallel_uses_spawn_context(monkeypatch):
     gen.make_lut(z0=0.00001, low_level_out=314, high_level_out=314, luts=["UL"], n_cpu=2)
 
     assert seen["arg"] == "spawn"
+
+
+def test_make_lut_clamps_low_level_out(capsys):
+    preluts = PreLUTs.from_netcdf(tfp + "preLUTs_Zeta0=0.00E+00_1_2.nc")
+    preluts = expose_new_names(preluts)
+    gen = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False)
+
+    # With z0=0.00001 and ds=0.05, minlevel=230 so minlevel+1=231.
+    # Passing low_level_out=229 should be clamped up to 231.
+    luts = gen.make_lut(z0=0.00001, low_level_out=229, high_level_out=235, luts=["UL"])
+
+    out = capsys.readouterr().out
+    assert "LoLevelOut" in out
+    assert luts.level.values[0] == 231
+
+
+def test_make_lut_clamps_high_level_out(capsys):
+    preluts = PreLUTs.from_netcdf(tfp + "preLUTs_Zeta0=0.00E+00_1_2.nc")
+    preluts = expose_new_names(preluts)
+    gen = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False)
+
+    # With z0=0.00001, zi=400 and ds=0.05, maxlevel=351 so maxlevel-1=350.
+    # Passing high_level_out=352 should be clamped down to 350.
+    luts = gen.make_lut(z0=0.00001, low_level_out=346, high_level_out=352, luts=["UL"])
+
+    out = capsys.readouterr().out
+    assert "HiLevelOut" in out
+    assert luts.level.values[-1] == 350
+
+
+def test_solve_layer_raises_on_forcing_increments_up_mismatch():
+    # R_upper has only 1 row so R_upper[icl_m1:icl_p1] yields 1 row, while
+    # forcing_increments_up concatenates db_const[0:1] and db_const[1:2] → 2 rows.
+    n = 3
+    icl_m1, icl, icl_p1 = np.array(0), np.array(1), np.array(2)
+    R_upper = np.zeros((1, 6, 6), dtype=np.complex128)
+    R_lower = np.zeros((n, 6, 6), dtype=np.complex128)
+    Q = np.zeros((n, 6, 6), dtype=np.complex128)
+    levels = np.arange(n)
+    db_const = np.zeros((n, 6), dtype=np.complex128)
+    db_lin = np.zeros((n, 6), dtype=np.complex128)
+
+    with pytest.raises(ValueError, match="Length mismatch between forcing_increments_up and R_upper slice"):
+        solve_layer(R_upper, R_lower, Q, levels, db_const, db_lin, 1.0, 0.0, 1.0, 0.0, icl_m1, icl, icl_p1)
+
+
+def test_solve_layer_raises_on_filtered_levels_mismatch():
+    # Q has m=3 rows while b_full_6 ends up with 6 entries (built by the algorithm
+    # iterating over n=6 levels), so zip(Q[1:], new_level) filters only 2 items
+    # while zip(b_full_6[::-1][1:], new_level) filters 5 items → mismatch.
+    n = 6
+    m = 3  # intentionally fewer than b_full_6 will have
+    icl_m1, icl, icl_p1 = np.array(1), np.array(2), np.array(3)
+
+    R_upper = np.tile(np.eye(6, dtype=np.complex128), (n, 1, 1))
+    R_lower = np.tile(np.eye(6, dtype=np.complex128), (n, 1, 1))
+
+    Q = np.zeros((m, 6, 6), dtype=np.complex128)
+    # Q[-1, :3] together with the fixed rows forms an invertible permutation matrix for linalg.solve.
+    Q[-1, 0, 1] = 1
+    Q[-1, 1, 3] = 1
+    Q[-1, 2, 5] = 1
+    Q[-1, 3, 0] = 1
+    Q[-1, 4, 2] = 1
+    Q[-1, 5, 4] = 1
+
+    levels = np.arange(n)
+    db_const = np.zeros((n, 6), dtype=np.complex128)
+    db_lin = np.zeros((n, 6), dtype=np.complex128)
+
+    with pytest.raises(ValueError, match="Length mismatch between filtered Q and b levels"):
+        solve_layer(R_upper, R_lower, Q, levels, db_const, db_lin, 1.0, 0.0, 1.0, 0.0, icl_m1, icl, icl_p1)
+
+
+def test_solve_layer_raises_on_forcing_increments_down_mismatch():
+    # With icl_m1=1, icl=2, icl_p1=3:
+    #   forcing_increments_down (after decrement) = db_const[2:1:-1] + db_const[1:0:-1] → 2 rows
+    #   R_lower_slice = R_lower[3:1:-1] → with only 3 rows numpy clips to 1 row → mismatch
+    # R_upper needs ≥ 3 rows so the earlier up-pass check passes (R_upper[1:3] = 2 rows = forcing_increments_up).
+    # R_upper[3:-1] is empty (4 rows total), so the "cl+1 to max level" loop doesn't run.
+    # R_lower[-1:3:-1] with 3 rows = R_lower[2:3:-1] = empty, so "max level to cl+1" loop doesn't run either.
+    icl_m1, icl, icl_p1 = np.array(1), np.array(2), np.array(3)
+
+    R_upper = np.tile(np.eye(6, dtype=np.complex128), (4, 1, 1))
+    R_lower = np.tile(np.eye(6, dtype=np.complex128), (3, 1, 1))  # only 3 rows → triggers mismatch
+
+    Q = np.zeros((1, 6, 6), dtype=np.complex128)
+    # Q[-1, :3] combined with the fixed rows forms a permutation matrix → Y_tilde invertible
+    Q[0, 0, 1] = 1
+    Q[0, 1, 3] = 1
+    Q[0, 2, 5] = 1
+    Q[0, 3, 0] = 1
+    Q[0, 4, 2] = 1
+    Q[0, 5, 4] = 1
+
+    n = 4
+    levels = np.arange(n)
+    db_const = np.zeros((n, 6), dtype=np.complex128)
+    db_lin = np.zeros((n, 6), dtype=np.complex128)
+
+    with pytest.raises(ValueError, match="Length mismatch between forcing_increments_down and R_lower slice"):
+        solve_layer(R_upper, R_lower, Q, levels, db_const, db_lin, 1.0, 0.0, 1.0, 0.0, icl_m1, icl, icl_p1)

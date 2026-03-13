@@ -70,10 +70,15 @@ html_theme_options = {
     "sticky_navigation": True,  # Keep the navigation visible when scrolling
 }
 
-# Keep MathJax simple
-mathjax3_config = {
-    "tex": {"tags": "all", "useLabelIds": True},
+# Fix equation numbering
+html_css_files = ["custom.css"]
+mathjax3_config = {  # Keep MathJax simple
+    "tex": {
+        "tags": "none",
+        "useLabelIds": False,
+    }
 }
+math_number_all = True
 
 # -- CI build configuration ---------------------------------------------------
 

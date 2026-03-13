@@ -48,6 +48,7 @@ first-order momentum equation and introduce two new variables :math:`u'` and :ma
 enable us to write the equations as 6 first-order equations, viz. 
 
 .. math::
+    :label: eq:Eom Fourier transformed
 
     \begin{aligned}
         \frac{\partial u}{\partial z} &= u' \\
@@ -69,6 +70,7 @@ enable us to write the equations as 6 first-order equations, viz.
 with associated boundary conditions
 
 .. math::
+    :label: eq:BC Fourier transformed
 
     u(z_0) = 0, \quad v(z_0) = 0, \quad w(z_0) = 0, \quad u(z_i) = 0, \quad v(z_i) = 0, \quad 
     \text{ and } \quad w(z_i) = 0.
@@ -86,11 +88,11 @@ is conveniently solved on a PC or by a cluster working in parallel.
 Forcing decomposition
 ---------------------
 
-All three drag force components are included in Equation (3), but we shall obtain the final 
+All three drag force components are included in eq. :eq:`eq:Eom Fourier transformed`, but we shall obtain the final 
 solution as the sum of three individual solutions, each one obtained by retaining only one 
 component, :math:`f_i`, and setting the other two equal to zero. This is possible due to the 
-linearity of Equation (3) and the homogeneous boundary conditions in Equation (4). The solution to
-Equation (3) (with only one non-zero force component) is particularly simple if 
+linearity of eq. :eq:`eq:Eom Fourier transformed` and the homogeneous boundary conditions in :eq:`eq:BC Fourier transformed`. The solution to
+eq. :eq:`eq:Eom Fourier transformed` (with only one non-zero force component) is particularly simple if 
 :math:`f_i(\mathbf{k}, z)` can be written as a product of two functions, one depending only on 
 :math:`\mathbf{k}` and one depending only on :math:`z`. This is not generally the case, but we may 
 approximate :math:`f_i(\mathbf{k}, z)` by a sum of such functions. One way of doing this is to set 
@@ -133,11 +135,11 @@ determines the amplitude of the triangular function at each vertical level :math
 
 If we solve the problem for each orthogonal component of the forcing :math:`f_i(\mathbf{k}, z)` 
 individually, and for a single vertical level at a time, the forcing amplitude disappears from 
-Equation (3). That is, we set :math:`f_i = f_{i,n}\phi_n` and the two other forcing components to 
+eq. :eq:`eq:Eom Fourier transformed`. That is, we set :math:`f_i = f_{i,n}\phi_n` and the two other forcing components to 
 zero, yielding a set of equations valid in the case of a single triangular function 
 :math:`\phi_n(z)`. This allows the sub-solutions to be used to construct solutions with any form of 
 forcing for any vertical level :math:`z_n`. It is much faster to make a linear combination of 
-pre-calculated sub-solutions than to solve Equation (3) with the full forcing. Since the equations 
+pre-calculated sub-solutions than to solve eq. :eq:`eq:Eom Fourier transformed` with the full forcing. Since the equations 
 become decoupled in :math:`f_i`, we can combine the sub-solutions much later to account for the 
 complete forcing.
 
@@ -145,7 +147,7 @@ Non-dimensional formulation
 ---------------------------
 
 In the following, we only take into account :math:`f_1` as forcing, so we set :math:`f_2 = f_3 = 0` 
-in Equation (3). That means we show one out of three possible (very similar) examples. Furthermore, 
+in eq. :eq:`eq:Eom Fourier transformed`. That means we show one out of three possible (very similar) examples. Furthermore, 
 we restrict the equation to the triangular function of a single vertical level :math:`z_n`, so that 
 we can replace :math:`f_1` by :math:`f_{1,n}\phi_n`.
 
@@ -156,10 +158,11 @@ in the boundary layer :math:`\partial U^{0*} / \partial z = 1/K^*(z)`.
 
 Using the new independent variable :math:`s = kz` and the new dependent variables 
 :math:`\tilde{u} = u u_* k / f_{1,n}`, :math:`\tilde{v} = v u_* k / f_{1,n}`, 
-:math:`\tilde{w} = w u_* k / f_{1,n}` and :math:`\tilde{p} = p k/f_{1,n}`, we find Equation (3) 
+:math:`\tilde{w} = w u_* k / f_{1,n}` and :math:`\tilde{p} = p k/f_{1,n}`, we find eq. :eq:`eq:Eom Fourier transformed` 
 with :math:`f_2=f_3=0` to be
 
 .. math::
+    :label: eq:Eom Fourier transformed nondim s
 
     \begin{aligned}
         \frac{\partial \tilde{u}}{\partial s} &= \tilde{u}' \\
@@ -178,12 +181,13 @@ finding sub-solutions for :math:`\phi_n(z)`. The solution with
 :math:`f_i(\mathbf{k}, z) = \sum_n f_{i,n}(\mathbf{k})\phi_n(z)` can then be obtained as the 
 weighted sum of the sub-solutions, using :math:`\{f_{i,n}(\mathbf{k})\}` as weights.
 
-Equation (6) is well suited for the upper part of the boundary layer, but very unstable near the 
+Equation :eq:`eq:Eom Fourier transformed nondim s` is well suited for the upper part of the boundary layer, but very unstable near the 
 surface. For :math:`s < s_{\mathrm{tr}}`, where :math:`s_{\mathrm{tr}}` is the value of :math:`s` 
 for which :math:`\frac{\partial}{\partial s} = \frac{\partial}{\partial t}` we use an alternative 
 formulation with :math:`t = U^{0}\kappa/u_*` as the independent variable,
 
 .. math::
+    :label: eq:Eom Fourier transformed nondim t
 
     \begin{aligned}
         \frac{\partial \tilde{u}}{\partial t} &= \tilde{u}' \\

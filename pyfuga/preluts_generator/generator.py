@@ -166,7 +166,12 @@ class PreLUTGenerator:
         # equal(first.Y_lower, f'yleft{0:6.3f}')
         segment, h = self.integrate_between_stations(first, h, yerr, self.acc, COORD_T)
         # equal(segment.Y_upper, f'yright{0:6.3f}')
-        for log_s1, log_s2 in tqdm(list(zip(log_s_lst[1:], log_s_lst[2:])), disable=True):  # noqa: B905
+        log_s_from = log_s_lst[1:-1]
+        log_s_to = log_s_lst[2:]
+        if len(log_s_from) != len(log_s_to):
+            raise ValueError("Length mismatch between log_s slices")
+
+        for log_s1, log_s2 in tqdm(list(zip(log_s_from, log_s_to)), disable=True):  # noqa: B905
             self.nodes.append(segment)
             segment = segment.generate_next_node(log_s1, log_s2)
 
