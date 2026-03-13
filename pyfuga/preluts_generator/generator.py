@@ -187,37 +187,7 @@ class PreLUTGenerator:
                 self.nodes.append(segment)
                 segment.generate_next_node(log_s_lst[-1], log_s_lst[-1])
                 segment.Y_upper = segment.Y_lower
-            # compare(segment.Y_upper, 'yright%6.3f' % s1)
-            # if s2 < self.smaxx:
-            #     self.nodes.append(segment)
 
-            # allocate(segment%next)
-            # segment%next%prev=>segment
-            # call GMRES(segment)
-            # segment=>segment%next
-
-        # if s2 == self.smaxx:
-        #     self.nodes.pop(-1)
-        # else:
-        #     last.s_upper = last.s_lower
-        #     last.yright = last.Y_lower
-        #     last.R_upper = self.nodes[0].R_lower
-        #
-
-        # segment.dat.level = i
-        # segment.dat.s_lower = s1
-        # segment.dat.s_upper = segment.dat.s_lower = s1
-        # segment.Y_upper = segment.dat.Y_lower
-
-        # segment.dat.R_upper = np.zeros_like(segment.dat.Y_lower)
-        # self.last = segment
-
-        # def get_res(node, k):
-        #     if node.next is None:
-        #         return [getattr(node.dat, k)]
-        #     else:
-        #         return [getattr(node.dat, k)] + get_res(node.next, k)
-        # print(self.counter)
         var_names = [
             "Y_lower",
             "R_lower",
@@ -291,7 +261,6 @@ class PreLUTGenerator:
             acc: The accuracy goal for the integration.
             j: Coordinate system indicator (COORD_T for t, COORD_S for s).
         """
-        # return self.integrate_between_stations_old(p, h, yerr, acc, j)
         while True:
             log_s_upper = p.log_s_upper
             Y_upper, h, s2, lastkz = integrate_between_stations(

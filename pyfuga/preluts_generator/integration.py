@@ -167,13 +167,6 @@ def modified_midpoint_integration_step(
             am = 1 / (1 / kzm + cdivkL)
             a2 = 1 / (1 / kz2 + cdivkL)
 
-        # dbx_const=dbx_const+h*(conjg(a1*C1*y(2,:)+am*C3*y3(2,:)+a2*(C4*y4(2,:)+C2*y2(2,:))))
-        # dby_const=dby_const+h*(conjg(a1*C1*y(4,:)+am*C3*y3(4,:)+a2*(C4*y4(4,:)+C2*y2(4,:))))
-        # dbz_const=dbz_const+h*(conjg(a1*C1*y(6,:)+am*C3*y3(6,:)+a2*(C4*y4(6,:)+C2*y2(6,:))))*kappa
-        # dbx_lin=dbx_lin+h*(conjg(kz1*a1*C1*y(2,:)+kzm*am*C3*y3(2,:)+kz2*a2*(C4*y4(2,:)+C2*y2(2,:))))
-        # dby_lin=dby_lin+h*(conjg(kz1*a1*C1*y(4,:)+kzm*am*C3*y3(4,:)+kz2*a2*(C4*y4(4,:)+C2*y2(4,:))))
-        # dbz_lin=dbz_lin+h*(conjg(kz1*a1*C1*y(6,:)+kzm*am*C3*y3(6,:)+kz2*a2*(C4*y4(6,:)+C2*y2(6,:))))*kappa
-
         # Update the differential forcing accumulators using Simpson's rule
         dbx_const += h * (np.conj(a1 * C1 * y[1, :] + am * C3 * y3[1, :] + a2 * (C4 * y4[1, :] + C2 * y2[1, :])))
         dby_const += h * (np.conj(a1 * C1 * y[3, :] + am * C3 * y3[3, :] + a2 * (C4 * y4[3, :] + C2 * y2[3, :])))
@@ -323,16 +316,8 @@ def integrate_between_stations(
             y_err += dy_err
             h = get_new_h2(h, acc, dy_err, y_upper)
 
-            # if p.log_s_lower > 18:
-            #     import matplotlib.pyplot as plt
-            #     plt.title(p.log_s_lower)
-            #     plt.plot(norm_lst)
-            #     plt.show()
-            # print(kz0, log_s_lower, counter)
             return y_upper, h, log_s_upper, lastkz
         else:
-            # take step, h
-            # dy_err = self.rk2(p, Y1, x, h, j)  # here Yright is updated, only Yright and deltaBs
             y_upper, dy_err = modified_midpoint_integration_step(
                 y_lower,
                 x,
@@ -361,7 +346,6 @@ def integrate_between_stations(
             norm_lst.append(y_norm)
             # If y_norm is too large, then we make a "sublevel" or "substation"
             # One can have multiple sublevels between two levels if necessary.
-            # print(t, y_norm)
             if y_norm > Y_NORM_THRESHOLD:
                 if j == COORD_T:  # pragma: no cover
                     s_lower = t_to_s(x, zeta0, kz0, lastkz, psi0, cdivkL)
@@ -372,6 +356,3 @@ def integrate_between_stations(
                     log_s_lower = np.log(x / kz0)
 
                 return y_upper, h, log_s_lower, lastkz
-
-                #       Y1=p%dat%Y_lower
-        #       Ynorm1=norm(Y1(:,1))
