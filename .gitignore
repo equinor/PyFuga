@@ -15,8 +15,20 @@ pyfuga.egg-info/
 
 # Testing
 .pytest_cache/
+.hypothesis/
+.tox/
+.nox/
 .coverage
+.coverage.*
+htmlcov/
 tests/notebook_outputs/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Type checkers / linters
+.mypy_cache/
+.ruff_cache/
 
 # Documentation
 docs/_build/
@@ -27,3 +39,5 @@ docs/api/generated/
 
 # Application Data (NetCDF files)
 *.nc
+!tests/test_files/*.nc
+tests/test_files/tmp_preluts*.nc
