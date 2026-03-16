@@ -136,6 +136,13 @@ build_pages:
     - cd ..
     - mv docs/_build public/
 
+    # Canonicalize branch root URLs to explicit index files
+    - |
+      cat > public/_redirects << 'EOF'
+      /main /main/index.html 301
+      /main/ /main/index.html 301
+      EOF
+
     # --- CI sanity checks for expected published paths ----------
     - test -d "public/main" || (echo "Missing public/main after docs build"; find public -maxdepth 2 -type d | sort; exit 1)
     - test -f "public/main/theory/ffit.html" || (echo "Missing public/main/theory/ffit.html"; find public/main/theory -maxdepth 1 -type f | sort; exit 1)
