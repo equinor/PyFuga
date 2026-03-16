@@ -90,6 +90,55 @@ verify_gitlab_pypi:
       allow_failure: true
     - when: never
 
+# ----- Build PyFuga conda package from published PyPI source -----
+build_conda:
+  stage: deploy
+  image: condaforge/miniforge3:latest
+  needs:
+    - job: publish_pypi
+  script:
+    - mamba install -c conda-forge --override-channels -y conda-build conda-verify
+    - conda build --no-anaconda-upload -c conda-forge --override-channels --output-folder ./conda_channel conda-recipe/
+  artifacts:
+    untracked: false
+    expire_in: "1 week"
+    paths:
+      - conda_channel/noarch/pyfuga*
+  rules:
+    - if: '$CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED == "true"'
+      when: on_success
+      allow_failure: false
+    - when: never
+  tags:
+    - docker
+    - ubuntu
+    - linux
+
+# ----- Deploy PyFuga conda package to internal channel -----
+deploy_conda:
+  stage: deploy
+  image: condaforge/miniforge3:latest
+  needs:
+    - job: build_conda
+      artifacts: true
+  script:
+    - |
+      for PKG in conda_channel/noarch/pyfuga*.tar.bz2 conda_channel/noarch/pyfuga*.conda; do
+        [ -f "$PKG" ] || continue
+        BASENAME=$(basename "$PKG")
+        cp -p "$PKG" /conda_channel_open/noarch/${BASENAME}.tmp
+        chown 1000:1000 /conda_channel_open/noarch/${BASENAME}.tmp
+        mv /conda_channel_open/noarch/${BASENAME}.tmp /conda_channel_open/noarch/${BASENAME}
+        echo "Deployed ${BASENAME}"
+      done
+  rules:
+    - if: '$CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED == "true"'
+      when: on_success
+      allow_failure: false
+    - when: never
+  tags:
+    - conda_channel
+
 # ----- Publish PyFuga to TestPyPI (protected tags only) -----
 publish_testpypi:
   stage: deploy
