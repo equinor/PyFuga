@@ -60,6 +60,12 @@ and the extended version allowing yaw misalignment through the curvilinear
 coordinate approach, which introduces lateral velocity components and
 secondary steering effects into the linearised system.
 
+PyFuga computes look-up tables for a single, unyawed turbine only. Yaw-induced wake deflection is 
+handled in PyWake. For implementation details, see PyWake's `Fuga Deflection`_ documentation.
+
+.. _Fuga Deflection: https://topfarm.pages.windenergy.dtu.dk/PyWake/notebooks/DeflectionModels.html#FugaDeflection
+
+
 .. note::
 
   This documentation is a work in progress. Sections under development are marked with an asterisk 

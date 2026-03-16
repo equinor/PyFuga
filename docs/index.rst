@@ -1,3 +1,9 @@
+.. image:: _static/logo.svg
+   :alt: PyFuga logo
+   :align: center
+
+|
+
 Welcome to PyFuga's documentation!
 ==================================
 
@@ -11,10 +17,67 @@ farm flows. These pages describe both the theoretical formulation and the Python
    be expanded as the code matures. All sections marked with an asterisk (*) are
    incomplete.
 
+Contents
+--------
+
+.. toctree::
+    :caption: Theory
+    :maxdepth: 1
+
+    theory/introduction
+    theory/governing_equations
+    theory/linearisation
+    theory/mixed_spectral
+    theory/numerics
+    theory/ffit
+    theory/yawed_extension
+    theory/notation
+    theory/references
+    theory/appendices
+
+.. toctree::
+    :caption: Examples
+    :maxdepth: 1
+
+    examples/01_QuickStart
+
+.. toctree
+..     :caption: User Guide
+..     :maxdepth: 1
+
+..     user_guide/installation
+..     user_guide/usage
+..     user_guide/configuration
+..     user_guide/integration
+..     user_guide/faq
+
+.. toctree::
+    :caption: API Reference
+    :maxdepth: 1
+
+    api/index
+
 Fuga variants
 -------------
 
-Historically, there have been several variants of the Fuga model. More details will follow here.
+Historically, there have been several variants of the Fuga model. PyFuga contains some differences 
+from the original Fortran implementation:
+
+PreLUT generation
+^^^^^^^^^^^^^^^^^
+
+- Uses `numpy.linalg.qr` for QR decomposition.
+
+    This mirrors the logic of the original code but not its exact floating-point behaviour, meaning 
+    PreLUTs are **not numerically identical** to legacy outputs.
+
+- Removes an additional `h` term in `get_new_h2` present in the Fortran code, which caused 
+unnecessarily small integration steps.
+
+Trafalgar
+^^^^^^^^^
+
+- Interpolation changed from linear to cubic.
 
 History, contributors and funding
 ---------------------------------
@@ -127,42 +190,13 @@ To obtain it programmatically:
    import pyfuga
    print(pyfuga.__version__)
 
-Contents
---------
 
-.. toctree::
-    :caption: Theory
-    :maxdepth: 1
+Look-up tables (LUTs)
+^^^^^^^^^^^^^^^^^^^^^
 
-    theory/introduction
-    theory/governing_equations
-    theory/linearisation
-    theory/mixed_spectral
-    theory/numerics
-    theory/ffit
-    theory/yawed_extension
-    theory/notation
-    theory/references
-    theory/appendices
+PyFuga produces several intermediate look-up tables, referred to as **PreLUTs** and **fLUTs**, 
+before generating the final look-up tables (LUTs) used by PyWake. The final LUTs contain 
+turbine-induced perturbation fields evaluated during wind-farm simulations.
 
-.. toctree::
-    :caption: Examples
-    :maxdepth: 1
-
-    examples/01_QuickStart
-
-.. toctree
-..     :caption: User Guide
-..     :maxdepth: 1
-
-..     user_guide/installation
-..     user_guide/usage
-..     user_guide/configuration
-..     user_guide/integration
-..     user_guide/faq
-
-.. toctree::
-    :caption: API Reference
-    :maxdepth: 1
-
-    api/index
+The intermediate stages are internal and only need to be set up when generating LUTs for a new 
+turbine or atmospheric configuration.

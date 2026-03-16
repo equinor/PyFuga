@@ -7,7 +7,13 @@ documentation and improvements.
 
 ---
 
-## 1. Development setup (Pixi recommended)
+## 1. Development setup
+
+First clone the repo.
+
+```bash
+git clone git@gitlab.windenergy.dtu.dk:TOPFARM/cuttingedge/pywake/fuga/pyfuga.git
+```
 
 PyFuga uses **Pixi** for reproducible environments across platforms.
 
@@ -17,7 +23,9 @@ Install Pixi:
 Then run:
 
 ```bash
+cd pyfuga
 pixi install
+pixi run pre-commit install
 pixi run test
 ```
 
@@ -31,9 +39,9 @@ pixi run build-docs
 pixi run ci
 ```
 
-## 2. Alternative setup (without Pixi)
+## 2. Alternative setup
 
-### Conda (recommended on Windows)
+### Conda
 
 ```powershell
 conda env create -f environment.yml
@@ -43,7 +51,7 @@ python -m pip install -e ".[dev]"
 pre-commit install
 ```
 
-### Virtual environment (Linux/macOS)
+### Virtual environment
 
 ```bash
 python -m venv .venv
