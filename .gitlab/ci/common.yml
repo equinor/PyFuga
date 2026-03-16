@@ -11,6 +11,8 @@ variables:
   PYTHON_DEFAULT_VERSION_TAG: "312"
   UV_CACHE_DIR: "$CI_PROJECT_DIR/.cache/uv"
   UV_LINK_MODE: "copy"
+  PIXI_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pixi"
+  RATTLER_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pixi"
 
 cache:
   key: "uv-${CI_PROJECT_ID}-${CI_JOB_NAME}"
@@ -120,6 +122,5 @@ image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv:latest
   extends: .pytest_coverage
   stage: test
   image: registry.windenergy.dtu.dk/dockerimages/windows-pixi:ltsc2019
-  cache: []
   tags:
     - docker-windows

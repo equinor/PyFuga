@@ -89,8 +89,11 @@ platforms = ["linux-64", "win-64"]
 [tool.pixi.dependencies]
 pip = ">=25.2,<26"
 
-[tool.pixi.pypi-dependencies]
+[tool.pixi.feature.dev.pypi-dependencies]
 pyfuga = { path = ".", editable = true, extras = ["dev"] }
+
+[tool.pixi.feature.ci-tests.pypi-dependencies]
+pyfuga = { path = ".", editable = true, extras = ["tests"] }
 
 [tool.pixi.tasks]
 # Formatting
@@ -140,11 +143,17 @@ python = "3.14.*"
 numpy = ">=2.3.2,<2.4"
 
 [tool.pixi.environments]
-py310 = ["py310"]
-py311 = ["py311"]
-py312 = ["py312"]
-py313 = ["py313"]
-py314 = ["py314"]
+default = ["dev"]
+py310 = ["py310", "dev"]
+py311 = ["py311", "dev"]
+py312 = ["py312", "dev"]
+py313 = ["py313", "dev"]
+py314 = ["py314", "dev"]
+py310-ci = ["py310", "ci-tests"]
+py311-ci = ["py311", "ci-tests"]
+py312-ci = ["py312", "ci-tests"]
+py313-ci = ["py313", "ci-tests"]
+py314-ci = ["py314", "ci-tests"]
 
 # --------------------------------------------------------------------------------------------------
 # Black configuration

@@ -1,0 +1,17 @@
+# escape=`
+
+FROM registry.windenergy.dtu.dk/dockerimages/windowsservercore
+
+# Restore the default Windows shell for correct batch processing.
+SHELL ["cmd", "/S", "/C"]
+
+# Install pixi during image build so we control the version rather than
+# inheriting whatever is baked into the shared runner base image.
+RUN powershell -ExecutionPolicy ByPass -c "irm -useb https://pixi.sh/install.ps1 | iex"
+
+# Add pixi to PATH for subsequent build steps and at runtime.
+ENV PATH="C:\Users\ContainerAdministrator\.pixi\bin;%PATH%"
+
+RUN pixi --version
+
+CMD ["cmd"]

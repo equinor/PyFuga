@@ -27,12 +27,30 @@ test_windows_default:
   extends:
     - .windows_test_job
     - .rules_on_code_changes
+  variables:
+    PIXI_ENV: "py${PYTHON_DEFAULT_VERSION_TAG}-ci"
+  cache:
+    key: "pixi-${CI_PROJECT_ID}-${PIXI_ENV}"
+    paths:
+      - .cache/pixi/
+    policy: pull
   script:
     # Run tests in the matching Pixi environment for the default Python version
-    - $PixiEnv = "py$env:PYTHON_DEFAULT_VERSION_TAG"
+    - $PixiEnv = "$env:PIXI_ENV"
     - pixi --version
-    - pixi install --frozen -e $PixiEnv; if ($LASTEXITCODE -ne 0) { Write-Host "pixi.lock is not in sync for $PixiEnv; falling back to non-frozen install"; pixi install -e $PixiEnv }
-    - pixi run -e $PixiEnv test
+    - |
+      $InstallDuration = Measure-Command { pixi install --frozen -e $PixiEnv }
+      if ($LASTEXITCODE -ne 0) {
+        Write-Host "WARNING: pixi.lock is not in sync for $PixiEnv. Falling back to non-frozen install."
+        $FallbackDuration = Measure-Command { pixi install -e $PixiEnv }
+        Write-Host ("pixi install (fallback, env={0}) took {1:N1}s" -f $PixiEnv, $FallbackDuration.TotalSeconds)
+      } else {
+        Write-Host ("pixi install (--frozen, env={0}) took {1:N1}s" -f $PixiEnv, $InstallDuration.TotalSeconds)
+      }
+    - |
+      $TestDuration = Measure-Command { pixi run -e $PixiEnv pytest --import-mode=importlib -m "not local" tests/ }
+      if ($LASTEXITCODE -ne 0) { throw "Tests failed for $PixiEnv" }
+      Write-Host ("pixi run pytest (env={0}) took {1:N1}s" -f $PixiEnv, $TestDuration.TotalSeconds)
 
 # Windows test matrix.
 # Built against the shared image published from the windows-pixi ltsc2019 branch
@@ -47,20 +65,57 @@ test_windows_matrix:
   parallel:
     matrix:
       - PYTHON_VERSION: "3.10"
-        PIXI_ENV: "py310"
+        PIXI_ENV: "py310-ci"
       - PYTHON_VERSION: "3.11"
-        PIXI_ENV: "py311"
+        PIXI_ENV: "py311-ci"
       - PYTHON_VERSION: "3.12"
-        PIXI_ENV: "py312"
+        PIXI_ENV: "py312-ci"
       - PYTHON_VERSION: "3.13"
-        PIXI_ENV: "py313"
+        PIXI_ENV: "py313-ci"
       - PYTHON_VERSION: "3.14"
-        PIXI_ENV: "py314"
+        PIXI_ENV: "py314-ci"
+  cache:
+    key: "pixi-${CI_PROJECT_ID}-${PIXI_ENV}"
+    paths:
+      - .cache/pixi/
+    policy: pull
   script:
     # Run tests in the version-specific Pixi environment
     - pixi --version
-    - pixi install --frozen -e $env:PIXI_ENV; if ($LASTEXITCODE -ne 0) { Write-Host "pixi.lock is not in sync for $env:PIXI_ENV; falling back to non-frozen install"; pixi install -e $env:PIXI_ENV }
-    - pixi run -e $env:PIXI_ENV test
+    - |
+      $InstallDuration = Measure-Command { pixi install --frozen -e $env:PIXI_ENV }
+      if ($LASTEXITCODE -ne 0) {
+        Write-Host "WARNING: pixi.lock is not in sync for $env:PIXI_ENV. Falling back to non-frozen install."
+        $FallbackDuration = Measure-Command { pixi install -e $env:PIXI_ENV }
+        Write-Host ("pixi install (fallback, env={0}) took {1:N1}s" -f $env:PIXI_ENV, $FallbackDuration.TotalSeconds)
+      } else {
+        Write-Host ("pixi install (--frozen, env={0}) took {1:N1}s" -f $env:PIXI_ENV, $InstallDuration.TotalSeconds)
+      }
+    - |
+      $TestDuration = Measure-Command { pixi run -e $env:PIXI_ENV pytest --import-mode=importlib -m "not local" tests/ }
+      if ($LASTEXITCODE -ne 0) { throw "Tests failed for $env:PIXI_ENV" }
+      Write-Host ("pixi run pytest (env={0}) took {1:N1}s" -f $env:PIXI_ENV, $TestDuration.TotalSeconds)
+
+# ----- Warm up shared Windows Pixi cache (scheduled/manual) -----
+windows_pixi_cache_warmup:
+  extends: .windows_test_job
+  parallel:
+    matrix:
+      - PIXI_ENV: ["py310-ci", "py311-ci", "py312-ci", "py313-ci", "py314-ci"]
+  cache:
+    key: "pixi-${CI_PROJECT_ID}-${PIXI_ENV}"
+    paths:
+      - .cache/pixi/
+    policy: pull-push
+  script:
+    - pixi --version
+    - pixi install --frozen -e $env:PIXI_ENV
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: on_success
+      allow_failure: false
+    - when: manual
+      allow_failure: true
 
 # ----- Test PyFuga (full matrix, only when required) -----
 test_linux_matrix:

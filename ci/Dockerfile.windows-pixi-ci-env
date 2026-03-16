@@ -1,0 +1,23 @@
+# escape=`
+
+# BASE_IMAGE must be supplied via --build-arg BASE_IMAGE=<registry>/ci/windows-pixi-base:<tag>
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+# Restore the default Windows shell for correct batch processing.
+SHELL ["cmd", "/S", "/C"]
+
+# Which Pixi CI environment to pre-bake into this image (e.g. py310-ci, py312-ci).
+ARG PIXI_ENV=py312-ci
+
+WORKDIR C:\work
+
+# Copy only the files required for a frozen environment install.
+COPY pyproject.toml C:\work\pyproject.toml
+COPY pixi.lock C:\work\pixi.lock
+
+# Pre-install the requested CI environment.
+RUN pixi install --frozen -e %PIXI_ENV%
+
+# Sets a command or process that will run each time a container is run from the new image.
+CMD ["cmd"]
