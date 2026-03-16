@@ -1,41 +1,15 @@
+# Deploy CI configuration (GitLab Pages publishing and package publication).
+
 # ===== Deploy stage =====
 
-# ----- Build PyFuga docs for GitLab Pages (official site) -----
-docs_pages:
+# ----- Deploy prebuilt docs to GitLab Pages -----
+pages:
   stage: deploy
-  extends: .default_python_job
-  image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv-docs:latest
+  needs:
+    - job: build_pages
+      artifacts: true
   script:
-    - VENV_DIR=".venv-${CI_JOB_ID}"
-    - uv venv "${VENV_DIR}"
-    - . "${VENV_DIR}/bin/activate"
-    - uv pip install ".[docs]"
-
-    # --- Make sure sphinx-multiversion can see refs ------------
-    # Fetch complete history (in case job is still shallow)
-    - git fetch --unshallow --tags || git fetch --tags
-    # Fetch all remote branches as local remote-tracking branches
-    - git fetch origin "+refs/heads/*:refs/remotes/origin/*"
-    # -----------------------------------------------------------
-
-    - cd docs
-    - sphinx-multiversion . _build
-
-    # --- Choose default ref for root index.html safely ---------
-    # Find latest tag (if any)
-    - git fetch --tags
-    - LATEST_TAG=$(git describe --tags "$(git rev-list --tags --max-count=1)" 2>/dev/null || echo "")
-
-    # Use latest tag *only if* sphinx-multiversion built docs for it, else fallback to main
-    - if [ -n "$LATEST_TAG" ] && [ -d "_build/$LATEST_TAG" ]; then DEFAULT_REF="$LATEST_TAG"; else DEFAULT_REF="main"; fi
-    - echo "Using DEFAULT_REF=${DEFAULT_REF}"
-
-    # Create root index.html from template
-    - sed "s/TAG/${DEFAULT_REF}/g" root_index_template.html > _build/index.html
-    # -----------------------------------------------------------
-
-    - cd ..
-    - mv docs/_build public/
+    - test -d "public" || (echo "Missing public artifact from build_pages"; exit 1)
   artifacts:
     paths:
       - public
@@ -47,8 +21,6 @@ docs_pages:
 
     # Otherwise never run
     - when: never
-  pages:
-    publish: public
 
 # ----- Publish PyFuga to PyPI (protected tags only) -----
 publish_pypi:

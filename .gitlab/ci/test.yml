@@ -1,3 +1,5 @@
+# Test CI configuration (pytest, matrix testing, and linting).
+
 # ===== Test stage =====
 
 # ----- Test PyFuga (quick, every push) -----
@@ -101,71 +103,3 @@ lint:
     - python -m ruff --version
     - python -m ruff check .
 
-# ----- Build docs on every push (for preview / CI sanity) -----
-docs_preview:
-  stage: test
-  extends: .default_python_job
-  image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv-docs:latest
-  script:
-    - VENV_DIR=".venv-${CI_JOB_ID}"
-    - uv venv "${VENV_DIR}"
-    - . "${VENV_DIR}/bin/activate"
-    - uv pip install ".[docs]"
-    - cd docs
-    - sphinx-build -b html . _build # for branch builds, a simple single-version build is enough
-  artifacts:
-    paths:
-      - docs/_build
-    expire_in: 1 week
-  rules:
-    # Never run on main, since main will use the Pages job below to build the full multiversion docs for the official site
-    - if: '$CI_COMMIT_BRANCH == "main"'
-      when: never
-
-    # Also skip on tags, since they will also trigger the Pages job which builds the full multiversion docs
-    - if: "$CI_COMMIT_TAG"
-      when: never
-
-    # Auto if branch name contains "docs"
-    - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH =~ /^docs\//'
-      when: on_success
-      allow_failure: false
-
-    # Otherwise manual
-    - when: manual
-      allow_failure: true
-
-# ----- Build and validate release artifacts (no publish) -----
-build_release_artifacts:
-  stage: test
-  extends: .default_python_job
-  script:
-    - VENV_DIR=".venv-${CI_JOB_ID}"
-    - uv venv "${VENV_DIR}"
-    - . "${VENV_DIR}/bin/activate"
-    - |
-      if [ -n "$CI_COMMIT_TAG" ]; then
-        TAG_VERSION="${CI_COMMIT_TAG#v}"
-        PYPROJECT_VERSION="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
-        test "$TAG_VERSION" = "$PYPROJECT_VERSION" || {
-          echo "Tag version ($TAG_VERSION) does not match pyproject.toml version ($PYPROJECT_VERSION)"
-          exit 1
-        }
-      fi
-    - uv pip install build twine
-    - python -m build
-    - python scripts/sync_conda_recipe.py --check
-    - python -m twine check dist/*
-  artifacts:
-    paths:
-      - dist/
-    expire_in: 1 week
-  rules:
-    # Always validate artifacts for tags/releases
-    - if: "$CI_COMMIT_TAG"
-      when: on_success
-      allow_failure: false
-
-    # Optional manual run on branches
-    - when: manual
-      allow_failure: true

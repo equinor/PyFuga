@@ -1,0 +1,189 @@
+# Shared build CI configuration (image builds, docs builds, and release artifact builds).
+
+# ===== Image builds =====
+
+# ----- Build CI base/docs images -----
+build_linux_images:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  cache: []
+  parallel:
+    matrix:
+      - PYTHON_VERSION: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        TARGET: ["base", "docs"]
+  variables:
+    CI_IMAGE_REPO: "${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_VERSION}-uv"
+    CI_IMAGE_REPO_DOCS: "${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_VERSION}-uv-docs"
+  script:
+    # Authenticate to the GitLab registry using the built-in CI variables
+    - mkdir -p /kaniko/.docker
+    - |
+      cat > /kaniko/.docker/config.json <<EOF
+      {
+        "auths": {
+          "${CI_REGISTRY}": {
+            "username": "${CI_REGISTRY_USER}",
+            "password": "${CI_REGISTRY_PASSWORD}"
+          }
+        }
+      }
+      EOF
+
+    # Build and push
+    - |
+      if [ "$TARGET" = "base" ]; then
+        REPO="${CI_IMAGE_REPO}"
+        BUILD_TARGET="base"
+      else
+        REPO="${CI_IMAGE_REPO_DOCS}"
+        BUILD_TARGET="docs"
+      fi
+
+      DEST_SHA="${REPO}:${CI_COMMIT_SHA}"
+      DEST_LATEST="${REPO}:latest"
+
+      /kaniko/executor \
+        --context "$CI_PROJECT_DIR" \
+        --dockerfile "$CI_PROJECT_DIR/ci/Dockerfile" \
+        --build-arg "PYTHON_VERSION=${PYTHON_VERSION}" \
+        --target "$BUILD_TARGET" \
+        --destination "$DEST_SHA" \
+        --destination "$DEST_LATEST"
+
+  rules:
+    # Rebuild automatically when the Dockerfile changes
+    - changes:
+        - ci/Dockerfile
+      when: on_success
+      allow_failure: false
+    # Otherwise allow manual rebuilds from the UI
+    - when: manual
+      allow_failure: true
+  tags:
+    - docker
+    - ubuntu
+    - linux
+
+# ===== Documentation builds =====
+
+# ----- Build docs on every push (for preview / CI sanity) -----
+build_docs:
+  stage: build
+  extends: .default_python_job
+  image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv-docs:latest
+  script:
+    - VENV_DIR=".venv-${CI_JOB_ID}"
+    - uv venv "${VENV_DIR}"
+    - . "${VENV_DIR}/bin/activate"
+    - uv pip install ".[docs]"
+    - cd docs
+    - sphinx-build -b html . _build # for branch builds, a simple single-version build is enough
+  artifacts:
+    paths:
+      - docs/_build
+    expire_in: 1 week
+  rules:
+    # Never run on main, since main will use the pages build/deploy jobs to build the full multiversion docs for the official site
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: never
+
+    # Also skip on tags, since they will also trigger the pages build/deploy jobs which build the full multiversion docs
+    - if: "$CI_COMMIT_TAG"
+      when: never
+
+    # Auto if branch name contains "docs"
+    - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH =~ /^docs\//'
+      when: on_success
+      allow_failure: false
+
+    # Otherwise manual
+    - when: manual
+      allow_failure: true
+
+# ----- Build PyFuga docs for GitLab Pages (official site) -----
+build_pages:
+  stage: build
+  extends: .default_python_job
+  image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv-docs:latest
+  script:
+    - VENV_DIR=".venv-${CI_JOB_ID}"
+    - uv venv "${VENV_DIR}"
+    - . "${VENV_DIR}/bin/activate"
+    - uv pip install ".[docs]"
+
+    # --- Make sure sphinx-multiversion can see refs ------------
+    # Fetch complete history (in case job is still shallow)
+    - git fetch --unshallow --tags || git fetch --tags
+    # Fetch all remote branches as local remote-tracking branches
+    - git fetch origin "+refs/heads/*:refs/remotes/origin/*"
+    # -----------------------------------------------------------
+
+    - cd docs
+    - sphinx-multiversion . _build
+
+    # --- Choose default ref for root index.html safely ---------
+    # Always point landing page to main so newly added docs are visible immediately.
+    - DEFAULT_REF="main"
+    - test -d "_build/${DEFAULT_REF}" || (echo "Missing _build/${DEFAULT_REF} from sphinx-multiversion output"; find _build -maxdepth 2 -type d | sort; exit 1)
+    - echo "Using DEFAULT_REF=${DEFAULT_REF}"
+
+    # Create root index.html from template
+    - sed "s/TAG/${DEFAULT_REF}/g" root_index_template.html > _build/index.html
+    # -----------------------------------------------------------
+
+    - cd ..
+    - mv docs/_build public/
+
+    # --- CI sanity checks for expected published paths ----------
+    - test -d "public/main" || (echo "Missing public/main after docs build"; find public -maxdepth 2 -type d | sort; exit 1)
+    - test -f "public/main/theory/ffit.html" || (echo "Missing public/main/theory/ffit.html"; find public/main/theory -maxdepth 1 -type f | sort; exit 1)
+  artifacts:
+    paths:
+      - public
+  rules:
+    # Only build docs for main branch and tags (releases)
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG'
+      when: on_success
+      allow_failure: false
+
+    # Otherwise never run
+    - when: never
+
+# ===== Release artifact builds =====
+
+# ----- Build and validate release artifacts (no publish) -----
+build_release_artifacts:
+  stage: build
+  extends: .default_python_job
+  script:
+    - VENV_DIR=".venv-${CI_JOB_ID}"
+    - uv venv "${VENV_DIR}"
+    - . "${VENV_DIR}/bin/activate"
+    - |
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        TAG_VERSION="${CI_COMMIT_TAG#v}"
+        PYPROJECT_VERSION="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+        test "$TAG_VERSION" = "$PYPROJECT_VERSION" || {
+          echo "Tag version ($TAG_VERSION) does not match pyproject.toml version ($PYPROJECT_VERSION)"
+          exit 1
+        }
+      fi
+    - uv pip install build twine
+    - python -m build
+    - python scripts/sync_conda_recipe.py --check
+    - python -m twine check dist/*
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 week
+  rules:
+    # Always validate artifacts for tags/releases
+    - if: "$CI_COMMIT_TAG"
+      when: on_success
+      allow_failure: false
+
+    # Optional manual run on branches
+    - when: manual
+      allow_failure: true

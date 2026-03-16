@@ -1,10 +1,10 @@
 stages:
-  - image
+  - build
   - test
   - deploy
 
 include:
   - local: .gitlab/ci/common.yml
-  - local: .gitlab/ci/image.yml
+  - local: .gitlab/ci/build.yml
   - local: .gitlab/ci/test.yml
   - local: .gitlab/ci/deploy.yml
