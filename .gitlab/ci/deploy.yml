@@ -22,10 +22,12 @@ docs_pages:
     - sphinx-multiversion . _build
 
     # --- Choose default ref for root index.html safely ---------
-    # Always point the landing page to `main` so newly added docs are visible
-    # immediately after merge, even if older release tags don't contain them.
-    - DEFAULT_REF="main"
-    - test -d "_build/${DEFAULT_REF}" || (echo "Missing _build/${DEFAULT_REF} from sphinx-multiversion output"; ls -la _build; exit 1)
+    # Find latest tag (if any)
+    - git fetch --tags
+    - LATEST_TAG=$(git describe --tags "$(git rev-list --tags --max-count=1)" 2>/dev/null || echo "")
+
+    # Use latest tag *only if* sphinx-multiversion built docs for it, else fallback to main
+    - if [ -n "$LATEST_TAG" ] && [ -d "_build/$LATEST_TAG" ]; then DEFAULT_REF="$LATEST_TAG"; else DEFAULT_REF="main"; fi
     - echo "Using DEFAULT_REF=${DEFAULT_REF}"
 
     # Create root index.html from template
@@ -45,6 +47,8 @@ docs_pages:
 
     # Otherwise never run
     - when: never
+  pages:
+    publish: public
 
 # ----- Publish PyFuga to PyPI (protected tags only) -----
 publish_pypi:
