@@ -67,10 +67,16 @@ docs = [
 ]
 
 # Convenience group for local development
-dev = ["pyfuga[tests,lint,docs]", "pre-commit"]
+dev = ["pyfuga[tests,lint,docs]", "pre-commit", "build>=1.4.0,<2"]
 
 [tool.setuptools]
-packages = { find = { include = ["pyfuga*"], exclude = ["constraints*", "tests*", "docs*", "build*"] } }
+py-modules = []
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pyfuga*"]
+exclude = ["constraints*", "tests*", "docs*", "build*"]
+namespaces = false
 
 # --------------------------------------------------------------------------------------------------
 # Pixi configuration
@@ -105,6 +111,9 @@ sphinx-autobuild docs docs/_build \
 
 # Debugging
 doctor = "python scripts/dev.py doctor"
+sync-conda-recipe = "python scripts/sync_conda_recipe.py"
+check-conda-recipe = "python scripts/sync_conda_recipe.py --check"
+check-conda-recipe-remote = "python scripts/sync_conda_recipe.py --check --check-remote-source"
 
 # CI
 ci = { depends-on = ["test", "check-fmt", "build-docs"] }

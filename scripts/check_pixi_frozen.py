@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from shutil import which
 
 
 def main() -> int:
     envs = ["py310", "py311", "py312", "py313", "py314"]
+
+    if which("pixi") is None:
+        print("pixi not found; skipping local frozen lock check.")
+        return 0
 
     print("Checking pixi frozen installs for environments:", ", ".join(envs))
 

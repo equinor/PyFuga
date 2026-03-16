@@ -45,3 +45,50 @@ docs_pages:
 
     # Otherwise never run
     - when: never
+
+# ----- Publish PyFuga to PyPI (protected tags only) -----
+publish_pypi:
+  stage: deploy
+  extends: .default_python_job
+  needs:
+    - job: build_release_artifacts
+      artifacts: true
+  script:
+    - test -n "$TWINE_USERNAME" || (echo "TWINE_USERNAME is not set"; exit 1)
+    - test -n "$TWINE_PASSWORD" || (echo "TWINE_PASSWORD is not set"; exit 1)
+    - VENV_DIR=".venv-${CI_JOB_ID}"
+    - uv venv "${VENV_DIR}"
+    - . "${VENV_DIR}/bin/activate"
+    - uv pip install twine
+    - python -m twine upload -u "$TWINE_USERNAME" -p "$TWINE_PASSWORD" dist/*
+  rules:
+    # Publish only for protected tags when credentials are configured
+    - if: '$CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED == "true" && $TWINE_USERNAME && $TWINE_PASSWORD'
+      when: on_success
+      allow_failure: false
+
+    # Otherwise never run
+    - when: never
+
+# ----- Publish PyFuga to TestPyPI (protected tags only) -----
+publish_testpypi:
+  stage: deploy
+  extends: .default_python_job
+  needs:
+    - job: build_release_artifacts
+      artifacts: true
+  script:
+    - test -n "$TEST_PYPI_TOKEN" || (echo "TEST_PYPI_TOKEN is not set"; exit 1)
+    - VENV_DIR=".venv-${CI_JOB_ID}"
+    - uv venv "${VENV_DIR}"
+    - . "${VENV_DIR}/bin/activate"
+    - uv pip install twine
+    - python -m twine upload --repository-url https://test.pypi.org/legacy/ -u __token__ -p "$TEST_PYPI_TOKEN" dist/*
+  rules:
+    # Publish only for protected tags when token is configured
+    - if: '$CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED == "true" && $TEST_PYPI_TOKEN'
+      when: on_success
+      allow_failure: false
+
+    # Otherwise never run
+    - when: never

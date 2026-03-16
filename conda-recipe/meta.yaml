@@ -1,0 +1,50 @@
+package:
+  name: pyfuga
+  version: 0.1.0
+
+source:
+  url: https://pypi.io/packages/source/p/pyfuga/pyfuga-0.1.0.tar.gz
+  sha256: "864c97ae83fda238803878583ee5e4b5b3f0d764f2f91872ce9cf4fb568607f3"
+
+build:
+  noarch: python
+  number: 0
+  script: python -m pip install . --no-deps -vv
+
+requirements:
+  host:
+    - python >=3.10,<3.15
+    - pip
+    - setuptools >=64
+    - wheel
+  run:
+    - python >=3.10,<3.15
+    - numpy >=1.26
+    - scipy >=1.10
+    - matplotlib >=3.10.8
+    - xarray >=2025.6.1
+    - tqdm >=4.67.3
+    - h5netcdf >=1.8.1
+    - h5py >=3.15.1
+    - numba >=0.63.1
+
+test:
+  imports:
+    - pyfuga
+    - pyfuga.preluts_generator
+  commands:
+    - python -c "from pyfuga import get_luts"
+
+about:
+  home: https://gitlab.windenergy.dtu.dk/TOPFARM/cuttingedge/pywake/fuga/pyfuga
+  summary: Linearised CFD wake model (PyFuga)
+  description: |
+    Python implementation of the Fuga linearised CFD wake model and LUT generator.
+  license: MIT
+  license_file: LICENSE
+  doc_url: https://topfarm.pages.windenergy.dtu.dk/cuttingedge/pywake/fuga/PyFuga/
+  dev_url: https://gitlab.windenergy.dtu.dk/TOPFARM/cuttingedge/pywake/fuga/pyfuga
+
+extra:
+  recipe-maintainers:
+    - REPLACE_WITH_GITHUB_USERNAME

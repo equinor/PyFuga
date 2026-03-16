@@ -225,3 +225,52 @@ Check:
 - active Python version
 - environment consistency
 - pre-commit hooks installed
+
+## 10. Releasing to TestPyPI / PyPI (maintainers)
+
+Package publication is automated in CI and runs only on **protected tags**.
+
+### 10.1 One-time GitLab setup
+
+In **Settings → CI/CD → Variables**, create:
+
+- `TWINE_USERNAME` = `__token__`
+- `TWINE_PASSWORD` = PyPI API token for `pyfuga`
+- `TEST_PYPI_TOKEN` = TestPyPI API token for `pyfuga` (optional, when available)
+- Mark it as **Masked** and **Protected**
+
+In **Settings → Repository → Protected tags**, protect your release tag pattern (for example `v*`).
+
+### 10.2 Release flow
+
+The release tag must match `project.version` in `pyproject.toml` (for example tag `v0.1.0` for version `0.1.0`). CI will fail early if they differ.
+The conda recipe must also be synced before release: run `pixi run sync-conda-recipe`.
+CI enforces this with `python scripts/sync_conda_recipe.py --check` in `build_release_artifacts`.
+
+1. Ensure `build_release_artifacts` passes
+2. Create a release tag (for example `v0.1.0`)
+3. Push the tag:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+This triggers:
+
+- artifact build + validation (`python -m build`, `twine check`)
+- TestPyPI upload job (`publish_testpypi`) on protected tags when `TEST_PYPI_TOKEN` is configured
+- PyPI upload job (`publish_pypi`) on protected tags when `TWINE_USERNAME` and `TWINE_PASSWORD` are configured
+
+### 10.3 TestPyPI install check
+
+After a TestPyPI upload, verify install in a clean environment:
+
+```bash
+python -m pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple pyfuga==<version>
+```
+
+### 10.4 Failure handling
+
+- If upload fails before any file is published, fix the issue and re-run the pipeline
+- If upload partially succeeds, do not overwrite files; bump version and publish a new tag

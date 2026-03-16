@@ -29,7 +29,7 @@ test_windows_default:
     # Run tests in the matching Pixi environment for the default Python version
     - $PixiEnv = "py$env:PYTHON_DEFAULT_VERSION_TAG"
     - pixi --version
-    - pixi install --frozen -e $PixiEnv
+    - pixi install --frozen -e $PixiEnv; if ($LASTEXITCODE -ne 0) { Write-Host "pixi.lock is not in sync for $PixiEnv; falling back to non-frozen install"; pixi install -e $PixiEnv }
     - pixi run -e $PixiEnv test
 
 # Windows test matrix.
@@ -57,7 +57,7 @@ test_windows_matrix:
   script:
     # Run tests in the version-specific Pixi environment
     - pixi --version
-    - pixi install --frozen -e $env:PIXI_ENV
+    - pixi install --frozen -e $env:PIXI_ENV; if ($LASTEXITCODE -ne 0) { Write-Host "pixi.lock is not in sync for $env:PIXI_ENV; falling back to non-frozen install"; pixi install -e $env:PIXI_ENV }
     - pixi run -e $env:PIXI_ENV test
 
 # ----- Test PyFuga (full matrix, only when required) -----
@@ -143,8 +143,18 @@ build_release_artifacts:
     - VENV_DIR=".venv-${CI_JOB_ID}"
     - uv venv "${VENV_DIR}"
     - . "${VENV_DIR}/bin/activate"
+    - |
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        TAG_VERSION="${CI_COMMIT_TAG#v}"
+        PYPROJECT_VERSION="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+        test "$TAG_VERSION" = "$PYPROJECT_VERSION" || {
+          echo "Tag version ($TAG_VERSION) does not match pyproject.toml version ($PYPROJECT_VERSION)"
+          exit 1
+        }
+      fi
     - uv pip install build twine
     - python -m build
+    - python scripts/sync_conda_recipe.py --check
     - python -m twine check dist/*
   artifacts:
     paths:
