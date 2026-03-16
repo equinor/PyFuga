@@ -142,7 +142,7 @@ test_linux_matrix:
       uv pip install -c "${CONSTRAINT}" ".[tests]"
 
     # Run tests with coverage
-    - python -m pytest --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc --import-mode=importlib -m "not local" tests/
+    - python -m pytest --cov-report term-missing:skip-covered --import-mode=importlib -m "not local" tests/
 
 # ----- Check formatting, imports and linting with Black and Ruff -----
 lint:
@@ -157,4 +157,3 @@ lint:
     - python -m black --check .
     - python -m ruff --version
     - python -m ruff check .
-

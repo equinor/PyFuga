@@ -1,4 +1,11 @@
-__all__ = ["get_luts"]
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("pyfuga")
+except PackageNotFoundError:
+    __version__ = "0+unknown"
+
+__all__ = ["get_luts", "__version__"]
 
 
 def get_luts(*args, **kwargs):

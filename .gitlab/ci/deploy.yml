@@ -46,6 +46,50 @@ publish_pypi:
     # Otherwise never run
     - when: never
 
+# ----- Publish PyFuga to GitLab PyPI registry (private/manual test) -----
+publish_gitlab_pypi:
+  stage: deploy
+  extends: .default_python_job
+  needs:
+    - job: build_release_artifacts
+      artifacts: true
+  script:
+    - test -n "$CI_JOB_TOKEN" || (echo "CI_JOB_TOKEN is not set"; exit 1)
+    - VENV_DIR=".venv-${CI_JOB_ID}"
+    - uv venv "${VENV_DIR}"
+    - . "${VENV_DIR}/bin/activate"
+    - uv pip install twine
+    - python -m twine upload --repository-url "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi" -u gitlab-ci-token -p "$CI_JOB_TOKEN" dist/*
+  rules:
+    # Manual private test publish on this branch
+    - if: '$CI_COMMIT_BRANCH == "test-pypi"'
+      when: manual
+      allow_failure: true
+
+    # Otherwise never run
+    - when: never
+
+# ----- Verify PyFuga install from GitLab PyPI registry (private/manual test) -----
+verify_gitlab_pypi:
+  stage: deploy
+  extends: .default_python_job
+  needs:
+    - job: publish_gitlab_pypi
+  script:
+    - test -n "$CI_JOB_TOKEN" || (echo "CI_JOB_TOKEN is not set"; exit 1)
+    - VENV_DIR=".venv-${CI_JOB_ID}"
+    - uv venv "${VENV_DIR}"
+    - . "${VENV_DIR}/bin/activate"
+    - PYPROJECT_VERSION="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+    - uv pip install --index-url "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/api/v4/projects/${CI_PROJECT_ID}/packages/pypi/simple" --no-deps "pyfuga==${PYPROJECT_VERSION}"
+    - |
+      python -c 'import importlib.metadata, pyfuga, tomllib; expected=tomllib.load(open("pyproject.toml", "rb"))["project"]["version"]; metadata_version=importlib.metadata.version("pyfuga"); attr_version=pyfuga.__version__; print(f"Installed pyfuga metadata={metadata_version}, attr={attr_version}"); assert metadata_version == expected, f"Metadata version mismatch: expected {expected}, got {metadata_version}"; assert attr_version == expected, f"pyfuga.__version__ mismatch: expected {expected}, got {attr_version}"'
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "test-pypi"'
+      when: manual
+      allow_failure: true
+    - when: never
+
 # ----- Publish PyFuga to TestPyPI (protected tags only) -----
 publish_testpypi:
   stage: deploy
@@ -54,17 +98,23 @@ publish_testpypi:
     - job: build_release_artifacts
       artifacts: true
   script:
-    - test -n "$TEST_PYPI_TOKEN" || (echo "TEST_PYPI_TOKEN is not set"; exit 1)
+    - test -n "$TWINE_USERNAME" || (echo "TWINE_USERNAME is not set"; exit 1)
+    - test -n "$TWINE_PASSWORD" || (echo "TWINE_PASSWORD is not set"; exit 1)
     - VENV_DIR=".venv-${CI_JOB_ID}"
     - uv venv "${VENV_DIR}"
     - . "${VENV_DIR}/bin/activate"
     - uv pip install twine
-    - python -m twine upload --repository-url https://test.pypi.org/legacy/ -u __token__ -p "$TEST_PYPI_TOKEN" dist/*
+    - python -m twine upload --skip-existing --repository-url https://test.pypi.org/legacy/ -u "$TWINE_USERNAME" -p "$TWINE_PASSWORD" dist/*
   rules:
-    # Publish only for protected tags when token is configured
-    - if: '$CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED == "true" && $TEST_PYPI_TOKEN'
+    # Publish on protected tags when credentials are configured
+    - if: '$CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED == "true" && $TWINE_USERNAME && $TWINE_PASSWORD'
       when: on_success
       allow_failure: false
+
+    # Temporary manual smoke test on this branch
+    - if: '$CI_COMMIT_BRANCH == "test-pypi" && $TWINE_USERNAME && $TWINE_PASSWORD'
+      when: manual
+      allow_failure: true
 
     # Otherwise never run
     - when: never

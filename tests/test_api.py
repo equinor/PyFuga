@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import importlib
+import importlib.metadata as importlib_metadata
 from pathlib import Path
 
 import numpy as np
@@ -24,6 +26,29 @@ def test_get_luts_wrapper_delegates_to__fuga(monkeypatch):
     assert out[0] is sentinel
     assert out[1] == (1, 2)
     assert out[2] == {"foo": "bar"}
+
+
+def test___version___falls_back_when_package_metadata_missing(monkeypatch):
+    def raise_not_found(_dist_name: str) -> str:
+        raise importlib_metadata.PackageNotFoundError("pyfuga")
+
+    with monkeypatch.context() as m:
+        m.setattr(importlib_metadata, "version", raise_not_found)
+        reloaded = importlib.reload(pyfuga)
+        assert reloaded.__version__ == "0+unknown"
+
+    importlib.reload(pyfuga)
+
+
+def test___version___uses_metadata_when_available(monkeypatch):
+    expected_version = "9.9.9-test"
+
+    with monkeypatch.context() as m:
+        m.setattr(importlib_metadata, "version", lambda _dist_name: expected_version)
+        reloaded = importlib.reload(pyfuga)
+        assert reloaded.__version__ == expected_version
+
+    importlib.reload(pyfuga)
 
 
 def test_compile_jit_does_not_keyerror():
