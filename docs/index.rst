@@ -11,6 +11,8 @@ PyFuga is a Python implementation of the Fuga wake model, a linearised RANS / CF
 farm flows. These pages describe the theoretical formulation, user workflows, and Python API of
 PyFuga.
 
+Release history is available in the `CHANGELOG.md <https://gitlab.windenergy.dtu.dk/TOPFARM/cuttingedge/pywake/fuga/pyfuga/-/blob/main/CHANGELOG.md>`_.
+
 .. note::
     
    This documentation is a work in progress. The theory pages are

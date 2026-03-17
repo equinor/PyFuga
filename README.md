@@ -36,6 +36,10 @@ A minimal example to get you started is available in **[the QuickStart Jupyter n
 
 Learn more about PyFuga at the **[official documentation](https://topfarm.pages.windenergy.dtu.dk/cuttingedge/pywake/fuga/PyFuga/)**.
 
+## Release history
+
+See **[CHANGELOG.md](CHANGELOG.md)** for release notes and version history.
+
 ## Contributing
 
 Read more at **[CONTRIBUTING.md](CONTRIBUTING.md)**.
