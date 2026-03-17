@@ -1,3 +1,13 @@
+"""preludium_eq_routines.py
+=========================
+Automaton-equivalent routines for Preludium code model compatibility.
+
+This module provides alternative implementations of node advancement and
+error control functions that match the Preludium Fortran code more closely.
+Used for testing and validating against the original Preludium atmospheric
+model. Controlled via the :data:`pyfuga.utils.preludium_equivalent` flag.
+"""
+
 import numpy as np
 
 from pyfuga.common import complex_norm
@@ -21,7 +31,7 @@ class PrelutNodePreludium(PreLUTNode):
         # use contr, only: Tprelutnode
         # use vector_functions, only: outer
         # implicit none
-        # Modified Gram-Schmidt ortonormalization
+        # Modified Gram-Schmidt orthonormalisation
         # Y, V, R and invR are nxn matrices
         # Columns of Y are linearly independent vectors (the input)
         # Columns of V form an orthonormal basis (V is unitary)

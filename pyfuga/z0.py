@@ -1,3 +1,12 @@
+"""z0.py
+======
+Compute roughness length z0 from other surface parameters.
+
+This module provides functions to estimate the aerodynamic roughness length (z0)
+used in initialising wind turbine wake simulations to match site-specific
+atmospheric conditions.
+"""
+
 import numpy as np
 from scipy.optimize import fsolve, root_scalar
 from scipy.special import lambertw

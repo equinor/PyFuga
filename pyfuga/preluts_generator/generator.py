@@ -145,10 +145,52 @@ class PreLUTGenerator:
 
     def make_prelut(self):
         """
-        Generate the preLUT dataset by integrating the state between stations.
+        Generate preliminary look-up tables by integrating atmospheric state.
 
-        Returns:
-            PreLUT: A structured dataset containing the preLUT and associated metadata.
+        This is the first stage of the PyFuga pipeline. It solves the system of
+        ordinary differential equations in the adjoint problem described in
+        ``docs/theory/numerics.rst`` for the specific ``(zeta0, beta, kz0)``
+        combination provided at initialisation.
+
+        The preliminary LUTs depend only on that stability and wavenumber
+        combination and can therefore be reused across a wide range of turbine
+        geometries and boundary-layer heights. The method benefits from the
+        orthogonal Chasing Method and uses second-order Runge-Kutta integration
+        with adaptive step-size control.
+
+        The integration proceeds from :math:`z=z_0` up to approximately the
+        inversion height, outputting state vectors at logarithmically spaced
+        stations. Orthonormalisation (QR decomposition) is applied at each
+        station.
+
+        Returns
+        -------
+        pyfuga.preluts.PreLUT
+                        Structured xarray Dataset containing:
+
+                        - Y_lower, R_lower, R_upper: Orthonormalised state matrices.
+                        - dbx_const, dbx_lin, dby_const, dby_lin, dbz_const, dbz_lin:
+                            forcing accumulation terms for each direction.
+                        - level: vertical level index on the log-height grid.
+
+                        Attributes include ``ds`` (station spacing), ``kzmax``, ``zeta0``,
+                        and ``accgoal``.
+
+        Notes
+        -----
+        The integration strategy adapts the variable based on atmospheric stability:
+
+        - For zeta0 >= 0 (neutral/stable): integrates in normalised height s = kz
+        - For zeta0 < 0 (unstable): integrates in non-dimensional time t = u/KAPPA
+          up to a transition point, then switches to s.
+
+                The transition point depends on stability via the function phi_m and its
+                inverse. See ``docs/theory/numerics.rst`` for the adjoint formulation
+                and ``docs/theory/governing_equations.rst`` for the governing equations.
+
+        See Also
+        --------
+        pyfuga.flut.FourierLUTGenerator.make_lut : Next pipeline stage.
         """
         self.nodes = []
         first = PreLUTNodeFirst(self.beta, self.ds)

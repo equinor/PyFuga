@@ -72,7 +72,7 @@ PreLUT generation
     PreLUTs are **not numerically identical** to legacy outputs.
 
 - Removes an additional `h` term in `get_new_h2` present in the Fortran code, which caused 
-unnecessarily small integration steps.
+    unnecessarily small integration steps.
 
 Trafalgar
 ^^^^^^^^^

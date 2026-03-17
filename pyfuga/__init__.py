@@ -1,4 +1,8 @@
+import functools
+import inspect
 from importlib.metadata import PackageNotFoundError, version
+
+from . import _fuga
 
 try:
     __version__ = version("pyfuga")
@@ -8,7 +12,9 @@ except PackageNotFoundError:
 __all__ = ["get_luts", "__version__"]
 
 
+@functools.wraps(_fuga.get_luts)
 def get_luts(*args, **kwargs):
-    from ._fuga import get_luts as _get_luts
+    return _fuga.get_luts(*args, **kwargs)
 
-    return _get_luts(*args, **kwargs)
+
+get_luts.__signature__ = inspect.signature(_fuga.get_luts)

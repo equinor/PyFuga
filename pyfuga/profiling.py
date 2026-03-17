@@ -1,3 +1,12 @@
+"""profiling.py
+==============
+Performance profiling utilities for PyFuga functions.
+
+This module provides decorators for timing function calls and profiling
+line-by-line execution time. Used to identify performance bottlenecks
+in the preLUT generation and Fourier LUT stages.
+"""
+
 import functools
 import sys
 import time

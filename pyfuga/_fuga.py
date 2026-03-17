@@ -1,3 +1,22 @@
+"""_fuga.py
+==========
+Main API entry point for PyFuga — generate wake look-up tables.
+
+This module orchestrates the full three-stage PyFuga pipeline:
+
+1. **Preliminary LUTs (preLUTs)** — via :mod:`pyfuga.preluts_generator`
+   Integrates atmospheric boundary layer equations between vertical stations.
+
+2. **Fourier LUTs** — via :mod:`pyfuga.flut`
+   Solves for spectral wake response to all forcing directions.
+
+3. **Physical-space LUTs** — via :mod:`pyfuga.trafalgar`
+   Inverse Fourier transform to obtain wake fields in physical x-y-z space.
+
+The entry point is :func:`get_luts`, which orchestrates all three stages,
+handling file caching and data I/O.
+"""
+
 import os
 from pathlib import Path
 
@@ -31,52 +50,66 @@ def get_luts(
     jit=True,
     n_cpu=1,
 ):  # pragma: no cover
-    """Generate and save (or load if exists) Fuga look-up tables. This function performs the full path from
-    input via preluts, fourier LUTs and LUTs to the final LUTs netcdf dataset
+    """Generate physical-space wake look-up tables via the full PyFuga pipeline.
+
+    This function orchestrates the three-stage PyFuga pipeline:
+        1. Preliminary LUTs (preLUTs) via pyfuga.preluts_generator
+        2. Fourier LUTs via pyfuga.flut
+        3. Physical-space LUTs via pyfuga.trafalgar
+
+    Caches intermediate results (preLUTs and Fourier LUTs) as NetCDF files in
+    the specified folder, skipping recomputation if files exist.
 
     Parameters
     ----------
-    folder : string or Path
-        Path where all files (intermediate and final) are stored
+    folder : str or Path
+        Output folder for all generated files (preLUTs, Fourier LUTs, LUTs).
     zeta0 : float
-        Stability parameter
+        Monin-Obukhov stability parameter (z0/L). Positive=stable, negative=unstable,
+        zero=neutral.
     nkz0 : int
-        Number of kz0 per decade. Total number of kz0 = 9 * nkz0 - (nkz0-1)
+        Spectral density: number of wavenumbers per log decade.
+        Total count = 9*nkz0 - (nkz0-1); typically 8--16.
     nbeta : int
-        Number of beta angles. Total number of beta angles = nbeta + 1
+        Angular resolution for azimuthal averaging. Total angle count is nbeta + 1.
     diameter : float
-        Wind turbine diameter
+        Wind turbine rotor diameter (m).
     zhub : float
-        Wind turbine hub height
+        Wind turbine hub height (m).
     z0 : float
-        Roughness length
+        Aerodynamic roughness length (m); defines vertical grid via s = log(z/z0).
     zi : float
-        Inversion height
+        Atmospheric inversion height (m); upper domain boundary.
     zlow : float
-        Lower height of output domain. If zlow=zhigh=zhub, the output will only contain one layer at the hub height
+        Lowest output height (m). If zlow == zhigh == zhub, only hub-height solution.
     zhigh : float
-        Upper height of output domain. If zlow=zhigh=zhub, the output will only contain one layer at the hub height
+        Highest output height (m). If zlow == zhigh == zhub, only hub-height solution.
+    lut_vars : sequence of str, optional
+        Variable names to compute. Default is all 8: 'UL', 'UT', 'VL', 'VT', 'WL',
+        'WT', 'PL', 'PT' (L=longitudinal, T=transverse forcing).
     nx : int, optional
-        Number of points in LUT (U direction), default is 2048
-        The wind turbine is located 1/4 inside the domain
+        Streamwise grid points, default 2048. Turbine at x = nx/4 * dx.
     ny : int, optional
-        Number of points in LUT (V direction). Note only one half of the domain is store,
-        i.e. ny is the number of points from the wind turbine to the side boundary of the domain, default is 512
-    dx : int, float or None, optional
-        Distance between points on the x-axis (U direction)
-        If None (default), dx is set to diameter / 4
-    dy : int, float or None, optional
-        Distance between points on the y-axis (V direction)
-        If None (default), dy is set to diameter / 16
-    jit : boolean
-        If True (default), some slow functions are just-in-time compiled
-    n_cpu : int or None
-        If >1, the preluts are generated in parallel on <n_cpu> cpus
-        If None, the maximum available number of cpus are used
+        Cross-stream half-grid size, default 512.
+    dx : float or None, optional
+        Streamwise grid spacing (m). If None (default), set to diameter / 4.
+    dy : float or None, optional
+        Cross-stream grid spacing (m). If None (default), set to diameter / 16.
+    jit : bool, optional
+        Enable JIT compilation (Numba). Default is True.
+    n_cpu : int or None, optional
+        CPU cores for parallel computation. None uses all; 1 disables parallelisation.
 
     Returns
     -------
-    luts : xarray Dataset
+    xarray.Dataset
+        Physical-space wake fields with dimensions (z, x, y).
+
+    See Also
+    --------
+    pyfuga.preluts_generator.PreLUTGenerator.make_prelut : First pipeline stage.
+    pyfuga.flut.FourierLUTGenerator.make_lut : Second pipeline stage.
+    pyfuga.trafalgar.Trafalgar.make_luts : Third pipeline stage.
     """
     utils.compile(jit)
     folder = Path(folder)

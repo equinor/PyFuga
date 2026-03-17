@@ -1,3 +1,13 @@
+"""file_readers.py
+================
+Read Fortran binary output files from the original FUGA code.
+
+This module provides readers for legacy .bin output files containing
+parameters, case data, and preLUT tables saved by the Fortran FUGA implementation.
+Used for initialising preLUTs from existing FUGA runs and for compatibility
+with legacy simulation data.
+"""
+
 import os
 import struct
 from pathlib import Path

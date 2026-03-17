@@ -1,3 +1,28 @@
+"""flut.py
+========
+Generate Fourier-space look-up tables from atmospheric boundary layer solutions.
+
+This module implements the second stage of the PyFuga pipeline: the
+Fourier-space perturbation solution derived from the adjoint-problem
+solution stored in the preliminary LUTs.
+
+**Input**
+    Preliminary LUTs (:class:`pyfuga.preluts.PreLUT`) from
+    :mod:`pyfuga.preluts_generator`. These encode the state profile
+    (velocity, pressure) as a function of height and horizontal wavenumber.
+
+**Output**
+    Fourier LUTs (:class:`xarray.Dataset`) with variables ``UL``, ``VL``, ``WL``,
+    ``PL`` (L = longitudinal forcing) and ``UT``, ``VT``, ``WT``, ``PT``
+    (T = transverse forcing), each with dimensions ``(beta, kz0, level)``.
+    These are passed to :mod:`pyfuga.trafalgar` for inverse Fourier transform.
+
+**Method**
+    Solves the superposition integral equation for each ``(beta, kz0)`` pair
+    (polar angle and wavenumber), ranging over all levels in the rotor plane
+    or at hub height. Uses parallel processing where applicable.
+"""
+
 import multiprocessing as mp
 import warnings
 from contextlib import nullcontext
@@ -56,12 +81,53 @@ class FourierLUTGenerator:
 
     def make_lut(self, z0, low_level_out, high_level_out, luts=UVW_LT, n_cpu=1):
         """
-        Defines levels based on z0 and rotor geometry, checks for consistency with prelut levels
-        and calls solve_layers for each (beta, kz0) combination, solving all forcing directions at once.
+        Generate Fourier-space wake look-up tables for specified height range.
 
-        Output variables:
-        - UL: Streamwise velocity wake caused by longitudinal (thrust) forcing
-        - UT: Streamwise velocity wake caused by transverse (side) forcing, etc.
+        This is the core method of the second stage in the PyFuga pipeline. It
+        takes preliminary LUTs containing the adjoint-problem solution and solves
+        for spectral wake response across all ``(beta, kz0)`` wavenumber pairs
+        for the specified problem geometry and turbine characteristics. Output is
+        suitable for inverse Fourier transformation by
+        :class:`pyfuga.trafalgar.Trafalgar`.
+
+        Parameters
+        ----------
+        z0 : float
+            Roughness length (m). Defines the vertical grid spacing via logarithmic
+            height increments (s = log(z/z0)).
+        low_level_out : int
+            Lowest output level index. Defines minimum height on the vertical grid.
+        high_level_out : int
+            Highest output level index. Defines maximum height on the vertical grid.
+        luts : sequence of str, optional
+            Variable names to generate. Default is all 8 variables: 'UL', 'UT', 'VL',
+            'VT', 'WL', 'WT', 'PL', 'PT' (L = longitudinal forcing, T = transverse
+            forcing). Variables are u, v, w (velocity components) and p (pressure).
+        n_cpu : int, optional
+            Number of CPU cores for parallel (beta, kz0) computation. Default is 1
+            (serial). Pass None to use all available cores.
+
+        Returns
+        -------
+        xarray.Dataset
+            Fourier-space wake fields with variables (as requested), each with
+            dimensions (beta, kz0, level). Dimensions correspond to:
+            - beta: azimuthal angles (radians)
+            - kz0: wavenumber magnitude scaled to domain height
+            - level: vertical index on the log-height grid
+            Also includes scalar coordinates: diameter, hubheight, z0.
+
+        See Also
+        --------
+        pyfuga.trafalgar.Trafalgar.make_luts : Next pipeline stage; inverse Fourier transform.
+        pyfuga.preluts_generator.PreLUTGenerator.make_prelut : Previous stage; generates input.
+
+        Notes
+        -----
+        The method validates that output levels fit within the precomputed preLUT range.
+        Wavenumbers larger than those with wavelengths < R/4 (rotor radius/4) are filtered
+        out as physically irrelevant. The computation is embarrassingly parallel over
+        (beta, kz0) pairs and uses multiprocessing when n_cpu > 1.
         """
         assert all(lut in UVW_LT for lut in luts)
         zh = self.zhub
@@ -221,7 +287,7 @@ def solve_layers(args):
     ) = args
     """
     Solves for a single (beta, kz0, forcing direction) combination.
-    Discards pre-calculated levels outside of min/max level range for memory optimization.
+    Discards pre-calculated levels outside of min/max level range for memory optimisation.
     Returns: X(z) at all output levels for that specific (beta, kz0, forcing direction) combination.
     """
 
@@ -237,7 +303,7 @@ def solve_layers(args):
 
     max_table_level = prelut.level.max().item()
 
-    # Memory optimization: discard irrelevant prelut data
+    # Memory optimisation: discard irrelevant prelut data
     if max_table_level < minlevel:
         return np.zeros((high_level_out - low_level_out + 1, 6), dtype=np.complex128)  # Discard if below min level
 

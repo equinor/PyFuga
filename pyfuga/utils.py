@@ -1,3 +1,18 @@
+"""utils.py
+=========
+Utility functions and decorators for PyFuga.
+
+This module provides:
+    - JIT compilation control via the :func:`jit` decorator (using Numba)
+    - Timing and profiling decorators (:func:`timeit`)
+    - Custom xarray dataset wrapper (:class:`ComplexXRDataset`)
+    - Beta angle and wavenumber grid generation
+    - File I/O helpers for reading/writing datasets
+
+Also manages the global Preludium compatibility flag used for testing
+alternative formulations of atmospheric code.
+"""
+
 import importlib
 import sys
 import time

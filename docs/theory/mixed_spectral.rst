@@ -112,7 +112,7 @@ In order to save memory, the :math:`z_n`'s are chosen so as to increase exponent
 (about 5% increase per level). Note that a series of adjacent triangular functions add up to a 
 constant function of height 1, see the figure below: 
 
-.. figure:: /../_static/triangular_functions.png
+.. figure:: ../_static/triangular_functions.png
    :name: fig:triangular_function
    :align: center
    :width: 70%

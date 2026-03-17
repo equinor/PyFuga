@@ -1,26 +1,19 @@
-"""Module: common.py
+r"""common.py
+===========
+Numerical helper functions for atmospheric stability relations in PyFuga.
 
-This module provides numerically optimized functions to compute stability-related parameters
-for atmospheric modeling in PyFuga. It leverages JIT compilation (via the jit decorator)
-to enhance performance in computational routines associated with stability functions.
+This module provides JIT-accelerated utilities used by the preLUT and Fourier
+LUT stages.
 
-Key Components:
-- get_cdivkL(zeta0, kz0): Computes the normalized stability parameter (c/(k*L)) that adjusts
-    according to the stability condition (neutral, unstable, or stable)
-    using provided constants Cm1 and Cm2.
-- get_phi_inverse(kz, cdivkL): Computes the inverse of the stability function phi_m for
-    unstable conditions.
-- get_psi(zeta0, kz, cdivkL): Calculates the stability function (-psi_m), using
-    different formulations for unstable and stable atmospheric conditions.
-- get_phi(zeta0, kz, cdivkL): Computes the stability function (phi_m) with behavior conditional
-    on the sign of zeta0.
-- complex_norm(arr): Computes the Euclidean norm across columns of a complex array.
-- get_new_h2(h, acc, Yerr, Y): Adjusts the integration step size (h) based on the maximum
-   relative error between two complex arrays, ensuring numerical stability and adherence to
-   a predefined accuracy goal.
+Key components:
 
-Each function is decorated with the jit decorator from pyfuga.utils to enable JIT compilation for improved
-execution speed during numerical computations."""
+- ``get_cdivkL(zeta0, kz0)``: Stability parameter :math:`c/(kL)`.
+- ``get_phi_inverse(kz, cdivkL)``: Inverse of :math:`\phi_m` for unstable flow.
+- ``get_psi(zeta0, kz, cdivkL)``: Stability correction function :math:`-\psi_m`.
+- ``get_phi(zeta0, kz, cdivkL)``: Stability function :math:`\phi_m`.
+- ``complex_norm(arr)``: Euclidean norm for complex arrays.
+- ``get_new_h2(h, acc, Yerr, Y)``: Adaptive integration step-size update.
+"""
 
 import numpy as np
 
