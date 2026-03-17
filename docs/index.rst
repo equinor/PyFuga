@@ -7,8 +7,9 @@
 Welcome to PyFuga's documentation!
 ==================================
 
-PyFuga is a Python implementation of the Fuga wake model, a linearised RANS / CFD model for wind 
-farm flows. These pages describe both the theoretical formulation and the Python API.
+PyFuga is a Python implementation of the Fuga wake model, a linearised RANS / CFD model for wind
+farm flows. These pages describe the theoretical formulation, user workflows, and Python API of
+PyFuga.
 
 .. note::
     
@@ -41,15 +42,15 @@ Contents
 
     examples/01_QuickStart
 
-.. toctree
-..     :caption: User Guide
-..     :maxdepth: 1
+.. toctree::
+    :caption: User Guide
+    :maxdepth: 1
 
-..     user_guide/installation
-..     user_guide/usage
-..     user_guide/configuration
-..     user_guide/integration
-..     user_guide/faq
+    user_guide/installation
+    user_guide/usage
+    user_guide/configuration
+    user_guide/integration
+    user_guide/faq
 
 .. toctree::
     :caption: API Reference
@@ -60,7 +61,7 @@ Contents
 Fuga variants
 -------------
 
-Historically, there have been several variants of the Fuga model. PyFuga contains some differences 
+Historically, there have been several variants of the Fuga model. PyFuga contains some differences
 from the original Fortran implementation:
 
 PreLUT generation
@@ -68,16 +69,17 @@ PreLUT generation
 
 - Uses `numpy.linalg.qr` for QR decomposition.
 
-    This mirrors the logic of the original code but not its exact floating-point behaviour, meaning 
-    PreLUTs are **not numerically identical** to legacy outputs.
+  This mirrors the logic of the original code but not its exact floating-point behaviour, meaning
+  PreLUTs are **not numerically identical** to legacy outputs.
 
-- Removes an additional `h` term in `get_new_h2` present in the Fortran code, which caused 
-    unnecessarily small integration steps.
+- Removes an additional `h` term in `get_new_h2` present in the Fortran code, which caused
+  unnecessarily small integration steps.
 
 Trafalgar
 ^^^^^^^^^
 
 - Interpolation changed from linear to cubic.
+- An improved wavenumber sampling logic.
 
 History, contributors and funding
 ---------------------------------
@@ -132,7 +134,7 @@ DTU Wind Energy. The most relevant references are:
         title       = {Linearised CFD Models for Wakes},
         institution = {Ris{\o} National Laboratory for Sustainable Energy},
         year        = 2011,
-        number      = {Ris{\o}--R--1772(EN)}}
+        number      = {Ris{\o}--R--1772(EN)},
     }
 
     @TechReport{Ott2014,
@@ -140,7 +142,7 @@ DTU Wind Energy. The most relevant references are:
         title       = {Developments of the offshore wind turbine wake model Fuga},
         institution = {DTU Wind Energy},
         year        = 2014,
-        number      = {E--0048}}
+        number      = {E--0048},
     }
 
 (See ``theory/references.rst`` for the full list of foundational papers.)
