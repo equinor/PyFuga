@@ -12,7 +12,7 @@ license = "MIT"
 # Note: Keep in sync with [tool.pyfuga] min-python-version and supported-python-versions
 requires-python = ">=3.10, <3.15"
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 4 - Beta",
   "Intended Audience :: Science/Research",
   "Operating System :: POSIX :: Linux",
   "Operating System :: Microsoft :: Windows",
