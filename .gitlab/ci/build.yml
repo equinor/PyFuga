@@ -2,8 +2,8 @@
 
 # ===== Image builds =====
 
-# ----- Build CI base/docs images -----
-build_linux_images:
+# ----- Build CI base images (all supported Python versions) -----
+build_linux_base_images:
   stage: build
   image:
     name: gcr.io/kaniko-project/executor:debug
@@ -12,10 +12,8 @@ build_linux_images:
   parallel:
     matrix:
       - PYTHON_VERSION: ["3.10", "3.11", "3.12", "3.13", "3.14"]
-        TARGET: ["base", "docs"]
   variables:
     CI_IMAGE_REPO: "${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_VERSION}-uv"
-    CI_IMAGE_REPO_DOCS: "${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_VERSION}-uv-docs"
   script:
     # Authenticate to the GitLab registry using the built-in CI variables
     - mkdir -p /kaniko/.docker
@@ -31,24 +29,16 @@ build_linux_images:
       }
       EOF
 
-    # Build and push
+    # Build and push base image
     - |
-      if [ "$TARGET" = "base" ]; then
-        REPO="${CI_IMAGE_REPO}"
-        BUILD_TARGET="base"
-      else
-        REPO="${CI_IMAGE_REPO_DOCS}"
-        BUILD_TARGET="docs"
-      fi
-
-      DEST_SHA="${REPO}:${CI_COMMIT_SHA}"
-      DEST_LATEST="${REPO}:latest"
+      DEST_SHA="${CI_IMAGE_REPO}:${CI_COMMIT_SHA}"
+      DEST_LATEST="${CI_IMAGE_REPO}:latest"
 
       /kaniko/executor \
         --context "$CI_PROJECT_DIR" \
         --dockerfile "$CI_PROJECT_DIR/ci/Dockerfile" \
         --build-arg "PYTHON_VERSION=${PYTHON_VERSION}" \
-        --target "$BUILD_TARGET" \
+        --target "base" \
         --destination "$DEST_SHA" \
         --destination "$DEST_LATEST"
 
@@ -56,6 +46,57 @@ build_linux_images:
     # Rebuild automatically when the Dockerfile changes
     - changes:
         - ci/Dockerfile
+      when: on_success
+      allow_failure: false
+    # Otherwise allow manual rebuilds from the UI
+    - when: manual
+      allow_failure: true
+  tags:
+    - docker
+    - ubuntu
+    - linux
+
+# ----- Build CI docs image (default Python version only) -----
+build_linux_docs_image:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  cache: []
+  variables:
+    CI_IMAGE_REPO_DOCS: "${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv-docs"
+  script:
+    # Authenticate to the GitLab registry using the built-in CI variables
+    - mkdir -p /kaniko/.docker
+    - |
+      cat > /kaniko/.docker/config.json <<EOF
+      {
+        "auths": {
+          "${CI_REGISTRY}": {
+            "username": "${CI_REGISTRY_USER}",
+            "password": "${CI_REGISTRY_PASSWORD}"
+          }
+        }
+      }
+      EOF
+
+    # Build and push docs image
+    - |
+      DEST_SHA="${CI_IMAGE_REPO_DOCS}:${CI_COMMIT_SHA}"
+      DEST_LATEST="${CI_IMAGE_REPO_DOCS}:latest"
+
+      /kaniko/executor \
+        --context "$CI_PROJECT_DIR" \
+        --dockerfile "$CI_PROJECT_DIR/ci/Dockerfile.docs" \
+        --build-arg "PYTHON_VERSION=${PYTHON_DEFAULT_VERSION}" \
+        --target "docs" \
+        --destination "$DEST_SHA" \
+        --destination "$DEST_LATEST"
+
+  rules:
+    # Rebuild automatically when docs-image inputs change
+    - changes:
+        - ci/Dockerfile.docs
       when: on_success
       allow_failure: false
     # Otherwise allow manual rebuilds from the UI

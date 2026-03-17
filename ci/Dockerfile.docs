@@ -1,0 +1,22 @@
+ARG PYTHON_VERSION=3.12
+FROM python:${PYTHON_VERSION}-slim AS docs
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Keep Python output unbuffered and avoid writing .pyc
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# System deps for docs jobs
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    make \
+    pandoc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv once in the image
+RUN python -m pip install --no-cache-dir --upgrade pip \
+    && python -m pip install --no-cache-dir "uv==0.10.3"
+
+# Helpful default
+WORKDIR /work

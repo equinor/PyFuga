@@ -18,12 +18,3 @@ RUN python -m pip install --no-cache-dir --upgrade pip \
 
 # Helpful default
 WORKDIR /work
-
-
-FROM base AS docs
-
-# Only docs image gets these
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    make \
-    pandoc \
-    && rm -rf /var/lib/apt/lists/*
