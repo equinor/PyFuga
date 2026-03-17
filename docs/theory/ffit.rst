@@ -11,6 +11,7 @@ The Trafalgar module converts the spectral (Fourier-space) solution of the turbi
 evaluating a 2D inverse Fourier integral of the form
 
 .. math::
+   :label: ffit-integral
 
    f(\mathbf{x}) = \int_{-\infty}^{\infty} \hat{f}(\mathbf{k})\, e^{i\mathbf{k}\cdot\mathbf{x}}\, \mathrm{d}\mathbf{k}
 
@@ -45,6 +46,7 @@ so we truncate the integration to a finite interval :math:`[k_{\min},\, k_{\max}
 without appreciable loss of accuracy:
 
 .. math::
+   :label: ffit-truncation
 
    f(x) \;\approx\; \int_{k_{\min}}^{k_{\max}} \hat{f}(k)\, e^{ikx}\, dk.
 
@@ -55,6 +57,7 @@ We want to evaluate the truncated integral at a regular set of **output points**
 physical space:
 
 .. math::
+   :label: ffit-output-grid
 
    x_j = x_0 + a\,j, \qquad j = 0, 1, \ldots, n-1,
 
@@ -64,12 +67,14 @@ For the numerical integration we divide :math:`[k_{\min}, k_{\max}]` into :math:
 equal sub-intervals of width
 
 .. math::
+   :label: ffit-spectral-spacing
 
    b = \frac{k_{\max} - k_{\min}}{n},
 
 and place a **quadrature point** at the midpoint of each sub-interval:
 
 .. math::
+   :label: ffit-quadrature-grid
 
    k_q = k_{\min} + \left(q + \tfrac{1}{2}\right) b, \qquad q = 0, 1, \ldots, n-1.
 
@@ -80,6 +85,7 @@ Inside each sub-interval, :math:`\hat{f}(k)` varies slowly (provided :math:`b` i
 enough), so we approximate it by its value at the midpoint :math:`k_q`.  This gives
 
 .. math::
+   :label: ffit-midpoint
 
    \int_{k_{\min}}^{k_{\max}} \hat{f}(k)\, e^{ikx_j}\, dk
    \;\approx\;
@@ -101,6 +107,7 @@ Fourier Transform computable by a single FFT.  In general, however, :math:`a` an
 The key observation (due to Bluestein) is the algebraic identity
 
 .. math::
+   :label: ffit-bluestein
 
    q\,j = \tfrac{1}{2}\bigl(q^2 + j^2 - (q-j)^2\bigr).
 
@@ -112,6 +119,7 @@ factors are named as follows:
 exponential, applied to the spectral field *before* the convolution:
 
 .. math::
+   :label: ffit-pre-multiply
 
    \phi(q) = e^{i\left[(k_0 + b\,q)\,x_0 \;+\; \tfrac{1}{2}\,a\,b\,q^2\right]}.
 
@@ -119,6 +127,7 @@ exponential, applied to the spectral field *before* the convolution:
 exponential, applied *after* the convolution:
 
 .. math::
+   :label: ffit-post-multiply
 
    \psi(j) = e^{i\left[k_0\,x_j \;+\; \tfrac{1}{2}\,a\,b\,j^2\right]}.
 
@@ -130,6 +139,7 @@ The spectral field is multiplied by the pre-multiply phase and zero-padded to
 form the **convolution vector** :math:`g` (``ghatx`` in code):
 
 .. math::
+   :label: ffit-convolution-vector
 
    g_q = \begin{cases}
    \hat{f}(k_q)\;\phi(q), & 0 \le q < n, \\
@@ -139,6 +149,7 @@ form the **convolution vector** :math:`g` (``ghatx`` in code):
 The FFIT result is then
 
 .. math::
+   :label: ffit-convolution-result
 
    f(x_j) \;=\; \psi(j)\;(g * h)(j), \qquad 0 \le j \le n-1,
 

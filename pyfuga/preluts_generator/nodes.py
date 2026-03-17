@@ -103,7 +103,8 @@ class PreLUTNodeFirst(PreLUTNode):
     """
 
     def __init__(self, beta, ds):
-        """Initialise the first node with the prescribed boundary conditions."""
+        """Initialise the first node with the prescribed boundary conditions.
+        See eq. (9) in Numerical Solution."""
         PreLUTNode.__init__(self)
         self.set_segment_bounds(log_s_lower=0, log_s_upper=ds)
         sinbeta, cosbeta = np.sin(beta), np.cos(beta)

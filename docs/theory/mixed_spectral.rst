@@ -10,6 +10,7 @@ solutions depend on :math:`z` and a 2D wave vector
 variables, :math:`\mathcal{F}\{g(x, y, z)\} = \hat{g}(k_x, k_y, z)` read 
 
 .. math::
+    :label: eq:Fourier transform
 
     \begin{aligned}
         \hat{u}_i^1(k_x,k_y,z) &=\frac{1}{(2\pi)^2}\int_{-\infty}^{\infty}\mathrm{d}x \
@@ -27,6 +28,7 @@ of Gaussian smearing, :math:`\hat{f}_i` is multiplied by :math:`\mathrm{e}^{-(k_
 where :math:`\sigma_x` specifies the width of the actuator disc. The inverse transforms are, then: 
 
 .. math::
+    :label: eq:inverse Fourier transform
 
     \begin{aligned}
         {u}_i^1(x,y,z) &=\int_{-\infty}^{\infty}\mathrm{d}k_x\int_{-\infty}^{\infty}\mathrm{d}k_y\, 
@@ -100,6 +102,7 @@ approximate :math:`f_i(\mathbf{k}, z)` by a sum of such functions. One way of do
 of triangular functions (also known as Chapeau functions): 
 
 .. math::
+    :label: eq:triangular_function
 
     \phi_n(z) = \Delta_n(z) = 
     \begin{cases}

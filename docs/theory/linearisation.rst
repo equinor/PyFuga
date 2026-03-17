@@ -16,6 +16,7 @@ velocity :math:`U_i` and pressure :math:`P` fields can be expanded as Taylor ser
 :math:`\epsilon`, such that
 
 .. math::
+   :label: eq:perturbation_expansion
 
    \begin{aligned}
       U_i &= U_i^0 + \epsilon u_i^1 + \epsilon^2 u_i^2 + \epsilon^3 u_i^3 + \ldots \\
@@ -39,6 +40,7 @@ words, the :math:`n^{\text{th}}`-order equation is obtained by balancing all ter
 :math:`\epsilon^n`. As a result, the zeroth-order equations can be written as:
 
 .. math::
+   :label: eq:zeroth_order_equations
 
    \begin{aligned}
       U_j^0  \frac{\partial U_i^0}{\partial x_j } &= \frac{\partial}{\partial x_j} K \
@@ -68,6 +70,7 @@ These equations describe how the presence of the turbines modifies the velocity 
 relative to the base solution and can be written as
 
 .. math::
+   :label: eq:first_order_equations
 
    \begin{align}
          &U^0  \frac{\partial u_i^1}{\partial x} + w^1 \frac{\partial U^0}{\partial z} \delta_{i1} \

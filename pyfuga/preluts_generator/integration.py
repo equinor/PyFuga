@@ -110,6 +110,7 @@ def modified_midpoint_integration_step(
     requires fewer function evaluations.
 
     Also updates the differential forcing accumulators based on the integrated state.
+    See eq. (7)-(8) in Numerical Solution.
 
     Args:
         y: Current state matrix.

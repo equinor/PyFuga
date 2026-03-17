@@ -70,15 +70,15 @@ html_theme_options = {
     "sticky_navigation": True,  # Keep the navigation visible when scrolling
 }
 
-# Fix equation numbering
+# Fix equation numbering - eq. numbered through custom.css
+# All equations with a label are numbered
 html_css_files = ["custom.css"]
-mathjax3_config = {  # Keep MathJax simple
+mathjax3_config = {
     "tex": {
         "tags": "none",
         "useLabelIds": False,
     }
 }
-math_number_all = True
 
 # -- CI build configuration ---------------------------------------------------
 

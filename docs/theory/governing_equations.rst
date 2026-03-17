@@ -8,6 +8,7 @@ can be any CFD model based on the *Boussinesq approximation* and an *eddy viscos
 such a setting, the Reynolds-averaged Navier-Stokes equation can be expressed like this:
 
 .. math::
+    :label: eq:governing_equations
 
     U_j  \frac{\partial U_i}{\partial x_j } = \frac{\partial}{\partial x_j} K 
     \left( \frac{\partial U_i}{\partial x_j} + \frac{\partial U_j}{\partial x_i} \right)
@@ -32,6 +33,7 @@ by a solid plate/lid moving with a prescribed, constant velocity. Lastly, the in
 condition yields the continuity equation,
 
 .. math::
+    :label: eq:continuity_equation
     
     \frac{\partial U_i}{\partial x_i} = 0.
 
@@ -43,6 +45,7 @@ an imposed velocity $U_i^{\rm lid}$ at the top of the boundary layer and rough l
 boundary conditions are
 
 .. math::
+    :label: eq:boundary_conditions
 
     \begin{aligned}
         U_i (z_0) &= 0 \\
@@ -77,6 +80,7 @@ In Fuga, the simple closure is extended to non-neutral conditions by means of Mo
 setting 
 
 .. math::
+    :label: eq:eddy_viscosity_closure
 
     K = \frac{\kappa u_*  z}{\phi_m (z/L)},
 
@@ -84,6 +88,7 @@ where :math:`L` is the Monin-Obukhov length and :math:`\phi_m` is the Högström
 \citep{Hogstrom1988}, defined as
 
 .. math::
+    :label: eq:hogstrom_profile_function
 
     \phi_m (z/L) = \begin{cases}
     1+5\frac{z}{L}  & \text{for } \frac{z}{L} \geq 0 \\
@@ -102,6 +107,7 @@ placing the turbine. For a given free wind, :math:`U_{\text{free}}`, along with 
 and the hub placed at :math:`(x_h, y_h, z_h)` the drag force is modelled as,
 
 .. math::
+    :label: eq:actuator_disc_force
 
     f_1 =-\frac{1}{2} C_t U^2_{\text{free}} \delta(x-x_h) \Theta \left(R^2-(y-y_h)^2-(z-z_h)^2 \right),
 

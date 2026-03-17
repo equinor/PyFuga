@@ -289,6 +289,7 @@ def solve_layers(args):
     Solves for a single (beta, kz0, forcing direction) combination.
     Discards pre-calculated levels outside of min/max level range for memory optimisation.
     Returns: X(z) at all output levels for that specific (beta, kz0, forcing direction) combination.
+    See eq. (5) in Forcing decomposition for the definition of Triangular forcing.
     """
 
     if forcing not in ("L", "T"):
@@ -400,16 +401,8 @@ def solve_layer(
 ):
     """
     Loops over a single (beta, kz0, layer, forcing direction) combination.
-    Returns: X(z) at all output levels for that specific layer and forcing.
+    Returns: X(z) at all output levels for that specific layer and forcing. See eq. (3) and (12) in Numerical Solution.
     NB: Forcing contributions are calculated using all (sub-)stations, but the output only includes the main stations.
-
-    maxlevel (z_inversion or table_max_level)
-    cl+1
-    cl (current level)
-    cl-1
-    minlevel (1m)
-
-    'i'-prefix, e.g. icl is the node number of cl (current layer)
     """
     icl_m1, icl, icl_p1 = icl_m1.item(), icl.item(), icl_p1.item()  # icl-1/icl/icl+1 as int
     b_lower_3 = [np.zeros(3, dtype=np.complex128)] * (icl_m1 + 1)  # minlevel(z=1m) to cl-1 -- b for lower BC
