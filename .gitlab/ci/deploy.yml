@@ -97,7 +97,7 @@ build_conda:
   needs:
     - job: publish_pypi
   script:
-    - mamba install -c conda-forge --override-channels -y conda-build conda-verify
+    - mamba install -c conda-forge --override-channels -y conda-build
     - python -m build --sdist
     - |
       for i in 1 2 3 4 5 6; do
@@ -158,21 +158,20 @@ publish_testpypi:
     - job: build_release_artifacts
       artifacts: true
   script:
-    - test -n "$TWINE_USERNAME" || (echo "TWINE_USERNAME is not set"; exit 1)
-    - test -n "$TWINE_PASSWORD" || (echo "TWINE_PASSWORD is not set"; exit 1)
+    - test -n "$TEST_PYPI_TOKEN" || (echo "TEST_PYPI_TOKEN is not set"; exit 1)
     - VENV_DIR=".venv-${CI_JOB_ID}"
     - uv venv "${VENV_DIR}"
     - . "${VENV_DIR}/bin/activate"
     - uv pip install twine
-    - python -m twine upload --skip-existing --repository-url https://test.pypi.org/legacy/ -u "$TWINE_USERNAME" -p "$TWINE_PASSWORD" dist/*
+    - python -m twine upload --skip-existing --repository-url https://test.pypi.org/legacy/ -u "__token__" -p "$TEST_PYPI_TOKEN" dist/*
   rules:
     # Publish on protected tags when credentials are configured
-    - if: '$CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED == "true" && $TWINE_USERNAME && $TWINE_PASSWORD'
+    - if: '$CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED == "true" && $TEST_PYPI_TOKEN'
       when: on_success
       allow_failure: false
 
     # Temporary manual smoke test on this branch
-    - if: '$CI_COMMIT_BRANCH == "test-pypi" && $TWINE_USERNAME && $TWINE_PASSWORD'
+    - if: '$CI_COMMIT_BRANCH == "test-pypi" && $TEST_PYPI_TOKEN'
       when: manual
       allow_failure: true
 
