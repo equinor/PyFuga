@@ -12,7 +12,7 @@ documentation and improvements.
 First clone the repo.
 
 ```bash
-git clone git@gitlab.windenergy.dtu.dk:TOPFARM/cuttingedge/pywake/fuga/pyfuga.git
+git clone git@gitlab.windenergy.dtu.dk:TOPFARM/PyFuga.git
 ```
 
 PyFuga uses **Pixi** for reproducible environments across platforms.
@@ -71,7 +71,7 @@ We have created a `scripts/dev.py` file which one can run to get commands simila
 
 For non-trivial changes:
 
-1. [Create a GitLab issue](https://gitlab.windenergy.dtu.dk/TOPFARM/cuttingedge/pywake/fuga/PyFuga/-/issues) describing the problem or feature.
+1. [Create a GitLab issue](https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga/-/issues) describing the problem or feature.
 2. Discuss approach if needed.
 3. Create a branch linked to the issue.
 

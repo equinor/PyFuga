@@ -37,9 +37,9 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://gitlab.windenergy.dtu.dk/TOPFARM/cuttingedge/pywake/fuga/pyfuga"
-Documentation = "https://topfarm.pages.windenergy.dtu.dk/cuttingedge/pywake/fuga/PyFuga/"
-Issues = "https://gitlab.windenergy.dtu.dk/TOPFARM/cuttingedge/pywake/fuga/pyfuga/-/issues"
+Repository = "https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga"
+Documentation = "https://topfarm.pages.windenergy.dtu.dk/PyFuga/main/index.html"
+Issues = "https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga/-/issues"
 
 [project.optional-dependencies]
 tests = [

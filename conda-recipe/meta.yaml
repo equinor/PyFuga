@@ -36,14 +36,14 @@ test:
     - python -c "from pyfuga import get_luts"
 
 about:
-  home: https://gitlab.windenergy.dtu.dk/TOPFARM/cuttingedge/pywake/fuga/pyfuga
+  home: https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga
   summary: Linearised CFD wake model (PyFuga)
   description: |
     Python implementation of the Fuga linearised CFD wake model and LUT generator.
   license: MIT
   license_file: LICENSE
-  doc_url: https://topfarm.pages.windenergy.dtu.dk/cuttingedge/pywake/fuga/PyFuga/
-  dev_url: https://gitlab.windenergy.dtu.dk/TOPFARM/cuttingedge/pywake/fuga/pyfuga
+  doc_url: https://topfarm.pages.windenergy.dtu.dk/PyFuga/main/index.html
+  dev_url: https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga
 
 extra:
   recipe-maintainers:

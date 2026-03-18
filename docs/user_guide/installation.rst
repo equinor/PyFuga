@@ -54,7 +54,7 @@ cloning it locally:
 
 .. code-block:: bash
 
-   pip install git+https://gitlab.windenergy.dtu.dk/TOPFARM/cuttingedge/pywake/fuga/PyFuga.git
+   pip install git+https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga.git
 
 This is useful if you want the newest development version but do not plan to
 edit the source code locally.
@@ -66,7 +66,7 @@ To clone the repository and install PyFuga from a local checkout:
 
 .. code-block:: bash
 
-   git clone https://gitlab.windenergy.dtu.dk/TOPFARM/cuttingedge/pywake/fuga/PyFuga.git
+   git clone https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga.git
    cd PyFuga
    pip install -e .
 

@@ -9030,7 +9030,7 @@ packages:
 - pypi: ./
   name: pyfuga
   version: 0.1.0
-  sha256: fad6a60600fb092521d9390f70d98a1a55f3e5ebe99b71d96f319198a1fda5c9
+  sha256: 85ee533428d4f0e428b83d401a82b1fb975f2aaf1c2e94e6d7934b6adf1a9019
   requires_dist:
   - numpy>=1.26
   - scipy>=1.10
