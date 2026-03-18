@@ -27,34 +27,63 @@ test_windows_default:
   extends:
     - .windows_test_job
     - .rules_on_code_changes
+  image:
+    name: ${CI_REGISTRY_IMAGE}/ci/windows-pixi-py${PYTHON_DEFAULT_VERSION_TAG}-ci:${ENV_TAG}
+    pull_policy: always
+  needs:
+    - job: prepare_windows_env_tag
+      artifacts: true
+    - job: build_windows_pixi_base
+      artifacts: false
+      optional: true
+    - job: build_windows_pixi_envs
+      artifacts: false
+      optional: true
   variables:
     PIXI_ENV: "py${PYTHON_DEFAULT_VERSION_TAG}-ci"
-  cache:
-    key: "pixi-${CI_PROJECT_ID}-${PIXI_ENV}"
-    paths:
-      - .cache/pixi/
-    policy: pull
+  cache: []
   script:
     # Run tests in the matching Pixi environment for the default Python version
     - $PixiEnv = "$env:PIXI_ENV"
-    - pixi --version
     - |
-      $InstallDuration = Measure-Command { pixi install --frozen -e $PixiEnv }
-      if ($LASTEXITCODE -ne 0) {
-        Write-Host "WARNING: pixi.lock is not in sync for $PixiEnv. Falling back to non-frozen install."
-        $FallbackDuration = Measure-Command { pixi install -e $PixiEnv }
-        Write-Host ("pixi install (fallback, env={0}) took {1:N1}s" -f $PixiEnv, $FallbackDuration.TotalSeconds)
-      } else {
-        Write-Host ("pixi install (--frozen, env={0}) took {1:N1}s" -f $PixiEnv, $InstallDuration.TotalSeconds)
+      $PixiEnvDir = "C:\work\.pixi\envs\$PixiEnv"
+      $PythonExe = Join-Path $PixiEnvDir "python.exe"
+      if (-not (Test-Path $PythonExe)) {
+        throw "Expected pre-baked Python not found for $PixiEnv at $PythonExe"
       }
-    - |
-      $TestDuration = Measure-Command { pixi run -e $PixiEnv pytest --import-mode=importlib -m "not local" tests/ }
+
+      $EnvPathEntries = @(
+        $PixiEnvDir,
+        (Join-Path $PixiEnvDir "Library\mingw-w64\bin"),
+        (Join-Path $PixiEnvDir "Library\usr\bin"),
+        (Join-Path $PixiEnvDir "Library\bin"),
+        (Join-Path $PixiEnvDir "Scripts"),
+        (Join-Path $PixiEnvDir "bin")
+      ) | Where-Object { Test-Path $_ }
+      $env:PATH = ($EnvPathEntries -join ";") + ";" + $env:PATH
+      $env:CONDA_PREFIX = $PixiEnvDir
+      $env:CONDA_DEFAULT_ENV = $PixiEnv
+      $env:CONDA_SHLVL = "1"
+
+      & $PythonExe --version
+      & $PythonExe -c "import numpy; print('numpy', numpy.__version__)"
+      & $PythonExe -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('xdist') else 1)"
+      $UseXdist = ($LASTEXITCODE -eq 0)
+      $PytestArgs = @("-m", "pytest", "--import-mode=importlib", "-m", "not local", "tests/")
+      if ($UseXdist) {
+        Write-Host "Using pytest-xdist with 3 workers"
+        $PytestArgs = @("-m", "pytest", "-n", "3", "--dist", "loadfile", "--import-mode=importlib", "-m", "not local", "tests/")
+      } else {
+        Write-Host "pytest-xdist not available; running serial pytest"
+      }
+      $Stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+      & $PythonExe @PytestArgs
+      $Stopwatch.Stop()
       if ($LASTEXITCODE -ne 0) { throw "Tests failed for $PixiEnv" }
-      Write-Host ("pixi run pytest (env={0}) took {1:N1}s" -f $PixiEnv, $TestDuration.TotalSeconds)
+      Write-Host ("pytest (env={0}, xdist={1}) took {2:N1}s" -f $PixiEnv, $UseXdist, $Stopwatch.Elapsed.TotalSeconds)
 
 # Windows test matrix.
-# Built against the shared image published from the windows-pixi ltsc2019 branch
-# at registry.windenergy.dtu.dk/dockerimages/windows-pixi:ltsc2019.
+# Built against project-owned Windows Pixi images published by build_windows_pixi_envs.
 # Keep this list aligned with the Pixi environments defined in pyproject.toml.
 
 # ----- Test PyFuga on Windows (full matrix, manual) -----
@@ -62,6 +91,18 @@ test_windows_matrix:
   extends:
     - .windows_test_job
     - .rules_python_matrix_default_excluded
+  image:
+    name: ${CI_REGISTRY_IMAGE}/ci/windows-pixi-${PIXI_ENV}:${ENV_TAG}
+    pull_policy: always
+  needs:
+    - job: prepare_windows_env_tag
+      artifacts: true
+    - job: build_windows_pixi_base
+      artifacts: false
+      optional: true
+    - job: build_windows_pixi_envs
+      artifacts: false
+      optional: true
   parallel:
     matrix:
       - PYTHON_VERSION: "3.10"
@@ -74,48 +115,45 @@ test_windows_matrix:
         PIXI_ENV: "py313-ci"
       - PYTHON_VERSION: "3.14"
         PIXI_ENV: "py314-ci"
-  cache:
-    key: "pixi-${CI_PROJECT_ID}-${PIXI_ENV}"
-    paths:
-      - .cache/pixi/
-    policy: pull
+  cache: []
   script:
     # Run tests in the version-specific Pixi environment
-    - pixi --version
     - |
-      $InstallDuration = Measure-Command { pixi install --frozen -e $env:PIXI_ENV }
-      if ($LASTEXITCODE -ne 0) {
-        Write-Host "WARNING: pixi.lock is not in sync for $env:PIXI_ENV. Falling back to non-frozen install."
-        $FallbackDuration = Measure-Command { pixi install -e $env:PIXI_ENV }
-        Write-Host ("pixi install (fallback, env={0}) took {1:N1}s" -f $env:PIXI_ENV, $FallbackDuration.TotalSeconds)
-      } else {
-        Write-Host ("pixi install (--frozen, env={0}) took {1:N1}s" -f $env:PIXI_ENV, $InstallDuration.TotalSeconds)
+      $PixiEnvDir = "C:\work\.pixi\envs\$env:PIXI_ENV"
+      $PythonExe = Join-Path $PixiEnvDir "python.exe"
+      if (-not (Test-Path $PythonExe)) {
+        throw "Expected pre-baked Python not found for $env:PIXI_ENV at $PythonExe"
       }
-    - |
-      $TestDuration = Measure-Command { pixi run -e $env:PIXI_ENV pytest --import-mode=importlib -m "not local" tests/ }
-      if ($LASTEXITCODE -ne 0) { throw "Tests failed for $env:PIXI_ENV" }
-      Write-Host ("pixi run pytest (env={0}) took {1:N1}s" -f $env:PIXI_ENV, $TestDuration.TotalSeconds)
 
-# ----- Warm up shared Windows Pixi cache (scheduled/manual) -----
-windows_pixi_cache_warmup:
-  extends: .windows_test_job
-  parallel:
-    matrix:
-      - PIXI_ENV: ["py310-ci", "py311-ci", "py312-ci", "py313-ci", "py314-ci"]
-  cache:
-    key: "pixi-${CI_PROJECT_ID}-${PIXI_ENV}"
-    paths:
-      - .cache/pixi/
-    policy: pull-push
-  script:
-    - pixi --version
-    - pixi install --frozen -e $env:PIXI_ENV
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "schedule"'
-      when: on_success
-      allow_failure: false
-    - when: manual
-      allow_failure: true
+      $EnvPathEntries = @(
+        $PixiEnvDir,
+        (Join-Path $PixiEnvDir "Library\mingw-w64\bin"),
+        (Join-Path $PixiEnvDir "Library\usr\bin"),
+        (Join-Path $PixiEnvDir "Library\bin"),
+        (Join-Path $PixiEnvDir "Scripts"),
+        (Join-Path $PixiEnvDir "bin")
+      ) | Where-Object { Test-Path $_ }
+      $env:PATH = ($EnvPathEntries -join ";") + ";" + $env:PATH
+      $env:CONDA_PREFIX = $PixiEnvDir
+      $env:CONDA_DEFAULT_ENV = $env:PIXI_ENV
+      $env:CONDA_SHLVL = "1"
+
+      & $PythonExe --version
+      & $PythonExe -c "import numpy; print('numpy', numpy.__version__)"
+      & $PythonExe -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('xdist') else 1)"
+      $UseXdist = ($LASTEXITCODE -eq 0)
+      $PytestArgs = @("-m", "pytest", "--import-mode=importlib", "-m", "not local", "tests/")
+      if ($UseXdist) {
+        Write-Host "Using pytest-xdist with 3 workers"
+        $PytestArgs = @("-m", "pytest", "-n", "3", "--dist", "loadfile", "--import-mode=importlib", "-m", "not local", "tests/")
+      } else {
+        Write-Host "pytest-xdist not available; running serial pytest"
+      }
+      $Stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+      & $PythonExe @PytestArgs
+      $Stopwatch.Stop()
+      if ($LASTEXITCODE -ne 0) { throw "Tests failed for $env:PIXI_ENV" }
+      Write-Host ("pytest (env={0}, xdist={1}) took {2:N1}s" -f $env:PIXI_ENV, $UseXdist, $Stopwatch.Elapsed.TotalSeconds)
 
 # ----- Test PyFuga (full matrix, only when required) -----
 test_linux_matrix:

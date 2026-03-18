@@ -56,56 +56,152 @@ build_linux_base_images:
     - ubuntu
     - linux
 
-# ----- Build CI docs image (default Python version only) -----
-build_linux_docs_image:
-  stage: build
-  image:
-    name: gcr.io/kaniko-project/executor:debug
-    entrypoint: [""]
+# ----- Compute content-derived tag for Windows Pixi images -----
+# Runs on every pipeline so test jobs can always resolve the image tag,
+# even when the build jobs are skipped (no dep-file changes).
+prepare_windows_env_tag:
+  stage: .pre
+  image: alpine:latest
   cache: []
-  variables:
-    CI_IMAGE_REPO_DOCS: "${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv-docs"
   script:
-    # Authenticate to the GitLab registry using the built-in CI variables
-    - mkdir -p /kaniko/.docker
     - |
-      cat > /kaniko/.docker/config.json <<EOF
-      {
-        "auths": {
-          "${CI_REGISTRY}": {
-            "username": "${CI_REGISTRY_USER}",
-            "password": "${CI_REGISTRY_PASSWORD}"
-          }
-        }
-      }
-      EOF
-
-    # Build and push docs image
-    - |
-      DEST_SHA="${CI_IMAGE_REPO_DOCS}:${CI_COMMIT_SHA}"
-      DEST_LATEST="${CI_IMAGE_REPO_DOCS}:latest"
-
-      /kaniko/executor \
-        --context "$CI_PROJECT_DIR" \
-        --dockerfile "$CI_PROJECT_DIR/ci/Dockerfile.docs" \
-        --build-arg "PYTHON_VERSION=${PYTHON_DEFAULT_VERSION}" \
-        --target "docs" \
-        --destination "$DEST_SHA" \
-        --destination "$DEST_LATEST"
-
+      ENV_TAG=$(cat ci/Dockerfile.windows-pixi-base ci/Dockerfile.windows-pixi-ci-env pyproject.toml pixi.lock | sha256sum | cut -c1-12)
+      echo "ENV_TAG=${ENV_TAG}"
+      echo "ENV_TAG=${ENV_TAG}" > env_tag.env
+  artifacts:
+    reports:
+      dotenv: env_tag.env
   rules:
-    # Rebuild automatically when docs-image inputs change
-    - changes:
-        - ci/Dockerfile.docs
-      when: on_success
-      allow_failure: false
-    # Otherwise allow manual rebuilds from the UI
-    - when: manual
-      allow_failure: true
+    - when: always
   tags:
     - docker
     - ubuntu
     - linux
+
+# ----- Build Windows Pixi base image (protected refs only) -----
+build_windows_pixi_base:
+  stage: build
+  cache: []
+  needs:
+    - job: prepare_windows_env_tag
+      artifacts: true
+  script:
+    - $DockerConfigDir = Join-Path $env:CI_PROJECT_DIR ".docker-tmp"
+    - New-Item -ItemType Directory -Force -Path $DockerConfigDir | Out-Null
+    - $env:DOCKER_CONFIG = $DockerConfigDir
+    - $BaseRepo = "$env:CI_REGISTRY_IMAGE/ci/windows-pixi-base"
+    - $DestTag = "${BaseRepo}:$env:ENV_TAG"
+    - $DestLatest = "${BaseRepo}:latest"
+    - docker version
+    - docker system df
+    - $env:CI_REGISTRY_PASSWORD | docker login $env:CI_REGISTRY --username $env:CI_REGISTRY_USER --password-stdin
+    - |
+      docker pull $DestLatest
+      if ($LASTEXITCODE -ne 0) {
+        Write-Host "No existing cache image for $DestLatest (first build or cache miss)."
+        $global:LASTEXITCODE = 0
+      } else {
+        Write-Host "Using cache image: $DestLatest"
+      }
+    - docker build --pull --cache-from $DestLatest -f ci/Dockerfile.windows-pixi-base -t $DestTag -t $DestLatest .
+    - docker push $DestTag
+    - docker push $DestLatest
+    - |
+      $ProjectImagePrefix = "$env:CI_REGISTRY_IMAGE/ci/windows-pixi"
+      $ProjectImagesToDelete = docker image ls --format "{{.Repository}}:{{.Tag}}" |
+        Where-Object { $_ -like "$ProjectImagePrefix*" -and $_ -notmatch ":(latest|$($env:ENV_TAG))$" }
+      if ($ProjectImagesToDelete) {
+        Write-Host "Removing old project images after push (keeping :latest and :$env:ENV_TAG):"
+        $ProjectImagesToDelete | ForEach-Object { Write-Host " - $_" }
+        $ProjectImagesToDelete | ForEach-Object { docker image rm -f $_ }
+      } else {
+        Write-Host "No old project images to remove after push."
+      }
+    - Remove-Item -Recurse -Force $DockerConfigDir
+  rules:
+    - if: '$CI_COMMIT_REF_PROTECTED == "true"'
+      changes:
+        - ci/Dockerfile.windows-pixi-base
+        - .gitlab/ci/build.yml
+      when: on_success
+      allow_failure: false
+    - if: '$CI_COMMIT_REF_PROTECTED == "true" && $FORCE_WINDOWS_IMAGE_BUILD == "1"'
+      when: manual
+      allow_failure: true
+    - when: never
+  tags:
+    - windows
+    - docker
+    - shell
+
+# ----- Build Windows Pixi per-environment images (protected refs only) -----
+build_windows_pixi_envs:
+  stage: build
+  cache: []
+  needs:
+    - job: prepare_windows_env_tag
+      artifacts: true
+    - job: build_windows_pixi_base
+  parallel:
+    matrix:
+      - PIXI_ENV: ["py310-ci", "py311-ci", "py312-ci", "py313-ci", "py314-ci"]
+  script:
+    - $DockerConfigDir = Join-Path $env:CI_PROJECT_DIR ".docker-tmp"
+    - New-Item -ItemType Directory -Force -Path $DockerConfigDir | Out-Null
+    - $env:DOCKER_CONFIG = $DockerConfigDir
+    - $BaseImage = "$env:CI_REGISTRY_IMAGE/ci/windows-pixi-base:$env:ENV_TAG"
+    - $EnvRepo = "$env:CI_REGISTRY_IMAGE/ci/windows-pixi-$env:PIXI_ENV"
+    - $DestTag = "${EnvRepo}:$env:ENV_TAG"
+    - $DestLatest = "${EnvRepo}:latest"
+    - docker version
+    - docker system df
+    - $env:CI_REGISTRY_PASSWORD | docker login $env:CI_REGISTRY --username $env:CI_REGISTRY_USER --password-stdin
+    - |
+      docker pull $DestLatest
+      if ($LASTEXITCODE -ne 0) {
+        Write-Host "No existing cache image for $DestLatest (first build or cache miss)."
+        $global:LASTEXITCODE = 0
+      } else {
+        Write-Host "Using cache image: $DestLatest"
+      }
+    - docker build --pull `
+      --cache-from $DestLatest `
+      --build-arg BASE_IMAGE=$BaseImage `
+      --build-arg PIXI_ENV=$env:PIXI_ENV `
+      -f ci/Dockerfile.windows-pixi-ci-env `
+      -t $DestTag -t $DestLatest .
+    - docker push $DestTag
+    - docker push $DestLatest
+    - |
+      $ProjectImagePrefix = "$env:CI_REGISTRY_IMAGE/ci/windows-pixi"
+      $ProjectImagesToDelete = docker image ls --format "{{.Repository}}:{{.Tag}}" |
+        Where-Object { $_ -like "$ProjectImagePrefix*" -and $_ -notmatch ":(latest|$($env:ENV_TAG))$" }
+      if ($ProjectImagesToDelete) {
+        Write-Host "Removing old project images after push (keeping :latest and :$env:ENV_TAG):"
+        $ProjectImagesToDelete | ForEach-Object { Write-Host " - $_" }
+        $ProjectImagesToDelete | ForEach-Object { docker image rm -f $_ }
+      } else {
+        Write-Host "No old project images to remove after push."
+      }
+    - Remove-Item -Recurse -Force $DockerConfigDir
+  rules:
+    - if: '$CI_COMMIT_REF_PROTECTED == "true"'
+      changes:
+        - ci/Dockerfile.windows-pixi-base
+        - ci/Dockerfile.windows-pixi-ci-env
+        - .gitlab/ci/build.yml
+        - pyproject.toml
+        - pixi.lock
+      when: on_success
+      allow_failure: false
+    - if: '$CI_COMMIT_REF_PROTECTED == "true" && $FORCE_WINDOWS_IMAGE_BUILD == "1"'
+      when: manual
+      allow_failure: true
+    - when: never
+  tags:
+    - windows
+    - docker
+    - shell
 
 # ===== Documentation builds =====
 

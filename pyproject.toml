@@ -45,6 +45,7 @@ Issues = "https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga/-/issues"
 tests = [
   "pytest>=8.3",
   "pytest-cov>=6.0",
+  "pytest-xdist>=3.0",
   "memory_profiler>=0.61.0",
   "line_profiler>=5.0.0",
   "nbconvert>=7.16.6,<8",

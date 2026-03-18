@@ -1,6 +1,6 @@
 # escape=`
 
-FROM registry.windenergy.dtu.dk/dockerimages/windowsservercore
+FROM registry.windenergy.dtu.dk/dockerimages/windowsservercore:ltsc2019
 
 # Restore the default Windows shell for correct batch processing.
 SHELL ["cmd", "/S", "/C"]
@@ -9,8 +9,11 @@ SHELL ["cmd", "/S", "/C"]
 # inheriting whatever is baked into the shared runner base image.
 RUN powershell -ExecutionPolicy ByPass -c "irm -useb https://pixi.sh/install.ps1 | iex"
 
-# Add pixi to PATH for subsequent build steps and at runtime.
-ENV PATH="C:\Users\ContainerAdministrator\.pixi\bin;%PATH%"
+# Add pixi to the machine-level PATH in the Windows registry.
+# setx /M writes to HKLM; cmd expands %PATH% correctly here (unlike ENV which
+# uses Docker-only variable substitution and would leave %PATH% empty).
+# The change is picked up by every new process in subsequent layers and at runtime.
+RUN setx /M PATH "C:\Users\ContainerAdministrator\.pixi\bin;%PATH%"
 
 RUN pixi --version
 

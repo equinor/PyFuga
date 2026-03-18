@@ -122,5 +122,8 @@ image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv:latest
   extends: .pytest_coverage
   stage: test
   image: registry.windenergy.dtu.dk/dockerimages/windows-pixi:ltsc2019
+  variables:
+    GIT_STRATEGY: clone
+    GIT_LFS_SKIP_SMUDGE: "1"
   tags:
     - docker-windows
