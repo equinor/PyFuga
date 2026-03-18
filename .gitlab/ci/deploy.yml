@@ -98,6 +98,17 @@ build_conda:
     - job: publish_pypi
   script:
     - mamba install -c conda-forge --override-channels -y conda-build conda-verify
+    - python -m build --sdist
+    - |
+      for i in 1 2 3 4 5 6; do
+        python scripts/sync_conda_recipe.py --check --check-remote-source && break
+        if [ "$i" -eq 6 ]; then
+          echo "Remote source checksum verification failed after ${i} attempts"
+          exit 1
+        fi
+        echo "Remote source not ready yet (attempt ${i}/6), retrying in 20s..."
+        sleep 20
+      done
     - conda build --no-anaconda-upload -c conda-forge --override-channels --output-folder ./conda_channel conda-recipe/
   artifacts:
     untracked: false

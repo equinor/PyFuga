@@ -210,19 +210,35 @@ def main() -> int:
     errors: list[str] = []
     warnings: list[str] = []
 
-    recipe_name = get_scalar(recipe, r"^package:\n(?:^  .*\n)*?^  name:\s*(?P<value>.+)$", "package.name")
-    recipe_version = get_scalar(recipe, r"^package:\n(?:^  .*\n)*?^  version:\s*(?P<value>.+)$", "package.version")
-    recipe_source_url = get_scalar(recipe, r"^source:\n(?:^  .*\n)*?^  url:\s*(?P<value>.+)$", "source.url")
+    recipe_for_validation = recipe if args.check else synced_recipe
+
+    recipe_name = get_scalar(
+        recipe_for_validation, r"^package:\n(?:^  .*\n)*?^  name:\s*(?P<value>.+)$", "package.name"
+    )
+    recipe_version = get_scalar(
+        recipe_for_validation, r"^package:\n(?:^  .*\n)*?^  version:\s*(?P<value>.+)$", "package.version"
+    )
+    recipe_source_url = get_scalar(
+        recipe_for_validation, r"^source:\n(?:^  .*\n)*?^  url:\s*(?P<value>.+)$", "source.url"
+    )
     recipe_sha256 = get_scalar(
-        recipe,
+        recipe_for_validation,
         r"^source:\n(?:^  .*\n)*?^  sha256:\s*(?P<value>.+)$",
         "source.sha256",
     ).strip('"')
-    noarch = get_scalar(recipe, r"^build:\n(?:^  .*\n)*?^  noarch:\s*(?P<value>.+)$", "build.noarch")
-    build_number = get_scalar(recipe, r"^build:\n(?:^  .*\n)*?^  number:\s*(?P<value>.+)$", "build.number")
-    build_script = get_scalar(recipe, r"^build:\n(?:^  .*\n)*?^  script:\s*(?P<value>.+)$", "build.script")
-    about_license = get_scalar(recipe, r"^about:\n(?:^  .*\n)*?^  license:\s*(?P<value>.+)$", "about.license")
-    license_file = get_scalar(recipe, r"^about:\n(?:^  .*\n)*?^  license_file:\s*(?P<value>.+)$", "about.license_file")
+    noarch = get_scalar(recipe_for_validation, r"^build:\n(?:^  .*\n)*?^  noarch:\s*(?P<value>.+)$", "build.noarch")
+    build_number = get_scalar(
+        recipe_for_validation, r"^build:\n(?:^  .*\n)*?^  number:\s*(?P<value>.+)$", "build.number"
+    )
+    build_script = get_scalar(
+        recipe_for_validation, r"^build:\n(?:^  .*\n)*?^  script:\s*(?P<value>.+)$", "build.script"
+    )
+    about_license = get_scalar(
+        recipe_for_validation, r"^about:\n(?:^  .*\n)*?^  license:\s*(?P<value>.+)$", "about.license"
+    )
+    license_file = get_scalar(
+        recipe_for_validation, r"^about:\n(?:^  .*\n)*?^  license_file:\s*(?P<value>.+)$", "about.license_file"
+    )
 
     if recipe_name != name:
         errors.append(f"package.name mismatch: recipe={recipe_name!r}, pyproject={name!r}")
@@ -230,7 +246,7 @@ def main() -> int:
         errors.append(f"package.version mismatch: recipe={recipe_version!r}, pyproject={version!r}")
     if recipe_source_url != source_url:
         errors.append(f"source.url mismatch: recipe={recipe_source_url!r}, expected={source_url!r}")
-    if recipe_sha256 != checksum:
+    if recipe_sha256 != checksum and not args.check:
         errors.append(f"source.sha256 mismatch: recipe={recipe_sha256!r}, expected={checksum!r}")
 
     if noarch != "python":
@@ -276,11 +292,17 @@ def main() -> int:
         return 1
 
     if args.check:
-        if recipe != synced_recipe:
+        expected_recipe_for_check = replace_line(
+            synced_recipe,
+            r"^  sha256:\s*.*$",
+            f'  sha256: "{recipe_sha256}"',
+        )
+
+        if recipe != expected_recipe_for_check:
             diff = "\n".join(
                 difflib.unified_diff(
                     recipe.splitlines(),
-                    synced_recipe.splitlines(),
+                    expected_recipe_for_check.splitlines(),
                     fromfile="meta.yaml (current)",
                     tofile="meta.yaml (expected)",
                     lineterm="",
