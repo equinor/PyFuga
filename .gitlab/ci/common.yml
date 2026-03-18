@@ -9,6 +9,7 @@ variables:
   NUMEXPR_NUM_THREADS: "1"
   PYTHON_DEFAULT_VERSION: "3.12"
   PYTHON_DEFAULT_VERSION_TAG: "312"
+  CI_DEBUG: "0"
   UV_CACHE_DIR: "$CI_PROJECT_DIR/.cache/uv"
   UV_LINK_MODE: "copy"
   PIXI_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pixi"
@@ -84,34 +85,35 @@ image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv:latest
     - export UV_LINK_MODE="${UV_LINK_MODE:-copy}"
     - echo "UV_CACHE_DIR=$UV_CACHE_DIR"
 
-    # Runner identification
-    - echo "=== Runner Info ==="
-    - echo "Hostname:$(hostname)"
-    - echo "Runner:${CI_RUNNER_DESCRIPTION:-unknown}"
-    - echo "Runner ID:${CI_RUNNER_ID:-unknown}"
-    - echo "Runner tags:${CI_RUNNER_TAGS:-unknown}"
+    # Optional deep diagnostics for runner troubleshooting (disabled by default for speed).
+    - |
+      if [ "${CI_DEBUG:-0}" = "1" ]; then
+        echo "=== Runner Info ==="
+        echo "Hostname:$(hostname)"
+        echo "Runner:${CI_RUNNER_DESCRIPTION:-unknown}"
+        echo "Runner ID:${CI_RUNNER_ID:-unknown}"
+        echo "Runner tags:${CI_RUNNER_TAGS:-unknown}"
 
-    # Disk space monitoring
-    - echo "=== Disk Space ==="
-    - df -h
-    - echo "=== Disk Inodes ==="
-    - df -i | head -n 1; df -i | grep -E '(/dev/|Filesystem)' || true
+        echo "=== Disk Space ==="
+        df -h
+        echo "=== Disk Inodes ==="
+        df -i | head -n 1; df -i | grep -E '(/dev/|Filesystem)' || true
 
-    # Memory monitoring
-    - echo "=== Memory Usage ==="
-    - free -h || true
+        echo "=== Memory Usage ==="
+        free -h || true
 
-    # Docker info (if accessible)
-    - echo "=== Docker Info ==="
-    - docker info 2>/dev/null | grep -E '(Storage Driver|Docker Root Dir|Logging Driver|Cgroup)' || echo "Docker info not accessible (expected in jobs)"
-    - docker system df 2>/dev/null || echo "Docker system df not accessible (expected in jobs)"
+        echo "=== Docker Info ==="
+        docker info 2>/dev/null | grep -E '(Storage Driver|Docker Root Dir|Logging Driver|Cgroup)' || echo "Docker info not accessible (expected in jobs)"
+        docker system df 2>/dev/null || echo "Docker system df not accessible (expected in jobs)"
 
-    # Cache sizes
-    - echo "=== Cache Sizes ==="
-    - du -sh /cache 2>/dev/null || true
-    - du -sh "$UV_CACHE_DIR" 2>/dev/null || true
-    - du -sh /root/.cache 2>/dev/null || true
-    - du -sh "$CI_PROJECT_DIR" || true
+        echo "=== Cache Sizes ==="
+        du -sh /cache 2>/dev/null || true
+        du -sh "$UV_CACHE_DIR" 2>/dev/null || true
+        du -sh /root/.cache 2>/dev/null || true
+        du -sh "$CI_PROJECT_DIR" || true
+      else
+        echo "CI_DEBUG!=1; skipping extended runner diagnostics"
+      fi
 
     # Tool versions
     - echo "=== Tool Versions ==="

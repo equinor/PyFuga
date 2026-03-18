@@ -18,3 +18,18 @@ RUN python -m pip install --no-cache-dir --upgrade pip \
 
 # Helpful default
 WORKDIR /work
+
+FROM base AS tests
+
+ARG CONSTRAINT_FILE
+
+# Copy only the files needed to resolve and install test dependencies.
+COPY pyproject.toml README.md ./
+COPY pyfuga ./pyfuga
+COPY constraints ./constraints
+
+RUN test -n "$CONSTRAINT_FILE" \
+    && test -f "$CONSTRAINT_FILE" \
+    && uv pip install --system -c "$CONSTRAINT_FILE" ".[tests]"
+
+WORKDIR /work

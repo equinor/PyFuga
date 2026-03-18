@@ -5,22 +5,18 @@
 # ----- Test PyFuga (quick, every push) -----
 test_linux_default:
   stage: test
+  image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv-tests:latest
   extends:
     - .default_python_job
     - .pytest_coverage
     - .pytest_notebook_html_artifacts
     - .rules_on_code_changes
+  needs:
+    - job: build_linux_test_images
+      artifacts: false
+      optional: true
   script:
-    - |
-      PYV="${PYTHON_DEFAULT_VERSION/./}"          # "3.12" -> "312"
-      CONSTRAINT="constraints/py${PYV}.txt"
-      test -f "${CONSTRAINT}" || (echo "Missing constraints file: ${CONSTRAINT}"; exit 1)
-      echo "Using constraints: ${CONSTRAINT}"
-      VENV_DIR=".venv-${CI_JOB_ID}"
-      uv venv "${VENV_DIR}"
-      . "${VENV_DIR}/bin/activate"
-      uv pip install -c "${CONSTRAINT}" ".[tests]"
-    - python -m pytest --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc --import-mode=importlib -m "not local" tests/
+    - python -m pytest -n 3 --dist loadfile --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc --import-mode=importlib -m "not local" tests/
 
 # ----- Test PyFuga on Windows (Stage 1: default Python only) -----
 test_windows_default:
@@ -158,7 +154,7 @@ test_windows_matrix:
 # ----- Test PyFuga (full matrix, only when required) -----
 test_linux_matrix:
   stage: test
-  image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_VERSION}-uv:latest
+  image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_VERSION}-uv-tests:latest
   parallel:
     matrix:
       - PYTHON_VERSION: ["3.10", "3.11", "3.12", "3.13", "3.14"]
@@ -167,20 +163,12 @@ test_linux_matrix:
     - .pytest_coverage
     - .pytest_notebook_html_artifacts
     - .rules_python_matrix_default_excluded
+  needs:
+    - job: build_linux_test_images
+      artifacts: false
+      optional: true
   script:
-    # Install PyFuga with test dependencies and version-specific constraints
-    - |
-      PYV="${PYTHON_VERSION/./}"          # "3.10" -> "310"
-      CONSTRAINT="constraints/py${PYV}.txt"
-      test -f "${CONSTRAINT}" || (echo "Missing constraints file: ${CONSTRAINT}"; exit 1)
-      echo "Using constraints: ${CONSTRAINT}"
-      VENV_DIR=".venv-${CI_JOB_ID}"
-      uv venv "${VENV_DIR}"
-      . "${VENV_DIR}/bin/activate"
-      uv pip install -c "${CONSTRAINT}" ".[tests]"
-
-    # Run tests with coverage
-    - python -m pytest --cov-report term-missing:skip-covered --import-mode=importlib -m "not local" tests/
+    - python -m pytest -n 3 --dist loadfile --cov-report term-missing:skip-covered --import-mode=importlib -m "not local" tests/
 
 # ----- Check formatting, imports and linting with Black and Ruff -----
 lint:
