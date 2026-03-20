@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use PyFuga in scientific work, please cite the PyFuga software and the underlying Fuga model."
+title: "PyFuga: Python implementation of the Fuga linearised wake model"
+license: "MIT"
+repository-code: "https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga"
+version: "0.1.0"
+date-released: 2026-03-17
+authors:
+  - family-names: "Alcayaga Román"
+    given-names: "Leonardo"
+  - family-names: "Gaukroger"
+    given-names: "Nils Joseph"
+    orcid: "https://orcid.org/0009-0006-6614-4201"
+  - family-names: "Jacobsen"
+    given-names: "Elvira Caroline Jarmbæk"
+  - family-names: "Larsen"
+    given-names: "Gunner Christian"
+  - family-names: "Pedersen"
+    given-names: "Mads Mølgaard"
+  - family-names: "Ott"
+    given-names: "Søren"

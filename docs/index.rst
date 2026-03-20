@@ -113,6 +113,7 @@ linearised RANS formulation, the mixed–spectral method, and the original
 Fuga development at DTU.
 
 Please also cite the PyFuga software directly (citation entry provided below).
+Zenodo automatically mints a DOI for each protected GitLab release tag. For the version you used, use the DOI shown on the corresponding Zenodo record (it is also reflected in the repository's citation metadata).
 
 Why cite?
 ^^^^^^^^^
@@ -156,18 +157,18 @@ or integration into workflows such as PyWake), please cite the software:
 
 .. code-block:: bibtex
 
-    @misc{PyFuga2025,
-        title        = {PyFuga: Python implementation of the {FUGA} linearised wake model},
+    @misc{PyFuga,
+        title        = {PyFuga: Python implementation of the {Fuga} linearised wake model},
         author       = {Alcayaga Rom{\'a}n, Leonardo and
                         Gaukroger, Nils Joseph and
                         Jacobsen, Elvira Caroline Jarmb{\ae}k and
                         Larsen, Gunner Christian and
                         Pedersen, Mads M{\o}lgaard and
                         Ott, S{\o}ren},
-        year         = {2025},
+        year         = {2026},
         institution  = {DTU Wind \& Energy Systems},
         howpublished = {\url{https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga}},
-        note         = {Version X.Y, access date: \today}
+        note         = {Version X.Y (DOI minted by Zenodo for this tagged release), access date: \today}
     }
 
 

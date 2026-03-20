@@ -1,3 +1,6 @@
+.zenodo.json export-ignore
+.gitlab-ci.yml export-ignore
+.gitlab export-ignore
 tests/test_files/**/*.nc filter=lfs diff=lfs merge=lfs -text
 tests/test_files/**/*.pre filter=lfs diff=lfs merge=lfs -text
 fuga/tests/test_files/**/*.nc filter=lfs diff=lfs merge=lfs -text

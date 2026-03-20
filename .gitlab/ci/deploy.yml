@@ -177,3 +177,108 @@ publish_testpypi:
 
     # Otherwise never run
     - when: never
+
+# ----- Publish PyFuga source to Zenodo on protected version tags -----
+publish_zenodo:
+  stage: deploy
+  extends: .default_python_job
+  script:
+    - |
+      # Token precedence:
+      # Explicit sandbox/production token for the selected target.
+      if [ "${ZENODO_SANDBOX:-false}" = "true" ]; then
+        ZENODO_TOKEN="${ZENODO_SANDBOX_TOKEN}"
+      else
+        ZENODO_TOKEN="${ZENODO_PRODUCTION_TOKEN}"
+      fi
+      if [ -z "$ZENODO_TOKEN" ]; then
+        echo "No Zenodo token configured for selected target."
+        echo "Set ZENODO_SANDBOX_TOKEN or ZENODO_PRODUCTION_TOKEN."
+        exit 1
+      fi
+    - TAG_VERSION="${CI_COMMIT_TAG#v}"
+    - ARCHIVE_NAME="${TAG_VERSION}.zip"
+    - |
+      # Create a zip snapshot of the exact Git tag commit.
+      git archive --format zip --output "${ARCHIVE_NAME}" "${CI_COMMIT_TAG}"
+    - uv pip install gitlab2zenodo
+    - |
+      ZENODO_RECORD="${ZENODO_RECORD:-${zenodo_record}}"
+      SANDBOX_ARGS=""
+      if [ "${ZENODO_SANDBOX:-false}" = "true" ]; then
+        SANDBOX_ARGS="-s"
+      fi
+
+      PUBLISH_ARGS=""
+      # Default to "draft" (no auto-publish).
+      if [ "${ZENODO_AUTO_PUBLISH:-false}" = "true" ]; then
+        PUBLISH_ARGS="-p"
+      fi
+
+      if [ -n "${ZENODO_RECORD}" ]; then
+        g2z-send -i "${ZENODO_RECORD}" -t "${ZENODO_TOKEN}" ${SANDBOX_ARGS} ${PUBLISH_ARGS} -m .zenodo.json "${ARCHIVE_NAME}"
+      else
+        # First run creates a new Zenodo record; capture the produced deposition id/DOI from logs,
+        # then set ZENODO_RECORD for future tags to create new versions instead of new records.
+        g2z-send -t "${ZENODO_TOKEN}" ${SANDBOX_ARGS} ${PUBLISH_ARGS} -m .zenodo.json "${ARCHIVE_NAME}"
+      fi
+  rules:
+    - if: '$CI_COMMIT_TAG && $CI_COMMIT_TAG =~ /^v?\d+\.\d+(\.\d+)?$/ && $CI_COMMIT_REF_PROTECTED == "true"'
+      when: on_success
+      allow_failure: false
+    - when: never
+
+# ----- Manual Zenodo upload for an existing tag -----
+# Used to test the Zenodo integration for an already-published tag (e.g. v0.1.0)
+# without creating a new release tag.
+zenodo_upload_for_tag:
+  stage: deploy
+  extends: .default_python_job
+  script:
+    - |
+      if [ "${ZENODO_USE_SANDBOX:-true}" = "true" ]; then
+        ZENODO_TOKEN="${ZENODO_SANDBOX_TOKEN}"
+      else
+        ZENODO_TOKEN="${ZENODO_PRODUCTION_TOKEN}"
+      fi
+      if [ -z "$ZENODO_TOKEN" ]; then
+        echo "No Zenodo token configured for selected target."
+        echo "Set ZENODO_SANDBOX_TOKEN or ZENODO_PRODUCTION_TOKEN."
+        exit 1
+      fi
+    - |
+      TARGET_TAG="${ZENODO_TARGET_TAG:-$CI_COMMIT_TAG}"
+      if [ -z "$TARGET_TAG" ]; then
+        echo "ZENODO_TARGET_TAG is not set (example: v0.1.0)"
+        exit 1
+      fi
+    - TAG_VERSION="${TARGET_TAG#v}"
+    - ARCHIVE_NAME="zenodo-upload-${TAG_VERSION}.zip"
+    - |
+      # Ensure tag exists in this clone.
+      git fetch --tags || true
+      git archive --format zip --output "${ARCHIVE_NAME}" "${TARGET_TAG}"
+    - uv pip install gitlab2zenodo
+    - |
+      ZENODO_RECORD="${ZENODO_RECORD:-${zenodo_record}}"
+      SANDBOX_ARGS=""
+      if [ "${ZENODO_USE_SANDBOX:-true}" = "true" ]; then
+        SANDBOX_ARGS="-s"
+      fi
+
+      PUBLISH_ARGS=""
+      # Keep manual path safe by default (create draft only).
+      if [ "${ZENODO_AUTO_PUBLISH:-false}" = "true" ]; then
+        PUBLISH_ARGS="-p"
+      fi
+
+      if [ -n "${ZENODO_RECORD}" ]; then
+        g2z-send -i "${ZENODO_RECORD}" -t "${ZENODO_TOKEN}" ${SANDBOX_ARGS} ${PUBLISH_ARGS} -m .zenodo.json "${ARCHIVE_NAME}"
+      else
+        g2z-send -t "${ZENODO_TOKEN}" ${SANDBOX_ARGS} ${PUBLISH_ARGS} -m .zenodo.json "${ARCHIVE_NAME}"
+      fi
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: manual
+      allow_failure: false
+    - when: never

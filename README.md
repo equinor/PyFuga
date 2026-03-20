@@ -9,6 +9,8 @@ PyFuga is part of the [**PyWake**](https://gitlab.windenergy.dtu.dk/TOPFARM/PyWa
 [![pipeline status](https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga/badges/main/pipeline.svg)](https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga/-/commits/main)
 [![coverage report](https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga/badges/main/coverage.svg)](https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga/-/commits/main)
 [![documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://topfarm.pages.windenergy.dtu.dk/PyFuga/main/index.html)
+<!-- Replace 000000000 with the Zenodo badge id after first deposit -->
+[![DOI](https://zenodo.org/badge/000000000.svg)](https://zenodo.org/badge/latestdoi/000000000)
 
 ## Installation
 
@@ -47,6 +49,10 @@ Read more at **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 ## Support
 
 Issues and feature requests can be submitted through the project's [**GitLab issue tracker**](https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga/-/issues).
+
+## Citing PyFuga
+
+Please cite both the underlying Fuga theory and the PyFuga software implementation. See the "Citing PyFuga" section in the documentation for recommended references and BibTeX entries.
 
 ## Authors and acknowledgements
 

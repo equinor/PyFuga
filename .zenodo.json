@@ -1,0 +1,118 @@
+{
+  "metadata": {
+    "title": "PyFuga: Python implementation of the Fuga linearised wake model",
+    "description": "<p>PyFuga is an open-source Python implementation of the Fuga linearised CFD wake model and lookup table (LUT) generator for wind turbine wakes.</p><p>Source code repository (and issue tracker): <a href=\"https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga\">https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga</a></p><p>Documentation and installation guides: <a href=\"https://topfarm.pages.windenergy.dtu.dk/PyFuga/main/index.html\">https://topfarm.pages.windenergy.dtu.dk/PyFuga/main/index.html</a></p>",
+    "upload_type": "software",
+    "license": "MIT",
+    "access_right": "open",
+    "resource_type": {
+      "type": "software",
+      "title": "Software"
+    },
+    "keywords": ["wind energy", "wind turbine wakes", "wake modeling", "CFD", "Fuga", "PyFuga", "PyWake", "Python"],
+    "related_identifiers": [
+      {
+        "identifier": "https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga",
+        "relation": "isSupplementTo",
+        "scheme": "url"
+      },
+      {
+        "identifier": "https://topfarm.pages.windenergy.dtu.dk/PyFuga/main/index.html",
+        "relation": "isDocumentedBy",
+        "scheme": "url"
+      }
+    ],
+    "creators": [
+      {
+        "person_or_org": {
+          "name": "Alcayaga Román, Leonardo",
+          "type": "personal",
+          "given_name": "Leonardo",
+          "family_name": "Alcayaga Román"
+        },
+        "affiliations": [
+          {
+            "id": "DTU-Wind-Energy-Systems",
+            "name": "DTU Wind and Energy Systems"
+          }
+        ]
+      },
+      {
+        "person_or_org": {
+          "name": "Gaukroger, Nils Joseph",
+          "type": "personal",
+          "given_name": "Nils Joseph",
+          "family_name": "Gaukroger",
+          "identifiers": [
+            {
+              "scheme": "orcid",
+              "identifier": "0009-0006-6614-4201"
+            }
+          ]
+        },
+        "affiliations": [
+          {
+            "id": "DTU-Wind-Energy-Systems",
+            "name": "DTU Wind and Energy Systems"
+          }
+        ]
+      },
+      {
+        "person_or_org": {
+          "name": "Jacobsen, Elvira Caroline Jarmbæk",
+          "type": "personal",
+          "given_name": "Elvira Caroline Jarmbæk",
+          "family_name": "Jacobsen"
+        },
+        "affiliations": [
+          {
+            "id": "DTU-Wind-Energy-Systems",
+            "name": "DTU Wind and Energy Systems"
+          }
+        ]
+      },
+      {
+        "person_or_org": {
+          "name": "Larsen, Gunner Christian",
+          "type": "personal",
+          "given_name": "Gunner Christian",
+          "family_name": "Larsen"
+        },
+        "affiliations": [
+          {
+            "id": "DTU-Wind-Energy-Systems",
+            "name": "DTU Wind and Energy Systems"
+          }
+        ]
+      },
+      {
+        "person_or_org": {
+          "name": "Pedersen, Mads Mølgaard",
+          "type": "personal",
+          "given_name": "Mads Mølgaard",
+          "family_name": "Pedersen"
+        },
+        "affiliations": [
+          {
+            "id": "DTU-Wind-Energy-Systems",
+            "name": "DTU Wind and Energy Systems"
+          }
+        ]
+      },
+      {
+        "person_or_org": {
+          "name": "Ott, Søren",
+          "type": "personal",
+          "given_name": "Søren",
+          "family_name": "Ott"
+        },
+        "affiliations": [
+          {
+            "id": "DTU-Wind-Energy-Systems",
+            "name": "DTU Wind and Energy Systems"
+          }
+        ]
+      }
+    ]
+  }
+}
