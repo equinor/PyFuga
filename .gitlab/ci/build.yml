@@ -246,6 +246,8 @@ build_windows_pixi_base:
     - if: '$CI_COMMIT_REF_PROTECTED == "true"'
       changes:
         - ci/Dockerfile.windows-pixi-base
+        - ci/Dockerfile.windows-pixi-ci-env
+        - pixi.lock
         - .gitlab/ci/build.yml
       when: on_success
       allow_failure: false
