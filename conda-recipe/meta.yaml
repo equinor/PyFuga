@@ -2,10 +2,10 @@
 
 package:
   name: pyfuga
-  version: 0.1.0
+  version: 0.2.0-dev
 
 source:
-  url: https://pypi.org/packages/source/p/pyfuga/pyfuga-0.1.0.tar.gz
+  url: https://pypi.org/packages/source/p/pyfuga/pyfuga-0.2.0-dev.tar.gz
   sha256: "73cdc26a613fc3283b8f72e93ffa11f9560bbe2ead4d080c30789c26a3ba94ab"
 
 build:

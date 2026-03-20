@@ -9083,8 +9083,8 @@ packages:
   requires_python: '>=3.7'
 - pypi: ./
   name: pyfuga
-  version: 0.1.0
-  sha256: c3e7f00d70ef3e83ed1e8df634c0dd1c6e28e2b4b5e0f3c2011b03b3641288d3
+  version: 0.2.0.dev0
+  sha256: 32a13e53a4c25fb04055f72a94dc17f69bb36327af95ae8fc43598e35b907194
   requires_dist:
   - numpy>=1.26
   - scipy>=1.10

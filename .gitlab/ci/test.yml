@@ -48,6 +48,33 @@ test_windows_default:
         throw "Expected pre-baked Python not found for $PixiEnv at $PythonExe"
       }
 
+      if ("$env:CI_COMMIT_REF_PROTECTED" -ne "true") {
+        # Compare against protected baseline to decide how to refresh the environment.
+        # This captures all relevant branch changes, not only the latest push.
+        git fetch origin main --quiet
+        $ChangedFiles = (git diff --name-only origin/main...HEAD)
+        if ($LASTEXITCODE -ne 0) { throw "Failed to diff against origin/main...HEAD" }
+
+        $PixiLockChanged = $ChangedFiles -contains "pixi.lock"
+        $PyprojectChanged = $ChangedFiles -contains "pyproject.toml"
+
+        Push-Location "C:\work"
+        if ($PixiLockChanged) {
+          Write-Host "Unprotected ref: pixi.lock changed -> running frozen pixi install for $PixiEnv"
+          pixi install --frozen -e $PixiEnv
+          if ($LASTEXITCODE -ne 0) { throw "pixi install failed for $PixiEnv" }
+        } elseif ($PyprojectChanged) {
+          Write-Host "Unprotected ref: pyproject.toml changed without pixi.lock -> running editable pip install for $PixiEnv"
+          & $PythonExe -m pip install -e ".[tests]"
+          if ($LASTEXITCODE -ne 0) { throw "pip editable install failed for $PixiEnv" }
+        } else {
+          Write-Host "Unprotected ref: no pixi.lock/pyproject.toml changes -> using pre-baked $PixiEnv environment"
+        }
+        Pop-Location
+      } else {
+        Write-Host "Protected ref: using pre-baked $PixiEnv environment"
+      }
+
       $EnvPathEntries = @(
         $PixiEnvDir,
         (Join-Path $PixiEnvDir "Library\mingw-w64\bin"),
@@ -119,6 +146,33 @@ test_windows_matrix:
       $PythonExe = Join-Path $PixiEnvDir "python.exe"
       if (-not (Test-Path $PythonExe)) {
         throw "Expected pre-baked Python not found for $env:PIXI_ENV at $PythonExe"
+      }
+
+      if ("$env:CI_COMMIT_REF_PROTECTED" -ne "true") {
+        # Compare against protected baseline to decide how to refresh the environment.
+        # This captures all relevant branch changes, not only the latest push.
+        git fetch origin main --quiet
+        $ChangedFiles = (git diff --name-only origin/main...HEAD)
+        if ($LASTEXITCODE -ne 0) { throw "Failed to diff against origin/main...HEAD" }
+
+        $PixiLockChanged = $ChangedFiles -contains "pixi.lock"
+        $PyprojectChanged = $ChangedFiles -contains "pyproject.toml"
+
+        Push-Location "C:\work"
+        if ($PixiLockChanged) {
+          Write-Host "Unprotected ref: pixi.lock changed -> running frozen pixi install for $env:PIXI_ENV"
+          pixi install --frozen -e $env:PIXI_ENV
+          if ($LASTEXITCODE -ne 0) { throw "pixi install failed for $env:PIXI_ENV" }
+        } elseif ($PyprojectChanged) {
+          Write-Host "Unprotected ref: pyproject.toml changed without pixi.lock -> running editable pip install for $env:PIXI_ENV"
+          & $PythonExe -m pip install -e ".[tests]"
+          if ($LASTEXITCODE -ne 0) { throw "pip editable install failed for $env:PIXI_ENV" }
+        } else {
+          Write-Host "Unprotected ref: no pixi.lock/pyproject.toml changes -> using pre-baked $env:PIXI_ENV environment"
+        }
+        Pop-Location
+      } else {
+        Write-Host "Protected ref: using pre-baked $env:PIXI_ENV environment"
       }
 
       $EnvPathEntries = @(

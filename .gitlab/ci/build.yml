@@ -183,7 +183,13 @@ prepare_windows_env_tag:
   cache: []
   script:
     - |
-      ENV_TAG=$(cat ci/Dockerfile.windows-pixi-base ci/Dockerfile.windows-pixi-ci-env pyproject.toml pixi.lock | sha256sum | cut -c1-12)
+      # Protected refs can build/push exact content-derived tags.
+      # Unprotected refs cannot update Windows images, so they must pull an existing tag.
+      if [ "${CI_COMMIT_REF_PROTECTED:-false}" = "true" ]; then
+        ENV_TAG=$(cat ci/Dockerfile.windows-pixi-base ci/Dockerfile.windows-pixi-ci-env pixi.lock | sha256sum | cut -c1-12)
+      else
+        ENV_TAG="latest"
+      fi
       echo "ENV_TAG=${ENV_TAG}"
       echo "ENV_TAG=${ENV_TAG}" > env_tag.env
   artifacts:
