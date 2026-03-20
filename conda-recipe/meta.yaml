@@ -1,10 +1,12 @@
+{% set python_min = "3.10" %}
+
 package:
   name: pyfuga
   version: 0.1.0
 
 source:
-  url: https://pypi.io/packages/source/p/pyfuga/pyfuga-0.1.0.tar.gz
-  sha256: "e026b4ea8830eac676600468e21954a95c661307753faa5f21c2130de22c70cd"
+  url: https://pypi.org/packages/source/p/pyfuga/pyfuga-0.1.0.tar.gz
+  sha256: "73cdc26a613fc3283b8f72e93ffa11f9560bbe2ead4d080c30789c26a3ba94ab"
 
 build:
   noarch: python
@@ -13,15 +15,15 @@ build:
 
 requirements:
   host:
-    - python >=3.10,<3.15
+    - python {{ python_min }}
     - pip
     - setuptools >=64
     - wheel
   run:
-    - python >=3.10,<3.15
+    - python >={{ python_min }}
     - numpy >=1.26
     - scipy >=1.10
-    - matplotlib >=3.10.8
+    - matplotlib-base >=3.10.8
     - xarray >=2025.6.1
     - tqdm >=4.67.3
     - h5netcdf >=1.8.1
@@ -29,6 +31,8 @@ requirements:
     - numba >=0.63.1
 
 test:
+  requires:
+    - python {{ python_min }}
   imports:
     - pyfuga
     - pyfuga.preluts_generator

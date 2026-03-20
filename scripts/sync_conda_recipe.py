@@ -98,16 +98,18 @@ def parse_recipe_maintainers(recipe_text: str) -> list[str]:
 
 
 def expected_run_requirements(pyproject_data: dict) -> list[str]:
-    project = pyproject_data["project"]
-    requires_python = project["requires-python"]
-    dependencies = project["dependencies"]
-    return [f"python {requires_python}", *dependencies]
+    dependencies = []
+    for dep in pyproject_data["project"]["dependencies"]:
+        if dep.strip().startswith("matplotlib"):
+            dependencies.append(dep.replace("matplotlib", "matplotlib-base", 1))
+        else:
+            dependencies.append(dep)
+    return ["python >={{ python_min }}", *dependencies]
 
 
 def expected_host_requirements(pyproject_data: dict) -> list[str]:
-    project = pyproject_data["project"]
     build_system_requires = pyproject_data["build-system"]["requires"]
-    return [f"python {project['requires-python']}", "pip", *build_system_requires]
+    return ["python {{ python_min }}", "pip", *build_system_requires]
 
 
 def compare_dependency_sets(expected: list[str], actual: list[str]) -> tuple[list[str], list[str]]:
@@ -171,7 +173,7 @@ def main() -> int:
         raise FileNotFoundError(f"Missing sdist: {sdist}. Build it first with: {build_cmd}")
 
     checksum = sha256_file(sdist)
-    source_url = f"https://pypi.io/packages/source/{name[0]}/{name}/{name}-{version}.tar.gz"
+    source_url = f"https://pypi.org/packages/source/{name[0]}/{name}/{name}-{version}.tar.gz"
 
     recipe = RECIPE.read_text(encoding="utf-8")
     synced_recipe = render_synced_recipe(recipe, name, version, source_url, checksum)
