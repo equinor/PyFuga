@@ -15,6 +15,29 @@ First clone the repo.
 git clone git@gitlab.windenergy.dtu.dk:TOPFARM/PyFuga.git
 ```
 
+### Git LFS (required for large test fixtures)
+
+Some large binary test fixtures (for example NetCDF `.nc` files and `.pre` LUT files under `tests/test_files/`) are stored using **Git LFS**.
+
+If you don't have Git LFS installed, you may see pointer files that start with `version https://git-lfs.github.com/spec/v1` and tests that rely on these fixtures will fail.
+
+Install and initialize Git LFS once:
+
+```bash
+# Ubuntu/Debian
+sudo apt update
+sudo apt install git-lfs
+git lfs install
+```
+
+Windows:
+
+```powershell
+# With winget
+winget install --id GitHub.GitLFS
+git lfs install
+```
+
 PyFuga uses **Pixi** for reproducible environments across platforms.
 
 Install Pixi:

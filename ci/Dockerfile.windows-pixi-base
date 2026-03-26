@@ -5,6 +5,17 @@ FROM registry.windenergy.dtu.dk/dockerimages/windowsservercore:ltsc2019
 # Restore the default Windows shell for correct batch processing.
 SHELL ["cmd", "/S", "/C"]
 
+# Install Git LFS so Windows CI jobs can always fetch LFS-managed fixtures.
+RUN powershell -ExecutionPolicy ByPass -Command ^
+    "$ErrorActionPreference = 'Stop'; " ^
+    "if (-not (Get-Command git-lfs -ErrorAction SilentlyContinue)) { " ^
+    "  Set-ExecutionPolicy Bypass -Scope Process -Force; " ^
+    "  [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; " ^
+    "  iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')); " ^
+    "  choco install git-lfs -y --no-progress; " ^
+    "} " ^
+    "git lfs version"
+
 # Install pixi during image build so we control the version rather than
 # inheriting whatever is baked into the shared runner base image.
 RUN powershell -ExecutionPolicy ByPass -c "irm -useb https://pixi.sh/install.ps1 | iex"

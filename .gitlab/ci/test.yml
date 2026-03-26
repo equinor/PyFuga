@@ -42,6 +42,12 @@ test_windows_default:
     # Run tests in the matching Pixi environment for the default Python version
     - $PixiEnv = "$env:PIXI_ENV"
     - |
+      if (-not (Get-Command git-lfs -ErrorAction SilentlyContinue)) {
+        throw "git-lfs is required for Windows CI to fetch large test fixtures (Git LFS pointers checked out). Install git-lfs in the Windows CI image."
+      }
+      git lfs install --local
+      git lfs pull
+    - |
       $PixiEnvDir = "C:\work\.pixi\envs\$PixiEnv"
       $PythonExe = Join-Path $PixiEnvDir "python.exe"
       if (-not (Test-Path $PythonExe)) {
@@ -94,8 +100,9 @@ test_windows_default:
       $UseXdist = ($LASTEXITCODE -eq 0)
       $PytestArgs = @("-m", "pytest", "--import-mode=importlib", "-m", "not local", "tests/")
       if ($UseXdist) {
-        Write-Host "Using pytest-xdist with 3 workers"
-        $PytestArgs = @("-m", "pytest", "-n", "3", "--dist", "loadfile", "--import-mode=importlib", "-m", "not local", "tests/")
+        # Windows: keep parallelism but reduce worker count for native-library stability.
+        Write-Host "Using pytest-xdist with 2 workers"
+        $PytestArgs = @("-m", "pytest", "-n", "2", "--dist", "loadfile", "--import-mode=importlib", "-m", "not local", "tests/")
       } else {
         Write-Host "pytest-xdist not available; running serial pytest"
       }
@@ -141,6 +148,12 @@ test_windows_matrix:
   cache: []
   script:
     # Run tests in the version-specific Pixi environment
+    - |
+      if (-not (Get-Command git-lfs -ErrorAction SilentlyContinue)) {
+        throw "git-lfs is required for Windows CI to fetch large test fixtures (Git LFS pointers checked out). Install git-lfs in the Windows CI image."
+      }
+      git lfs install --local
+      git lfs pull
     - |
       $PixiEnvDir = "C:\work\.pixi\envs\$env:PIXI_ENV"
       $PythonExe = Join-Path $PixiEnvDir "python.exe"
@@ -194,8 +207,9 @@ test_windows_matrix:
       $UseXdist = ($LASTEXITCODE -eq 0)
       $PytestArgs = @("-m", "pytest", "--import-mode=importlib", "-m", "not local", "tests/")
       if ($UseXdist) {
-        Write-Host "Using pytest-xdist with 3 workers"
-        $PytestArgs = @("-m", "pytest", "-n", "3", "--dist", "loadfile", "--import-mode=importlib", "-m", "not local", "tests/")
+        # Windows: keep parallelism but reduce worker count for native-library stability.
+        Write-Host "Using pytest-xdist with 2 workers"
+        $PytestArgs = @("-m", "pytest", "-n", "2", "--dist", "loadfile", "--import-mode=importlib", "-m", "not local", "tests/")
       } else {
         Write-Host "pytest-xdist not available; running serial pytest"
       }

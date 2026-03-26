@@ -127,6 +127,7 @@ image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv:latest
   image: registry.windenergy.dtu.dk/dockerimages/windows-pixi:ltsc2019
   variables:
     GIT_STRATEGY: clone
-    GIT_LFS_SKIP_SMUDGE: "1"
+    # Windows CI needs Git LFS to fetch large test fixtures.
+    GIT_LFS_SKIP_SMUDGE: "0"
   tags:
     - docker-windows
