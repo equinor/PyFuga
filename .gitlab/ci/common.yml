@@ -72,6 +72,7 @@ image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv:latest
     paths:
       - tests/notebook_outputs/*.html
     when: always
+    expire_in: 1 week
 
 # ----- Shared job templates -----
 .default_python_job:

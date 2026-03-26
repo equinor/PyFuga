@@ -195,6 +195,7 @@ prepare_windows_env_tag:
   artifacts:
     reports:
       dotenv: env_tag.env
+    expire_in: 1 day
   rules:
     - when: always
   tags:
@@ -412,6 +413,7 @@ build_pages:
   artifacts:
     paths:
       - public
+    expire_in: 1 week
   rules:
     # Only build docs for main branch and tags (releases)
     - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG'
