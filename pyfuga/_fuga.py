@@ -17,15 +17,14 @@ The entry point is :func:`get_luts`, which orchestrates all three stages,
 handling file caching and data I/O.
 """
 
-import os
 from pathlib import Path
 
-import numpy as np
 import xarray as xr
 
 from pyfuga import utils
-from pyfuga.constants import UVW_LT
+from pyfuga.constants import DS, UVW_LT
 from pyfuga.flut import FourierLUTGenerator
+from pyfuga.paths import get_fluts_path, get_level_range, get_luts_path, get_preluts_path
 from pyfuga.preluts import PreLUTs
 from pyfuga.trafalgar import Trafalgar
 from pyfuga.utils import ComplexXRDataset, get_beta_lst, get_kz0_lst
@@ -111,81 +110,91 @@ def get_luts(
     pyfuga.flut.FourierLUTGenerator.make_lut : Second pipeline stage.
     pyfuga.trafalgar.Trafalgar.make_luts : Third pipeline stage.
     """
-    utils.compile(jit)
     folder = Path(folder)
-    os.makedirs(folder, exist_ok=True)
+    folder.mkdir(parents=True, exist_ok=True)
     dx = dx or diameter / 4
     dy = dy or diameter / 16
 
-    preluts_id = f"Zeta0={zeta0:3.2e}_{nkz0}_{nbeta}"
-
-    L_vars = [v[0] for v in lut_vars if v[1] == "L"]
-    T_vars = [v[0] for v in lut_vars if v[1] == "T"]
-    lut_vars_id = ""
-    if L_vars:
-        lut_vars_id += f"_{''.join(L_vars)}L"
-    if T_vars:
-        lut_vars_id += f"_{''.join(T_vars)}T"
-
-    ds = 0.05
-    if zlow == zhigh == zhub:
-        low_level_out = high_level_out = 9999
-        z_id = f"z{zhub:.1f}"
-    else:
-        low_level_out = int(np.floor(np.log(zlow / z0) / ds))
-        high_level_out = int(np.ceil(np.log(zhigh / z0) / ds))
-        zlow = z0 * np.exp(low_level_out * ds)
-        zhigh = z0 * np.exp(high_level_out * ds)
-        z_id = f"z{zlow:.1f}-{zhigh:.1f}"
-
-    fluts_id = preluts_id + f"_D{diameter}_zhub{zhub}_zi{zi}_z0={z0:.8f}_{z_id}{lut_vars_id}"
-
-    luts_id = fluts_id + f"_nx{nx}_ny{ny}_dx{dx}_dy{dy}"
-
-    luts_path = folder / f"LUTs_{luts_id}.nc"
-    if not luts_path.exists():
-        # LUTs are missing (run Trafalgar)
-        fluts_path = folder / f"fLUTs_{fluts_id}.nc"
-        if not fluts_path.exists():
-            # FourierLUTs are missing (run lut)
-
-            preluts_path = folder / f"preLUTs_{preluts_id}.nc"
-            if not preluts_path.exists():
-                # Preluts are missing (run prelut)
-                preluts = PreLUTs.make_preluts(
-                    zeta0=zeta0,
-                    kz0_lst=get_kz0_lst(nkz0, 1e-9, 1e-1),
-                    beta_lst=get_beta_lst(nbeta),
-                    kzmax=300,
-                    ds=ds,
-                    accgoal=0.0001,
-                    jit=jit,
-                    n_cpu=n_cpu,
-                )
-                preluts.attrs["nkz0"] = nkz0
-                preluts.attrs["nbeta"] = nbeta
-                preluts.save(preluts_path)
-            else:
-                preluts = PreLUTs.from_netcdf(preluts_path)
-
-            # preluts loaded make fourier luts
-            flut_generator = FourierLUTGenerator(preluts, zhub, diameter, zi)
-            if low_level_out == high_level_out == 9999:
-                fluts = flut_generator.make_hubheight_luts(z0, lut_vars, n_cpu=n_cpu)
-            else:
-                fluts = flut_generator.make_lut(z0, low_level_out, high_level_out, lut_vars, n_cpu=n_cpu)
-
-            fluts.save(fluts_path)
-        else:
-            fluts = ComplexXRDataset.from_netcdf(fluts_path)
-
-        # fourier luts loaded make luts
-        luts = Trafalgar(fluts, nx, ny, dx, dy).make_luts(3)
-        luts.to_netcdf(luts_path)
-    else:
+    luts_path = get_luts_path(folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh, lut_vars, nx, ny, dx, dy)
+    if luts_path.exists():
         luts = xr.load_dataset(luts_path)
+        luts.attrs["name"] = luts_path.stem
+        return luts
+
+    fluts = get_fluts(folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh, lut_vars, jit, n_cpu)
+    luts = Trafalgar(fluts, nx, ny, dx, dy).make_luts(3)
+    luts.to_netcdf(luts_path)
     luts.attrs["name"] = luts_path.stem
     return luts
+
+
+def get_fluts(
+    folder,
+    zeta0,
+    nkz0,
+    nbeta,
+    diameter,
+    zhub,
+    z0,
+    zi,
+    zlow,
+    zhigh,
+    lut_vars=UVW_LT,
+    jit=True,
+    n_cpu=1,
+):  # pragma: no cover
+    folder = Path(folder)
+    folder.mkdir(parents=True, exist_ok=True)
+
+    fluts_path = get_fluts_path(folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh, lut_vars)
+    if fluts_path.exists():
+        return ComplexXRDataset.from_netcdf(fluts_path)
+
+    utils.compile(jit)
+    preluts = get_preluts(folder, zeta0, nkz0, nbeta, jit, n_cpu)
+
+    low_level_out, high_level_out = get_level_range(zlow, zhigh, zhub, z0)
+
+    flut_generator = FourierLUTGenerator(preluts, zhub, diameter, zi)
+    if low_level_out == high_level_out == 9999:
+        fluts = flut_generator.make_hubheight_luts(z0, lut_vars, n_cpu=n_cpu)
+    else:
+        fluts = flut_generator.make_lut(z0, low_level_out, high_level_out, lut_vars, n_cpu=n_cpu)
+
+    fluts.save(fluts_path)
+    return fluts
+
+
+def get_preluts(
+    folder,
+    zeta0,
+    nkz0,
+    nbeta,
+    jit=True,
+    n_cpu=1,
+):  # pragma: no cover
+    folder = Path(folder)
+    folder.mkdir(parents=True, exist_ok=True)
+
+    preluts_path = get_preluts_path(folder, zeta0, nkz0, nbeta)
+    if preluts_path.exists():
+        return PreLUTs.from_netcdf(preluts_path)
+
+    utils.compile(jit)
+    preluts = PreLUTs.make_preluts(
+        zeta0=zeta0,
+        kz0_lst=get_kz0_lst(nkz0, 1e-9, 1e-1),
+        beta_lst=get_beta_lst(nbeta),
+        kzmax=300,
+        ds=DS,
+        accgoal=0.0001,
+        jit=jit,
+        n_cpu=n_cpu,
+    )
+    preluts.attrs["nkz0"] = nkz0
+    preluts.attrs["nbeta"] = nbeta
+    preluts.save(preluts_path)
+    return preluts
 
 
 def main():

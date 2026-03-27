@@ -23,6 +23,7 @@ Y_NORM_THRESHOLD = 100  # Max value of Ynorm before a sublevel is made
 
 # LUT constant
 FIRST_Z_OUTPUT = 1.0  # First height level in output
+DS = 0.05  # Vertical grid spacing in log-height coordinate s = ln(z/z0)
 
 # Other constants
 UVW_LT = ["UL", "UT", "VL", "VT", "WL", "WT", "PL", "PT"]

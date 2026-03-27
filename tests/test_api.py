@@ -6,22 +6,25 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import xarray as xr
 
 import pyfuga
 import pyfuga._fuga as _fuga
 from pyfuga import get_luts
+from pyfuga.paths import get_fluts_path, get_luts_path, get_preluts_path
 
 
-def test_get_luts_wrapper_delegates_to__fuga(monkeypatch):
+@pytest.mark.parametrize("name", ["get_luts", "get_fluts", "get_preluts"])
+def test_wrapper_delegates_to__fuga(monkeypatch, name: str):
     sentinel = object()
 
-    def fake_get_luts(*args, **kwargs):
+    def fake(*args, **kwargs):
         # return something distinctive so we can assert delegation
         return (sentinel, args, kwargs)
 
-    monkeypatch.setattr(_fuga, "get_luts", fake_get_luts)
+    monkeypatch.setattr(_fuga, name, fake)
 
-    out = pyfuga.get_luts(1, 2, foo="bar")
+    out = getattr(pyfuga, name)(1, 2, foo="bar")
 
     assert out[0] is sentinel
     assert out[1] == (1, 2)
@@ -100,3 +103,43 @@ def test_get_luts_public_api_smoke(tmp_path: Path):
     if hasattr(luts, "to_array"):
         arr = luts.to_array().values
         assert np.isfinite(arr).any(), "Expected some finite values in LUTs"
+
+
+@pytest.mark.local
+def test_get_luts_orchestration_and_caching(tmp_path: Path):
+    out_dir = tmp_path / "luts"
+    params = {
+        "folder": out_dir,
+        "zeta0": 0,
+        "nkz0": 2,
+        "nbeta": 8,
+        "diameter": 80,
+        "zhub": 70,
+        "z0": 1e-5,
+        "zi": 400,
+        "zlow": 70,
+        "zhigh": 70,
+        "lut_vars": ["UL"],
+        "nx": 256,
+        "ny": 64,
+        "dx": 20.0,
+        "dy": 5.0,
+    }
+
+    luts = get_luts(**params, jit=True, n_cpu=1)
+
+    luts_path = get_luts_path(**params)
+    assert luts_path.exists()
+    assert luts.attrs["name"] == luts_path.stem
+
+    assert get_preluts_path(
+        folder=params["folder"], zeta0=params["zeta0"], nkz0=params["nkz0"], nbeta=params["nbeta"]
+    ).exists()
+    assert get_fluts_path(**{k: v for k, v in params.items() if k not in ("nx", "ny", "dx", "dy")}).exists()
+
+    before = {p: p.stat().st_mtime for p in out_dir.glob("*.nc")}
+    luts2 = get_luts(**params, jit=True, n_cpu=1)
+    after = {p: p.stat().st_mtime for p in out_dir.glob("*.nc")}
+
+    assert before == after, "cache files were rewritten on second call"
+    xr.testing.assert_identical(luts, luts2)
