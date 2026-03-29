@@ -207,19 +207,14 @@ in wavenumber space. To capture the full wavenumber range
 required for offshore wakes — the domain is partitioned into multiple tiles that together
 cover an **L-shaped** region:
 
-.. code-block:: text
+.. figure:: ../_static/trafalgar.png
+   :name: fig: Wavenumber sampling
+   :align: center
+   :width: 60%
 
-      ky
-      ^
-      |  [ left arm ][ main square block ]
-      |  [ left arm ][ main square block ]
-   kmin -----+------ kmin -----------------> kx
-      |  (skipped)  [ bottom arm        ]
-      0
-
-* **Main square block**: tiles covering
+* **Main blocks**: tiles covering
   :math:`k_x \ge k_{\min}`,\ :math:`k_y \ge k_{\min}`.  The tiles are arranged
-  diagonally, with the spectral density (controlled by :math:`NNN`) decreasing
+  diagonally, with the refinement controlled by :math:`NNN`, decreasing
   as wavenumber increases, matching the decay of :math:`\hat{f}`.
 
 * **Left arm**: tiles with :math:`k_x \in [0, k_{\min})`,\ :math:`k_y \ge k_{\min}`.
