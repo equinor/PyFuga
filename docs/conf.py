@@ -79,6 +79,10 @@ smv_latest_version = "main"
 # -- Options for HTML output -------------------------------------------------
 
 html_theme = "sphinx_rtd_theme"
+# Omit release from the browser tab title: sphinx-multiversion already exposes the
+# active ref in the version switcher; embedding pyproject's version here is redundant
+# and confusing when readers switch versions (tab would still say one version).
+html_title = f"{project} documentation"
 html_static_path = ["_static"]
 # sphinx_rtd_theme does not render html_sidebars; the version switcher lives in _templates/versions.html
 # (included at the end of layout.html — classic bottom-left RTD flyout).
