@@ -1,11 +1,15 @@
 import os
 import re
 import sys
+from pathlib import Path
+
+import tomllib
 
 # -- Path setup --------------------------------------------------------------
 
 # Add the project root so autodoc can import pyfuga later
-sys.path.insert(0, os.path.abspath(".."))
+_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_ROOT))
 
 # -- Project information -----------------------------------------------------
 
@@ -13,7 +17,8 @@ project = "PyFuga"
 author = "DTU Wind Energy"
 copyright = "2025, DTU Wind Energy"
 
-version = "0.1"
+with (_ROOT / "pyproject.toml").open("rb") as _pyproject_f:
+    version = tomllib.load(_pyproject_f)["project"]["version"]
 release = version
 
 # -- General configuration ---------------------------------------------------

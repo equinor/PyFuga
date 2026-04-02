@@ -2,11 +2,11 @@
 
 package:
   name: pyfuga
-  version: 0.2.0
+  version: 0.2.1-dev
 
 source:
-  url: https://pypi.org/packages/source/p/pyfuga/pyfuga-0.2.0.tar.gz
-  sha256: "2a615d6d3860833b1cfd8cf21dd0bf53786f3e795f8f007e98517d074dc5afd0"
+  url: https://pypi.org/packages/source/p/pyfuga/pyfuga-0.2.1.dev0.tar.gz
+  sha256: "f43320a1afa629059fa2ef22e60036345f7f311345309148f63907ee22484e36"
 
 build:
   noarch: python

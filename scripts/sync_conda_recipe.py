@@ -9,6 +9,7 @@ from urllib.error import URLError
 from urllib.request import urlopen
 
 import tomllib
+from packaging.version import Version
 
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = ROOT / "pyproject.toml"
@@ -166,14 +167,16 @@ def main() -> int:
     data = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     name = data["project"]["name"]
     version = data["project"]["version"]
+    # setuptools/pypi use PEP 440 canonical names for sdist files and PyPI URLs (e.g. 0.2.1-dev -> 0.2.1.dev0)
+    sdist_version = str(Version(version))
 
-    sdist = ROOT / "dist" / f"{name}-{version}.tar.gz"
+    sdist = ROOT / "dist" / f"{name}-{sdist_version}.tar.gz"
     if not sdist.exists():
         build_cmd = f"pixi run bash -lc 'cd /tmp && python -m build --sdist {ROOT}'"
         raise FileNotFoundError(f"Missing sdist: {sdist}. Build it first with: {build_cmd}")
 
     checksum = sha256_file(sdist)
-    source_url = f"https://pypi.org/packages/source/{name[0]}/{name}/{name}-{version}.tar.gz"
+    source_url = f"https://pypi.org/packages/source/{name[0]}/{name}/{name}-{sdist_version}.tar.gz"
 
     recipe = RECIPE.read_text(encoding="utf-8")
     synced_recipe = render_synced_recipe(recipe, name, version, source_url, checksum)

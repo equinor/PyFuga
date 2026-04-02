@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.1-dev] - Unreleased
+
+Development version after the 0.2.0 release.
+
 ## [0.2.0] - 2026-04-02
 
 Second public beta release focused on API expansion, LUT pipeline refactoring, and release/distribution workflow improvements.
