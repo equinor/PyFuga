@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyfuga"
-version = "0.2.0-dev"
+version = "0.2.0"
 description = "Linearised CFD wake model (PyFuga)"
 readme = "README.md"
 authors = [{ name = "PyFuga team", email = "lalc@dtu.dk" }]
@@ -49,7 +49,7 @@ tests = [
   "memory_profiler>=0.61.0",
   "line_profiler>=5.0.0",
   "nbconvert>=7.16.6,<8",
-  "ipykernel>=6.29,<8",  # <8 matches docs extra (ipykernel==7.2.0) for unified Pixi/dev installs
+  "ipykernel>=6.29,<8",      # <8 matches docs extra (ipykernel==7.2.0) for unified Pixi/dev installs
   "jupyter_client>=8.6,<9",
 ]
 
