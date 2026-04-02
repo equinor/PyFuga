@@ -31,7 +31,7 @@ tests/notebook_outputs/
 .ruff_cache/
 
 # Documentation
-docs/_build/
+docs/_build*/
 docs/api/generated/
 
 # IDE & Editors

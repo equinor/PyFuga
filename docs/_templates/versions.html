@@ -1,0 +1,33 @@
+{# Included at end of <body> by sphinx_rtd_theme/layout.html (html_sidebars are not used by this theme). #}
+{# See https://sphinx-contrib.github.io/multiversion/main/templates.html#readthedocs-theme #}
+{%- if versions and current_version %}
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book"></span>
+    v: {{ current_version.name }}
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    {%- if versions.tags %}
+    <dl>
+      <dt>{{ _('Tags') }}</dt>
+      {%- for item in versions.tags %}
+      <dd{% if item.name == current_version.name %} class="rtd-current-item"{% endif %}>
+        <a href="{{ item.url }}">{{ item.name }}</a>
+      </dd>
+      {%- endfor %}
+    </dl>
+    {%- endif %}
+    {%- if versions.branches %}
+    <dl>
+      <dt>{{ _('Branches') }}</dt>
+      {%- for item in versions.branches %}
+      <dd{% if item.name == current_version.name %} class="rtd-current-item"{% endif %}>
+        <a href="{{ item.url }}">{{ item.name }}</a>
+      </dd>
+      {%- endfor %}
+    </dl>
+    {%- endif %}
+  </div>
+</div>
+{%- endif %}

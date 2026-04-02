@@ -384,32 +384,41 @@ build_pages:
     - git fetch origin "+refs/heads/*:refs/remotes/origin/*"
     # -----------------------------------------------------------
 
-    - cd docs
-    - sphinx-multiversion . _build
-
-    # --- Choose default ref for root index.html safely ---------
-    # Always point landing page to main so newly added docs are visible immediately.
-    - DEFAULT_REF="main"
-    - test -d "_build/${DEFAULT_REF}" || (echo "Missing _build/${DEFAULT_REF} from sphinx-multiversion output"; find _build -maxdepth 2 -type d | sort; exit 1)
-    - echo "Using DEFAULT_REF=${DEFAULT_REF}"
-
-    # Create root index.html from template
-    - sed "s/TAG/${DEFAULT_REF}/g" root_index_template.html > _build/index.html
-    # -----------------------------------------------------------
-
-    - cd ..
-    - mv docs/_build public/
-
-    # Canonicalize branch root URLs to explicit index files
+    # Docs build: two-step HTML (PyWakeEllipSys-style), optional shared assets, landing redirect, Pages layout.
+    # (If you add docs/figures + generate_figures.py like PyWakeEllipSys, run that here before sphinx-build.)
     - |
-      cat > public/_redirects << 'EOF'
-      /main /main/index.html 301
-      /main/ /main/index.html 301
-      EOF
+      cd docs
+      sphinx-build -b html . _build/main
+      sphinx-multiversion . _build
+      if [ -d figures ]; then
+        cp -r figures _build/
+      fi
+      LATEST_TAG=$(git describe --tags "$(git rev-list --tags --max-count=1)" 2>/dev/null || true)
+      if [ -n "$LATEST_TAG" ] && [ -d "_build/${LATEST_TAG}" ]; then
+        DEFAULT_REF="$LATEST_TAG"
+      else
+        DEFAULT_REF="main"
+      fi
+      echo "Landing page redirect target: ${DEFAULT_REF}"
+      test -d "_build/${DEFAULT_REF}" || (echo "Missing _build/${DEFAULT_REF} after docs build"; find _build -maxdepth 2 -type d | sort; exit 1)
+      sed "s|TAG|${DEFAULT_REF}|g" root_index_template.html > _build/index.html
+      cd ..
+      mv docs/_build public/
+      {
+        echo "/${DEFAULT_REF} /${DEFAULT_REF}/index.html 301"
+        echo "/${DEFAULT_REF}/ /${DEFAULT_REF}/index.html 301"
+        echo "/main /main/index.html 301"
+        echo "/main/ /main/index.html 301"
+      } > public/_redirects
 
     # --- CI sanity checks for expected published paths ----------
     - test -d "public/main" || (echo "Missing public/main after docs build"; find public -maxdepth 2 -type d | sort; exit 1)
     - test -f "public/main/theory/ffit.html" || (echo "Missing public/main/theory/ffit.html"; find public/main/theory -maxdepth 1 -type f | sort; exit 1)
+    # If v0.1.0 exists, assert that it is included in multiversion output.
+    - |
+      if git rev-parse -q --verify "refs/tags/v0.1.0" >/dev/null; then
+        test -d "public/v0.1.0" || (echo "Missing public/v0.1.0 in multiversion output"; find public -maxdepth 2 -type d | sort; exit 1)
+      fi
   artifacts:
     paths:
       - public
@@ -419,6 +428,11 @@ build_pages:
     - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG'
       when: on_success
       allow_failure: false
+
+    # Temporary manual run on this branch
+    - if: '$CI_COMMIT_BRANCH == "test-pages"'
+      when: manual
+      allow_failure: true
 
     # Otherwise never run
     - when: never

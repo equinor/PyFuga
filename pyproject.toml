@@ -38,7 +38,7 @@ dependencies = [
 
 [project.urls]
 Repository = "https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga"
-Documentation = "https://topfarm.pages.windenergy.dtu.dk/PyFuga/main/index.html"
+Documentation = "https://topfarm.pages.windenergy.dtu.dk/PyFuga/"
 Issues = "https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga/-/issues"
 
 [project.optional-dependencies]
@@ -49,22 +49,24 @@ tests = [
   "memory_profiler>=0.61.0",
   "line_profiler>=5.0.0",
   "nbconvert>=7.16.6,<8",
-  "ipykernel>=6.29,<7",
+  "ipykernel>=6.29,<8",  # <8 matches docs extra (ipykernel==7.2.0) for unified Pixi/dev installs
   "jupyter_client>=8.6,<9",
 ]
 
 lint = ["ruff>0.14", "black[jupyter]>=26.1.0", "mypy>=1.19.1"]
 
+# Pinned for reproducible docs and compatibility with sphinx-multiversion 0.2.4 (no Sphinx 9 support).
 docs = [
-  "sphinx>=8.1,<9",
-  "sphinx-autobuild>=2024.10",
-  "sphinx_rtd_theme>=3.0",
-  "sphinx-rtd-dark-mode>=1.3.0",
-  "nbsphinx>=0.9.7",
-  "sphinxcontrib-bibtex>=2.6",
-  "sphinx-multiversion>=0.2.4",
-  "sphinx-copybutton>=0.5.2",
-  "ipykernel>=6.29",
+  "sphinx==7.4.7",
+  # 2025.x requires Python>=3.11; keep 2024.10.x so Pixi py310 environments can still install [docs].
+  "sphinx-autobuild==2024.10.3",
+  "sphinx-rtd-theme==3.1.0",
+  "sphinx-rtd-dark-mode==1.3.0",
+  "nbsphinx==0.9.8",
+  "sphinxcontrib-bibtex==2.6.5",
+  "sphinx-multiversion==0.2.4",
+  "sphinx-copybutton==0.5.2",
+  "ipykernel==7.2.0",
 ]
 
 # Convenience group for local development
@@ -112,6 +114,8 @@ sphinx-autobuild docs docs/_build \
   --watch pyfuga \
   --open-browser
 """
+# Multiversion + root redirect + http.server (same landing logic as CI build_pages)
+serve-multiversion-docs = { cmd = "bash scripts/serve_multiversion_docs.sh" }
 
 # Debugging
 doctor = "python scripts/dev.py doctor"

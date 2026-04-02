@@ -1,0 +1,21 @@
+{% extends "!layout.html" %}
+
+{# Version banner: https://sphinx-contrib.github.io/multiversion/main/templates.html#version-banners #}
+{% block document %}
+{%- if current_version and latest_version and current_version.name != latest_version.name %}
+<div class="wy-alert wy-alert-info" role="status" style="margin: 0 0 1em 0; padding: 12px 16px;">
+  <p style="margin: 0;">
+    <strong>
+      {%- if current_version.is_released %}
+      {{ _('You are reading an older release of this documentation.') }}
+      <a href="{{ vpathto(latest_version.name) }}">{{ _('View the latest release') }} <span class="pre">{{ latest_version.name }}</span></a>.
+      {%- else %}
+      {{ _('You are reading the development documentation.') }}
+      <a href="{{ vpathto(latest_version.name) }}">{{ _('View the latest release') }} <span class="pre">{{ latest_version.name }}</span></a>.
+      {%- endif %}
+    </strong>
+  </p>
+</div>
+{%- endif %}
+{{ super() }}
+{% endblock %}

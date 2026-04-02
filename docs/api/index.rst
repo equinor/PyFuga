@@ -41,6 +41,5 @@ Module reference
 
 .. autosummary::
    :toctree: generated
-   :recursive:
 
    pyfuga
