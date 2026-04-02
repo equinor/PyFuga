@@ -275,6 +275,17 @@ In **Settings → Repository → Protected tags**, protect your release tag patt
 ### 10.2 Release flow
 
 The release tag must match `project.version` in `pyproject.toml` (for example tag `v0.1.0` for version `0.1.0`). CI will fail early if they differ.
+
+**Version metadata:** `pyproject.toml` `[project].version` is the single source of truth. After changing it, align **CITATION.cff**, the **first** `## [...]` section in **CHANGELOG.md**, **conda-recipe/meta.yaml** (run `pixi run sync-conda-recipe` after `python -m build --sdist`), and refresh **pixi.lock** when needed (`pixi lock`). **docs/conf.py** must keep reading the version from `pyproject.toml` (do not hard-code it there).
+
+Validate before pushing:
+
+```bash
+pixi run check-project-version
+```
+
+This also runs in the GitLab `lint` job and via pre-commit when any of those files change.
+
 The conda recipe must also be synced before release: run `pixi run sync-conda-recipe`.
 CI enforces this with `python scripts/sync_conda_recipe.py --check` in `build_release_artifacts`.
 

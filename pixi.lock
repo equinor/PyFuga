@@ -9104,7 +9104,7 @@ packages:
 - pypi: ./
   name: pyfuga
   version: 0.2.1.dev0
-  sha256: a2a2b700425deccfe40b436289fd1b7e614e24e23875c7dac0e1d62a10f1bb97
+  sha256: eeb6a1fd22c87e1bda2ea1ceeb5c60d1074d93bce63354d3ae4c22643da4f19c
   requires_dist:
   - numpy>=1.26
   - scipy>=1.10
@@ -9125,6 +9125,7 @@ packages:
   - ruff>0.14 ; extra == 'lint'
   - black[jupyter]>=26.1.0 ; extra == 'lint'
   - mypy>=1.19.1 ; extra == 'lint'
+  - packaging>=24 ; extra == 'lint'
   - sphinx==7.4.7 ; extra == 'docs'
   - sphinx-autobuild==2024.10.3 ; extra == 'docs'
   - sphinx-rtd-theme==3.1.0 ; extra == 'docs'

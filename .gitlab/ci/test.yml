@@ -257,3 +257,4 @@ lint:
     - python -m black --check .
     - python -m ruff --version
     - python -m ruff check .
+    - python scripts/check_project_version_consistency.py

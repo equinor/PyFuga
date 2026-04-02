@@ -16,6 +16,14 @@ repos:
 
   - repo: local
     hooks:
+      - id: project-version-consistency
+        name: project version vs pyproject.toml
+        entry: python
+        args: [scripts/check_project_version_consistency.py]
+        language: python
+        additional_dependencies: [packaging>=24]
+        pass_filenames: false
+        files: ^(pyproject\.toml|CITATION\.cff|conda-recipe/meta\.yaml|CHANGELOG\.md|docs/conf\.py|pixi\.lock)$
       - id: pixi-frozen-all-envs
         name: pixi frozen environments (pre-push)
         entry: python scripts/check_pixi_frozen.py

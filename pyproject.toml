@@ -53,7 +53,7 @@ tests = [
   "jupyter_client>=8.6,<9",
 ]
 
-lint = ["ruff>0.14", "black[jupyter]>=26.1.0", "mypy>=1.19.1"]
+lint = ["ruff>0.14", "black[jupyter]>=26.1.0", "mypy>=1.19.1", "packaging>=24"]
 
 # Pinned for reproducible docs and compatibility with sphinx-multiversion 0.2.4 (no Sphinx 9 support).
 docs = [
@@ -122,9 +122,10 @@ doctor = "python scripts/dev.py doctor"
 sync-conda-recipe = "python scripts/sync_conda_recipe.py"
 check-conda-recipe = "python scripts/sync_conda_recipe.py --check"
 check-conda-recipe-remote = "python scripts/sync_conda_recipe.py --check --check-remote-source"
+check-project-version = "python scripts/check_project_version_consistency.py"
 
 # CI
-ci = { depends-on = ["test", "check-fmt", "build-docs"] }
+ci = { depends-on = ["test", "check-fmt", "check-project-version", "build-docs"] }
 
 # Pin per-environment Python versions (so Pixi doesn't pick 3.14 etc.)
 [tool.pixi.feature.py310.dependencies]
