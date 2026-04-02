@@ -80,6 +80,10 @@ image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv:latest
     - docker
     - ubuntu
     - linux
+  variables:
+    # Default to skipping Git LFS downloads for speed.
+    # Jobs that need large fixtures (pytest) should override to "0".
+    GIT_LFS_SKIP_SMUDGE: "1"
   before_script:
     # Environment setup
     - export UV_CACHE_DIR="${UV_CACHE_DIR:-$CI_PROJECT_DIR/.cache/uv}"

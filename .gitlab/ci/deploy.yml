@@ -5,6 +5,9 @@
 # ----- Deploy prebuilt docs to GitLab Pages -----
 pages:
   stage: deploy
+  variables:
+    # Pages deploy only publishes prebuilt artifacts; skip Git LFS checkout downloads.
+    GIT_LFS_SKIP_SMUDGE: "1"
   needs:
     - job: build_pages
       artifacts: true

@@ -371,6 +371,9 @@ build_pages:
   stage: build
   extends: .default_python_job
   image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv-docs:latest
+  variables:
+    # Docs build does not require Git LFS objects; skip smudge to speed up checkout.
+    GIT_LFS_SKIP_SMUDGE: "1"
   script:
     - VENV_DIR=".venv-${CI_JOB_ID}"
     - uv venv "${VENV_DIR}"

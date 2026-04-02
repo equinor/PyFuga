@@ -11,6 +11,9 @@ test_linux_default:
     - .pytest_coverage
     - .pytest_notebook_html_artifacts
     - .rules_on_code_changes
+  variables:
+    # Linux pytest reads Git LFS test fixtures (tests/test_files/**).
+    GIT_LFS_SKIP_SMUDGE: "0"
   needs:
     - job: build_linux_test_images
       artifacts: false
@@ -231,6 +234,9 @@ test_linux_matrix:
     - .pytest_coverage
     - .pytest_notebook_html_artifacts
     - .rules_python_matrix_default_excluded
+  variables:
+    # Linux pytest reads Git LFS test fixtures (tests/test_files/**).
+    GIT_LFS_SKIP_SMUDGE: "0"
   needs:
     - job: build_linux_test_images
       artifacts: false
