@@ -53,7 +53,14 @@ tests = [
   "jupyter_client>=8.6,<9",
 ]
 
-lint = ["ruff>0.14", "black[jupyter]>=26.1.0", "mypy>=1.19.1", "packaging>=24"]
+lint = [
+  "ruff>0.14",
+  "black[jupyter]>=26.1.0",
+  "mypy>=1.19.1",
+  "packaging>=24",
+  "scipy-stubs>=1.10",
+  "types-tqdm>=4.0",
+]
 
 # Pinned for reproducible docs and compatibility with sphinx-multiversion 0.2.4 (no Sphinx 9 support).
 docs = [
@@ -103,6 +110,9 @@ pyfuga = { path = ".", editable = true, extras = ["tests"] }
 check-fmt = "black --check . && ruff check ."
 fmt = "black . && ruff check . --fix"
 
+# Static typing (strict; see [tool.mypy] — only pyfuga.typing is fully enforced until follow-up MRs)
+mypy = "python -m mypy pyfuga"
+
 # Testing
 test = "pytest --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc --import-mode=importlib"
 
@@ -125,7 +135,13 @@ check-conda-recipe-remote = "python scripts/sync_conda_recipe.py --check --check
 check-project-version = "python scripts/check_project_version_consistency.py"
 
 # CI
-ci = { depends-on = ["test", "check-fmt", "check-project-version", "build-docs"] }
+ci = { depends-on = [
+  "test",
+  "check-fmt",
+  "check-project-version",
+  "mypy",
+  "build-docs",
+] }
 
 # Pin per-environment Python versions (so Pixi doesn't pick 3.14 etc.)
 [tool.pixi.feature.py310.dependencies]
@@ -207,6 +223,32 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["pyfuga"]
+
+# --------------------------------------------------------------------------------------------------
+# Mypy (strict; incremental adoption via per-module overrides)
+# --------------------------------------------------------------------------------------------------
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unused_ignores = true
+explicit_package_bases = true
+# Checked paths (same as CI / `pixi run mypy`)
+files = ["pyfuga"]
+
+# Silence all package code for now; remove overrides in follow-up MRs module by module.
+[[tool.mypy.overrides]]
+module = "pyfuga"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "pyfuga.*"
+ignore_errors = true
+
+# Enforce strict checking here first (shared type aliases; no untyped implementation yet).
+[[tool.mypy.overrides]]
+module = "pyfuga.typing"
+ignore_errors = false
 
 # --------------------------------------------------------------------------------------------------
 # PyFuga project configuration

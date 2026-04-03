@@ -258,3 +258,5 @@ lint:
     - python -m ruff --version
     - python -m ruff check .
     - python scripts/check_project_version_consistency.py
+    - python -m mypy --version
+    - python -m mypy pyfuga
