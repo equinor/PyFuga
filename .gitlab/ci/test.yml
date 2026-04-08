@@ -74,7 +74,8 @@ test_windows_default:
           if ($LASTEXITCODE -ne 0) { throw "pixi install failed for $PixiEnv" }
         } elseif ($PyprojectChanged) {
           Write-Host "Unprotected ref: pyproject.toml changed without pixi.lock -> running editable pip install for $PixiEnv"
-          & $PythonExe -m pip install -e ".[tests]"
+          # Keep dependency set from the pre-baked Pixi env; refresh only the editable project install.
+          & $PythonExe -m pip install --no-deps -e .
           if ($LASTEXITCODE -ne 0) { throw "pip editable install failed for $PixiEnv" }
         } else {
           Write-Host "Unprotected ref: no pixi.lock/pyproject.toml changes -> using pre-baked $PixiEnv environment"
@@ -181,7 +182,8 @@ test_windows_matrix:
           if ($LASTEXITCODE -ne 0) { throw "pixi install failed for $env:PIXI_ENV" }
         } elseif ($PyprojectChanged) {
           Write-Host "Unprotected ref: pyproject.toml changed without pixi.lock -> running editable pip install for $env:PIXI_ENV"
-          & $PythonExe -m pip install -e ".[tests]"
+          # Keep dependency set from the pre-baked Pixi env; refresh only the editable project install.
+          & $PythonExe -m pip install --no-deps -e .
           if ($LASTEXITCODE -ne 0) { throw "pip editable install failed for $env:PIXI_ENV" }
         } else {
           Write-Host "Unprotected ref: no pixi.lock/pyproject.toml changes -> using pre-baked $env:PIXI_ENV environment"

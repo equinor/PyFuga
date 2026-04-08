@@ -1,0 +1,13 @@
+"""Minimal stubs for line_profiler (optional dev dependency; not in [lint] extra)."""
+
+from collections.abc import Callable
+from typing import Any, TypeVar
+
+_F = TypeVar("_F", bound=Callable[..., Any])
+
+class LineProfiler:
+    timer_unit: float
+    def __init__(self) -> None: ...
+    def add_function(self, func: Callable[..., Any]) -> None: ...
+    def __call__(self, func: _F) -> _F: ...
+    def print_stats(self) -> None: ...

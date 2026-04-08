@@ -235,6 +235,7 @@ warn_unused_ignores = true
 explicit_package_bases = true
 # Checked paths (same as CI / `pixi run mypy`)
 files = ["pyfuga"]
+mypy_path = ["typings"]
 
 # Silence all package code for now; remove overrides in follow-up MRs module by module.
 [[tool.mypy.overrides]]
@@ -248,6 +249,18 @@ ignore_errors = true
 # Enforce strict checking here first (shared type aliases; no untyped implementation yet).
 [[tool.mypy.overrides]]
 module = "pyfuga.typing"
+ignore_errors = false
+
+[[tool.mypy.overrides]]
+module = "pyfuga.constants"
+ignore_errors = false
+
+[[tool.mypy.overrides]]
+module = "pyfuga.paths"
+ignore_errors = false
+
+[[tool.mypy.overrides]]
+module = "pyfuga.profiling"
 ignore_errors = false
 
 # --------------------------------------------------------------------------------------------------

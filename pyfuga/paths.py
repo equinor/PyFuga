@@ -1,11 +1,16 @@
+from __future__ import annotations
+
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
 
 from pyfuga.constants import DS
 
+PathLike = str | Path
 
-def get_level_range(zlow, zhigh, zhub, z0):
+
+def get_level_range(zlow: float, zhigh: float, zhub: float, z0: float) -> tuple[int, int]:
     if zlow == zhigh == zhub:
         return 9999, 9999
     low_level = int(np.floor(np.log(zlow / z0) / DS))
@@ -13,7 +18,23 @@ def get_level_range(zlow, zhigh, zhub, z0):
     return low_level, high_level
 
 
-def get_luts_path(folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh, lut_vars, nx, ny, dx, dy):
+def get_luts_path(
+    folder: PathLike,
+    zeta0: float,
+    nkz0: int,
+    nbeta: int,
+    diameter: float,
+    zhub: float,
+    z0: float,
+    zi: float,
+    zlow: float,
+    zhigh: float,
+    lut_vars: Sequence[str],
+    nx: int,
+    ny: int,
+    dx: float | None,
+    dy: float | None,
+) -> Path:
     fluts_id = get_fluts_path(
         folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh, lut_vars
     ).stem.removeprefix("fLUTs_")
@@ -21,7 +42,19 @@ def get_luts_path(folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhig
     return Path(folder) / f"LUTs_{luts_id}.nc"
 
 
-def get_fluts_path(folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh, lut_vars):
+def get_fluts_path(
+    folder: PathLike,
+    zeta0: float,
+    nkz0: int,
+    nbeta: int,
+    diameter: float,
+    zhub: float,
+    z0: float,
+    zi: float,
+    zlow: float,
+    zhigh: float,
+    lut_vars: Sequence[str],
+) -> Path:
     preluts_id = get_preluts_path(folder, zeta0, nkz0, nbeta).stem.removeprefix("preLUTs_")
 
     L_vars = [v[0] for v in lut_vars if v[1] == "L"]
@@ -44,5 +77,5 @@ def get_fluts_path(folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhi
     return Path(folder) / f"fLUTs_{fluts_id}.nc"
 
 
-def get_preluts_path(folder, zeta0, nkz0, nbeta):
+def get_preluts_path(folder: PathLike, zeta0: float, nkz0: int, nbeta: int) -> Path:
     return Path(folder) / f"preLUTs_Zeta0={zeta0:3.2e}_{nkz0}_{nbeta}.nc"
