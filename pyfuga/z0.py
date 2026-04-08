@@ -8,13 +8,14 @@ atmospheric conditions.
 """
 
 import numpy as np
+import numpy.typing as npt
 from scipy.optimize import fsolve, root_scalar
 from scipy.special import lambertw
 
 from pyfuga.constants import CM_STABLE, CM_UNSTABLE
 
 
-def phi(zeta):
+def phi(zeta: float | npt.ArrayLike) -> npt.NDArray[np.float64]:
     zeta = np.asarray(zeta, dtype=float)
     zeta = np.atleast_1d(zeta)
     out = np.empty_like(zeta, dtype=float)
@@ -25,7 +26,7 @@ def phi(zeta):
     return out
 
 
-def psi(zeta, unstable=""):
+def psi(zeta: float | npt.ArrayLike, unstable: str = "") -> npt.NDArray[np.float64]:
     zeta = np.atleast_1d(zeta)
     ind = zeta < 0
     psi_n = np.zeros(zeta.shape)
@@ -40,7 +41,7 @@ def psi(zeta, unstable=""):
     return psi_n
 
 
-def _g_unstable(x, ti, zeta0):
+def _g_unstable(x: float | npt.ArrayLike, ti: float, zeta0: float) -> float | npt.NDArray[np.float64]:
     x_arr = np.asarray(x, dtype=float)
 
     # x must be positive; if a solver probes x<=0, make g invalid/very negative
@@ -56,7 +57,7 @@ def _g_unstable(x, ti, zeta0):
     return np.asarray(g, dtype=float)
 
 
-def _solve_x_unstable(ti, zeta0, zref, z0_limit):
+def _solve_x_unstable(ti: float, zeta0: float, zref: float, z0_limit: float) -> float:
     x_max = float(zref / z0_limit)
 
     x_lo = 1e-12
@@ -98,19 +99,19 @@ def _solve_x_unstable(ti, zeta0, zref, z0_limit):
             and x_hi_good < x_max
             and np.sign(f_hi_good) != np.sign(f_at_max)
         ):
-            sol = root_scalar(_g_unstable, args=(ti, zeta0), bracket=(x_hi_good, x_max), method="brentq")
+            sol = root_scalar(_g_unstable, args=(ti, zeta0), bracket=(x_hi_good, x_max), method="brentq")  # type: ignore[call-overload]
             if sol.converged and 0 < sol.root <= x_max:
                 return float(sol.root)
 
     # Normal bracketing solve
     if np.isfinite(f_lo) and np.isfinite(f_hi) and np.sign(f_lo) != np.sign(f_hi):
-        sol = root_scalar(_g_unstable, args=(ti, zeta0), bracket=(x_lo, x_hi), method="brentq")
+        sol = root_scalar(_g_unstable, args=(ti, zeta0), bracket=(x_lo, x_hi), method="brentq")  # type: ignore[call-overload]
         if sol.converged and 0 < sol.root <= x_max:
             return float(sol.root)
 
     # Fallback: fsolve, but if it doesn't converge, *still* allow clamp behaviour
     x0 = min(zref / 1e-3, x_max)
-    x, _, ier, msg = fsolve(lambda xx: _g_unstable(xx, ti, zeta0), x0, full_output=True)
+    x, _, ier, msg = fsolve(lambda xx: _g_unstable(xx, ti, zeta0), x0, full_output=True)  # type: ignore[call-overload]
 
     if ier == 1 and np.isfinite(x[0]) and 0 < x[0] <= x_max:
         return float(x[0])
@@ -123,7 +124,7 @@ def _solve_x_unstable(ti, zeta0, zref, z0_limit):
     raise RuntimeError(f"Unstable z0_from_TI solve failed: ti={ti}, zeta0={zeta0}, x_max={x_max}, ier={ier}, msg={msg}")
 
 
-def z0_from_TI(TI, zref, zeta0, z0_limit=1e-5):
+def z0_from_TI(TI: float | npt.ArrayLike, zref: float, zeta0: float, z0_limit: float = 1e-5) -> npt.NDArray[np.float64]:
     TI = np.atleast_1d(TI).astype(float)
 
     if zeta0 == 0:
@@ -132,11 +133,11 @@ def z0_from_TI(TI, zref, zeta0, z0_limit=1e-5):
     elif zeta0 > 0:
         a = CM_STABLE * zeta0
         b = 1 / TI
-        x = np.real(lambertw(a * np.exp(a + b))) / a
+        x = np.real(lambertw(a * np.exp(a + b))) / a  # type: ignore[call-overload]
         z0 = zref / x
 
     else:
-        x = np.array([_solve_x_unstable(ti, zeta0, zref, z0_limit) for ti in TI])
+        x = np.array([_solve_x_unstable(float(ti), zeta0, zref, z0_limit) for ti in TI], dtype=float)
         z0 = zref / x
 
     z0 = np.maximum(z0, z0_limit)

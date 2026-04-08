@@ -10,26 +10,34 @@ with legacy simulation data.
 
 import os
 import struct
+from io import BufferedReader
 from pathlib import Path
+from typing import Any, TypeAlias
 
 import numpy as np
 import xarray as xr
 from numpy import newaxis as na
 
+PathLike: TypeAlias = str | os.PathLike[str]
+PrelutTuple: TypeAlias = tuple[float, float, float, float, float, float]
+PrelutListEntry: TypeAlias = tuple[str, float, float, float, float, float, float]
+
 
 class BinaryReader:
-    def s(self, n):
+    fid: BufferedReader
+
+    def s(self, n: int) -> str:
         return self.fid.read(n).decode().strip()
 
-    def i(self):
-        return struct.unpack("i", self.fid.read(4))[0]
+    def i(self) -> int:
+        return int(struct.unpack("i", self.fid.read(4))[0])
 
-    def d(self):
-        return struct.unpack("d", self.fid.read(8))[0]
+    def d(self) -> float:
+        return float(struct.unpack("d", self.fid.read(8))[0])
 
 
 class Parameters(BinaryReader):
-    def __init__(self, folder):
+    def __init__(self, folder: PathLike) -> None:
         i, d, s = self.i, self.d, self.s
         with open(Path(folder) / "parameters.bin", "rb") as self.fid:
             self.prelutname = s(127)
@@ -50,7 +58,7 @@ class Parameters(BinaryReader):
 
 
 class CaseData(BinaryReader):
-    def __init__(self, folder):
+    def __init__(self, folder: PathLike) -> None:
         i, d, s = self.i, self.d, self.s
 
         with open(Path(folder) / "CaseData.bin", "rb") as self.fid:
@@ -65,31 +73,31 @@ class CaseData(BinaryReader):
             self.closure = i()
 
 
-def eof(fid):
+def eof(fid: BufferedReader) -> int:
     fid.seek(-1, 2)  # go to the file end.
     eof = fid.tell() + 1  # get the end of file location
     fid.seek(0, 0)  # go back to file beginning
     return eof
 
 
-def read_prelut_list(folder, dict=True):
+def read_prelut_list(folder: PathLike, dict: bool = True) -> dict[str, PrelutTuple] | list[PrelutListEntry]:
 
     folder = Path(folder)
     with open(folder / "prelut_list.lst", "rb") as fid:
         fid.seek(18)
         n = 24 if fid.read(6) == b"\x00\x00\x00\x00\x00\x00" else 18
 
-        N = eof(fid) // (n + 48)
+        n_rows = eof(fid) // (n + 48)
 
         # list of filename (18 or 18+6xNull), ds, smaxx, kz0, beta, kzmax, accgoal
         if dict:
-            return {fid.read(n)[:18].decode(): struct.unpack("d" * 6, fid.read(8 * 6)) for _ in range(N)}
+            return {fid.read(n)[:18].decode(): struct.unpack("d" * 6, fid.read(8 * 6)) for _ in range(n_rows)}
 
         else:
-            return [(fid.read(n)[:18].decode(),) + struct.unpack("d" * 6, fid.read(8 * 6)) for _ in range(N)]
+            return [(fid.read(n)[:18].decode(),) + struct.unpack("d" * 6, fid.read(8 * 6)) for _ in range(n_rows)]
 
 
-def read_pre_file(filename):
+def read_pre_file(filename: PathLike) -> dict[str, tuple[list[str], Any]]:
     with open(filename, "rb") as fid:
         d = np.fromfile(fid, float, -1).reshape((-1, 291))
         Yleft, Rleft, Rright, dy = np.moveaxis((d[:, :288:2] + d[:, 1:288:2] * 1j).reshape((-1, 4, 6, 6)), 1, 0)
@@ -112,11 +120,12 @@ def read_pre_file(filename):
     }
 
 
-def read_lut_file(filename, prelut_folder):
+def read_lut_file(filename: PathLike, prelut_folder: PathLike) -> xr.Dataset:
+    filename_path = Path(filename)
     parameters = Parameters(prelut_folder)
-    casedata = CaseData(os.path.dirname(filename))
-    var = os.path.basename(filename)[:2]
-    level = int(filename[-8:-4])
+    casedata = CaseData(filename_path.parent)
+    var = filename_path.name[:2]
+    level = int(filename_path.name[-8:-4])
     z = casedata.zhub if level == 9999 else casedata.z0 * np.exp(casedata.ds * level)
 
     lut = np.fromfile(filename, complex, -1).reshape((len(parameters.kz0_lst) + 1, len(parameters.beta_lst)))
@@ -133,7 +142,7 @@ def read_lut_file(filename, prelut_folder):
     )
 
 
-def read_lut_dat_file(filename, nx, ny, dx, dy):
+def read_lut_dat_file(filename: PathLike, nx: int, ny: int, dx: float, dy: float) -> xr.DataArray:
     dat = np.fromfile(filename, np.dtype("<f"), -1).astype(float).reshape((ny // 2, nx))
     x_lst = np.arange(-nx // 4, nx * 3 / 4) * dx  # rotor is located 1/4 downstream
 
