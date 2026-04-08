@@ -269,6 +269,7 @@ build_windows_pixi_envs:
     - job: prepare_windows_env_tag
       artifacts: true
     - job: build_windows_pixi_base
+      optional: true
   parallel:
     matrix:
       - PIXI_ENV: ["py310-ci", "py311-ci", "py312-ci", "py313-ci", "py314-ci"]
