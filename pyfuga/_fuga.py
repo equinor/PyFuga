@@ -18,6 +18,7 @@ handling file caching and data I/O.
 """
 
 from pathlib import Path
+from typing import cast
 
 import xarray as xr
 
@@ -31,24 +32,24 @@ from pyfuga.utils import ComplexXRDataset, get_beta_lst, get_kz0_lst
 
 
 def get_luts(
-    folder,
-    zeta0,
-    nkz0,
-    nbeta,
-    diameter,
-    zhub,
-    z0,
-    zi,
-    zlow,
-    zhigh,
-    lut_vars=UVW_LT,
-    nx=2048,
-    ny=512,
-    dx=None,
-    dy=None,
-    jit=True,
-    n_cpu=1,
-):  # pragma: no cover
+    folder: str | Path,
+    zeta0: float,
+    nkz0: int,
+    nbeta: int,
+    diameter: float,
+    zhub: float,
+    z0: float,
+    zi: float,
+    zlow: float,
+    zhigh: float,
+    lut_vars: list[str] = UVW_LT,
+    nx: int = 2048,
+    ny: int = 512,
+    dx: float | None = None,
+    dy: float | None = None,
+    jit: bool = True,
+    n_cpu: int | None = 1,
+) -> xr.Dataset:  # pragma: no cover
     """Generate physical-space wake look-up tables via the full PyFuga pipeline.
 
     This function orchestrates the three-stage PyFuga pipeline:
@@ -129,20 +130,20 @@ def get_luts(
 
 
 def get_fluts(
-    folder,
-    zeta0,
-    nkz0,
-    nbeta,
-    diameter,
-    zhub,
-    z0,
-    zi,
-    zlow,
-    zhigh,
-    lut_vars=UVW_LT,
-    jit=True,
-    n_cpu=1,
-):  # pragma: no cover
+    folder: str | Path,
+    zeta0: float,
+    nkz0: int,
+    nbeta: int,
+    diameter: float,
+    zhub: float,
+    z0: float,
+    zi: float,
+    zlow: float,
+    zhigh: float,
+    lut_vars: list[str] = UVW_LT,
+    jit: bool = True,
+    n_cpu: int | None = 1,
+) -> ComplexXRDataset:  # pragma: no cover
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
 
@@ -162,23 +163,23 @@ def get_fluts(
         fluts = flut_generator.make_lut(z0, low_level_out, high_level_out, lut_vars, n_cpu=n_cpu)
 
     fluts.save(fluts_path)
-    return fluts
+    return cast(ComplexXRDataset, fluts)
 
 
 def get_preluts(
-    folder,
-    zeta0,
-    nkz0,
-    nbeta,
-    jit=True,
-    n_cpu=1,
-):  # pragma: no cover
+    folder: str | Path,
+    zeta0: float,
+    nkz0: int,
+    nbeta: int,
+    jit: bool = True,
+    n_cpu: int | None = 1,
+) -> PreLUTs:  # pragma: no cover
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
 
     preluts_path = get_preluts_path(folder, zeta0, nkz0, nbeta)
     if preluts_path.exists():
-        return PreLUTs.from_netcdf(preluts_path)
+        return cast(PreLUTs, PreLUTs.from_netcdf(preluts_path))
 
     utils.compile(jit)
     preluts = PreLUTs.make_preluts(
@@ -194,10 +195,10 @@ def get_preluts(
     preluts.attrs["nkz0"] = nkz0
     preluts.attrs["nbeta"] = nbeta
     preluts.save(preluts_path)
-    return preluts
+    return cast(PreLUTs, preluts)
 
 
-def main():
+def main() -> None:
     if __name__ == "__main__":  # pragma: no cover
         luts = get_luts(
             folder=Path(__file__).parent.parent,

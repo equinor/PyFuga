@@ -239,10 +239,6 @@ mypy_path = ["typings"]
 
 # Silence all package code for now; remove overrides in follow-up MRs module by module.
 [[tool.mypy.overrides]]
-module = "pyfuga"
-ignore_errors = true
-
-[[tool.mypy.overrides]]
 module = "pyfuga.*"
 ignore_errors = true
 
@@ -276,8 +272,18 @@ module = "pyfuga.utils"
 ignore_errors = false
 
 [[tool.mypy.overrides]]
+module = "pyfuga._fuga"
+ignore_errors = false
+disable_error_code = ["no-untyped-call"]
+
+[[tool.mypy.overrides]]
+module = "pyfuga"
+ignore_errors = false
+
+[[tool.mypy.overrides]]
 module = "memory_profiler"
 ignore_missing_imports = true
+disable_error_code = ["import-untyped"]
 
 # --------------------------------------------------------------------------------------------------
 # PyFuga project configuration
