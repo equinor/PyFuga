@@ -271,6 +271,14 @@ ignore_errors = false
 module = "pyfuga.file_readers"
 ignore_errors = false
 
+[[tool.mypy.overrides]]
+module = "pyfuga.utils"
+ignore_errors = false
+
+[[tool.mypy.overrides]]
+module = "memory_profiler"
+ignore_missing_imports = true
+
 # --------------------------------------------------------------------------------------------------
 # PyFuga project configuration
 # --------------------------------------------------------------------------------------------------
