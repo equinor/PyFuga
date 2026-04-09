@@ -25,26 +25,42 @@ solution stored in the preliminary LUTs.
 
 import multiprocessing as mp
 import warnings
-from contextlib import nullcontext
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import AbstractContextManager, nullcontext
+from typing import Any, cast
 
 import numpy as np
+import numpy.typing as npt
 from numpy import linalg
 from numpy import newaxis as na
 from tqdm import tqdm
 
 from pyfuga.constants import FIRST_Z_OUTPUT, KAPPA, UVW_LT
+from pyfuga.preluts import PreLUTs
 from pyfuga.utils import ComplexXRDataset, jit
 
 
 class FourierLUTGenerator:
-    def __init__(self, preluts, zhub, diameter, zi, verbose=True):
+    def __init__(
+        self,
+        preluts: PreLUTs,
+        zhub: float,
+        diameter: float,
+        zi: float,
+        verbose: bool = True,
+    ) -> None:
         self.preluts = preluts
         self.zhub = zhub
         self.radius = diameter / 2
         self.zi = zi  # Domain height
         self.verbose = verbose
 
-    def make_rotor_luts(self, z0, luts=UVW_LT, n_cpu=1):  # for wake solution at all levels within rotor plane
+    def make_rotor_luts(
+        self,
+        z0: float,
+        luts: list[str] = UVW_LT,
+        n_cpu: int | None = 1,
+    ) -> ComplexXRDataset:  # for wake solution at all levels within rotor plane
         # note: can change z0 --> modify T.I. through z=z0*exp(1/T.I.)
         ds = self.preluts.ds
         # Calculate j levels within rotor plane, including points at ceiling (zh+R) and floor (zh-R).
@@ -52,34 +68,46 @@ class FourierLUTGenerator:
         high_level_out = int(np.ceil(np.log((self.zhub + self.radius) / z0) / ds))
         return self.make_lut(z0, low_level_out, high_level_out, luts, n_cpu=n_cpu)
 
-    def make_hubheight_luts(self, z0, luts=UVW_LT, n_cpu=1):  # for wake solution only at hub height
+    def make_hubheight_luts(
+        self,
+        z0: float,
+        luts: list[str] = UVW_LT,
+        n_cpu: int | None = 1,
+    ) -> ComplexXRDataset:  # for wake solution only at hub height
         ds = self.preluts.ds
         low_level_out = int(np.floor(np.log((self.zhub) / z0) / ds))
         high_level_out = int(np.ceil(np.log((self.zhub) / z0) / ds))
 
-        luts = self.make_lut(z0, low_level_out, high_level_out, luts, n_cpu=n_cpu)
+        flut_ds = self.make_lut(z0, low_level_out, high_level_out, luts, n_cpu=n_cpu)
         if low_level_out == high_level_out:
-            lut_vars = luts.isel(level=0)
+            lut_vars = flut_ds.isel(level=0)
         else:
             a = np.log(self.zhub / z0) / ds - low_level_out
-            lut_vars = luts.isel(level=0) * (1 - a) + luts.isel(level=1) * (a)
+            lut_vars = flut_ds.isel(level=0) * (1 - a) + flut_ds.isel(level=1) * (a)
         lut_vars["level"] = 9999
 
         return ComplexXRDataset(
             data_vars={
                 "z": (("level"), [self.zhub]),
-                "k": luts.k,
-                "diameter": luts.diameter,
+                "k": flut_ds.k,
+                "diameter": flut_ds.diameter,
                 "hubheight": self.zhub,
                 "z0": z0,
                 # fourier luts, UL, UT, ...
                 **{k: lut_vars[k].expand_dims("level", 2) for k in lut_vars if lut_vars[k].dims == ("beta", "kz0")},
             },
-            coords={"beta": luts.beta, "kz0": luts.kz0, "level": [9999]},
-            attrs=luts.attrs,
+            coords={"beta": flut_ds.beta, "kz0": flut_ds.kz0, "level": [9999]},
+            attrs=flut_ds.attrs,
         )
 
-    def make_lut(self, z0, low_level_out, high_level_out, luts=UVW_LT, n_cpu=1):
+    def make_lut(
+        self,
+        z0: float,
+        low_level_out: int,
+        high_level_out: int,
+        luts: list[str] = UVW_LT,
+        n_cpu: int | None = 1,
+    ) -> ComplexXRDataset:
         """
         Generate Fourier-space wake look-up tables for specified height range.
 
@@ -172,19 +200,20 @@ class FourierLUTGenerator:
 
         # Choose serial vs parallel mapping
         if n_cpu in (None, 1):
-            pool_cm = nullcontext()
-            map_func = map
+            pool_cm: AbstractContextManager[Any] = nullcontext[None]()
         else:
             ctx = mp.get_context("spawn")  # or "forkserver"
             pool_cm = ctx.Pool(processes=n_cpu)
-            map_func = pool_cm.imap
 
-        xL = []  # longitudinal forcing
-        xT = []  # transversal forcing
+        xL: list[npt.NDArray[np.complex128]] = []  # longitudinal forcing
+        xT: list[npt.NDArray[np.complex128]] = []  # transversal forcing
 
         with pool_cm as pool:
-            # If parallel, map_func should come from the pool
-            if n_cpu not in (None, 1) and pool is not None:
+            map_func: Callable[[Any, Iterable[tuple[Any, ...]]], Iterator[Any]]
+            if n_cpu in (None, 1):
+                map_func = map
+            else:
+                assert pool is not None
                 map_func = pool.imap
 
             if any(lut[1] == "L" for lut in luts):
@@ -245,7 +274,7 @@ class FourierLUTGenerator:
                     )
                 )
 
-        def get_var(s):
+        def get_var(s: str) -> npt.NDArray[np.complex128]:
             """Extract specific component and forcing direction from results."""
             x = xL if s[1] == "L" else xT
             i = {"U": 0, "V": 2, "W": 4, "P": 5}[s[0]]
@@ -269,7 +298,7 @@ class FourierLUTGenerator:
         )
 
 
-def solve_layers(args):
+def solve_layers(args: tuple[Any, ...]) -> npt.NDArray[np.complex128]:
     (
         prelut,
         beta,
@@ -330,7 +359,7 @@ def solve_layers(args):
     phi_lin_high_lst = 1 / (KAPPA * (z[1] - z[2]) * k**2)
 
     # Solve for each layer - returns (n_levels, 6) for each layer
-    output = [
+    layer_blocks: list[npt.NDArray[np.complex128]] = [
         np.concatenate(
             [
                 solve_layer(
@@ -348,7 +377,7 @@ def solve_layers(args):
                     ijf1,
                     ijf2,
                 ),
-                np.zeros((zero_pad_levels, 6)),
+                np.zeros((zero_pad_levels, 6), dtype=np.complex128),
             ]
         )
         for ijf0, ijf1, ijf2, phi_const_low, phi_lin_low, phi_const_high, phi_lin_high in zip(
@@ -377,14 +406,17 @@ def solve_layers(args):
 
     # Extract output levels
     s = slice(low_level_out - minlevel - 1, high_level_out - minlevel)
-    output = np.array(output)[:, s]  # dim: (from_level, to_level, uu'vv'wp)
+    stacked = np.array(layer_blocks)[:, s]  # dim: (from_level, to_level, uu'vv'wp)
 
     # Sum over layers with geometric weights
-    return np.sum(fac[1:-1][:, na, na] * output, 0) * area_err_fac
+    return cast(
+        npt.NDArray[np.complex128],
+        np.sum(fac[1:-1][:, na, na] * stacked, 0) * area_err_fac,
+    )
 
 
 @jit  # (f'complex128[:,:]({c3}{c3}{c3}{i1}{c2}{c2}{d}{d}{d}{d}{i}{i}{i})')
-def solve_layer(
+def solve_layer(  # type: ignore[no-untyped-def]
     R_upper,
     R_lower,
     Q,

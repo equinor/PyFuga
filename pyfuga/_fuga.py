@@ -18,7 +18,6 @@ handling file caching and data I/O.
 """
 
 from pathlib import Path
-from typing import cast
 
 import xarray as xr
 
@@ -163,7 +162,7 @@ def get_fluts(
         fluts = flut_generator.make_lut(z0, low_level_out, high_level_out, lut_vars, n_cpu=n_cpu)
 
     fluts.save(fluts_path)
-    return cast(ComplexXRDataset, fluts)
+    return fluts
 
 
 def get_preluts(
@@ -179,7 +178,7 @@ def get_preluts(
 
     preluts_path = get_preluts_path(folder, zeta0, nkz0, nbeta)
     if preluts_path.exists():
-        return cast(PreLUTs, PreLUTs.from_netcdf(preluts_path))
+        return PreLUTs.from_netcdf(preluts_path)
 
     utils.compile(jit)
     preluts = PreLUTs.make_preluts(
@@ -195,7 +194,7 @@ def get_preluts(
     preluts.attrs["nkz0"] = nkz0
     preluts.attrs["nbeta"] = nbeta
     preluts.save(preluts_path)
-    return cast(PreLUTs, preluts)
+    return preluts
 
 
 def main() -> None:

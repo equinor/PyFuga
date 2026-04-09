@@ -281,6 +281,20 @@ module = "pyfuga"
 ignore_errors = false
 
 [[tool.mypy.overrides]]
+module = "pyfuga.common"
+ignore_errors = false
+disable_error_code = ["no-untyped-call", "no-any-return", "untyped-decorator"]
+
+[[tool.mypy.overrides]]
+module = "pyfuga.preluts"
+ignore_errors = false
+
+[[tool.mypy.overrides]]
+module = "pyfuga.flut"
+ignore_errors = false
+disable_error_code = ["no-untyped-call"]
+
+[[tool.mypy.overrides]]
 module = "memory_profiler"
 ignore_missing_imports = true
 disable_error_code = ["import-untyped"]

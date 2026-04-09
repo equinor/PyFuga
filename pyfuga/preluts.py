@@ -12,10 +12,15 @@ Main classes:
     - :class:`PreLUTs`: Aggregated collection of preLUTs across parameter ranges.
 """
 
+from __future__ import annotations
+
 import multiprocessing as mp
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
+import numpy.typing as npt
 import xarray as xr
 from tqdm import tqdm
 
@@ -23,14 +28,27 @@ from pyfuga.file_readers import read_pre_file, read_prelut_list
 from pyfuga.utils import ComplexXRDataset, read_complex
 
 
-class PreLUT(ComplexXRDataset):
-    __slots__ = []
+class PreLUT(ComplexXRDataset):  # type: ignore[no-untyped-call]
+    __slots__: list[str] = []
 
     @staticmethod
-    def from_pre_file(filename, zeta0, kz0=None, beta=None, kzmax=None, ds=None, accgoal=None):
+    def from_pre_file(
+        filename: str | Path,
+        zeta0: float,
+        kz0: float | None = None,
+        beta: float | None = None,
+        kzmax: float | None = None,
+        ds: float | None = None,
+        accgoal: float | None = None,
+    ) -> PreLUT:
         filename = Path(filename)
         if None in [kz0, beta, kzmax, ds, accgoal]:
-            ds, smaxx, kz0, beta, kzmax, accgoal = read_prelut_list(filename.parent)[filename.name]
+            lut_meta = read_prelut_list(filename.parent, dict=True)
+            assert isinstance(lut_meta, dict)
+            ds_t, _smaxx, kz0, beta, kzmax, accgoal = lut_meta[filename.name]
+
+            ds = ds_t
+        assert kz0 is not None and beta is not None and kzmax is not None and ds is not None and accgoal is not None
 
         pre_file = read_pre_file(filename)
         return PreLUT(
@@ -38,26 +56,29 @@ class PreLUT(ComplexXRDataset):
         )
 
     @staticmethod
-    def make_prelut(zeta0, kz0, beta, kzmax, ds, accgoal):
+    def make_prelut(zeta0: float, kz0: float, beta: float, kzmax: float, ds: float, accgoal: float) -> PreLUT:
         from pyfuga.preluts_generator import PreLUTGenerator
 
-        return PreLUTGenerator(zeta0, kz0, beta, kzmax, ds, accgoal).make_prelut()
+        return cast(
+            PreLUT,
+            PreLUTGenerator(zeta0, kz0, beta, kzmax, ds, accgoal).make_prelut(),  # type: ignore[no-untyped-call]
+        )
 
     @staticmethod
-    def make_prelut_args(args):
+    def make_prelut_args(args: tuple[Any, ...]) -> PreLUT:
         from pyfuga import utils
 
         jit = args[-1]
-        args = args[:-1]
-        utils.compile(jit)
-        return PreLUT.make_prelut(*args)
+        rest = args[:-1]
+        utils.compile(bool(jit))
+        return PreLUT.make_prelut(*rest)
 
 
-class PreLUTs(ComplexXRDataset):
-    __slots__ = []
+class PreLUTs(ComplexXRDataset):  # type: ignore[no-untyped-call]
+    __slots__: list[str] = []
 
     @staticmethod
-    def from_pre_files(folder, zeta0, all_vars=True, verbose=True):
+    def from_pre_files(folder: str | Path, zeta0: float, all_vars: bool = True, verbose: bool = True) -> PreLUTs:
 
         folder = Path(folder)
 
@@ -74,7 +95,7 @@ class PreLUTs(ComplexXRDataset):
         n_node = np.array([len(d["level"][1]) for d in dat_lst])
         max_nodes = n_node.max()
 
-        def get_var(k):
+        def get_var(k: str) -> tuple[list[str], npt.NDArray[Any]]:
             dim = ["beta", "kz0"] + f[k][0]
             shape = f[k][1].shape
             data = np.reshape(
@@ -84,7 +105,7 @@ class PreLUTs(ComplexXRDataset):
             return (dim, data)
 
         if all_vars:
-            var_name_lst = f.keys()
+            var_name_lst: list[str] = list(f.keys())
         else:
             var_name_lst = [
                 "Y_lower",
@@ -109,10 +130,21 @@ class PreLUTs(ComplexXRDataset):
         )
 
     @staticmethod
-    def make_preluts(zeta0, kz0_lst, beta_lst, kzmax, ds, accgoal, jit=True, n_cpu=1, verbose=True, compact=True):
-
+    def make_preluts(
+        zeta0: float,
+        kz0_lst: npt.NDArray[np.float64] | list[float],
+        beta_lst: npt.NDArray[np.float64] | list[float],
+        kzmax: float,
+        ds: float,
+        accgoal: float,
+        jit: bool = True,
+        n_cpu: int | None = 1,
+        verbose: bool = True,
+        compact: bool = True,
+    ) -> PreLUTs | CompactPreLUTs:
         args_lst = [(zeta0, kz0, beta, kzmax, ds, accgoal, jit) for beta in beta_lst for kz0 in kz0_lst]
 
+        iterator: Iterator[PreLUT]
         if n_cpu in (None, 1):
             iterator = map(PreLUT.make_prelut_args, args_lst)
             ds_lst = list(
@@ -142,10 +174,11 @@ class PreLUTs(ComplexXRDataset):
 
         if compact:
 
-            data_dict = {}
+            data_dict: dict[str, list[npt.NDArray[Any]]] = {}
 
-            def append(ds):
-                for k, v in ds.items():
+            def collect(ds: PreLUT) -> None:
+                for raw_k, v in ds.items():
+                    k = str(raw_k)
                     if k not in data_dict:
                         data_dict[k] = []
                     if len(v.dims) and v.dims[0] == "i":
@@ -154,13 +187,15 @@ class PreLUTs(ComplexXRDataset):
                         data_dict[k].append(np.full(len(ds.i), v))
 
             while len(ds_lst):
-                append(ds_lst.pop())
+                collect(ds_lst.pop())
 
+            merged_vars: dict[str, tuple[tuple[str, ...], npt.NDArray[Any]]] = {}
             for k, v in data_dict.items():
-                data_dict[k] = (("kz0_beta_i",) + f[k].dims[1:], np.concatenate(v, 0))
+                dim_tail = tuple(str(d) for d in f[k].dims[1:])
+                merged_vars[k] = (("kz0_beta_i",) + dim_tail, np.concatenate(v, 0))
 
             return CompactPreLUTs(
-                data_dict,
+                merged_vars,
                 attrs={
                     "ds": f.ds,
                     "kzmax": f.kzmax,
@@ -187,7 +222,7 @@ class PreLUTs(ComplexXRDataset):
             )
 
     @classmethod
-    def from_netcdf(cls, filename):
+    def from_netcdf(cls, filename: str | Path) -> PreLUTs | CompactPreLUTs:
         ds = read_complex(filename)
         if "kz0_beta_i" in ds.dims:
             return CompactPreLUTs(ds, attrs=ds.attrs)
@@ -195,23 +230,26 @@ class PreLUTs(ComplexXRDataset):
             return PreLUTs(ds, attrs=ds.attrs)
 
 
-class CompactPreLUTs(PreLUTs):
-    __slots__ = []
+class CompactPreLUTs(PreLUTs):  # type: ignore[no-untyped-call]
+    __slots__: list[str] = []
 
     def sel(
         self,
-        indexers=None,
-        method=None,
-        tolerance=None,
-        drop=False,
-        kz0=None,
-        beta=None,
-        **indexers_kwargs,
-    ):
+        indexers: Any = None,
+        method: Any = None,
+        tolerance: Any = None,
+        drop: bool = False,
+        kz0: float | None = None,
+        beta: float | None = None,
+        **indexers_kwargs: Any,
+    ) -> PreLUTs:
         m = (self.beta.values == beta) & (self.kz0.values == kz0)
         ds = PreLUTs(
             {k: (("i",) + v.dims[1:], v.values[m]) for k, v in self.items()},
             attrs={k: v for k, v in self.attrs.items() if k not in ["kz0_lst", "beta_lst"]},
         )
         ds = ds.assign_coords(i=ds.i, beta=beta, kz0=kz0)
-        return PreLUTs.sel(ds, indexers=indexers, method=method, tolerance=tolerance, drop=drop, **indexers_kwargs)
+        return cast(
+            PreLUTs,
+            PreLUTs.sel(ds, indexers=indexers, method=method, tolerance=tolerance, drop=drop, **indexers_kwargs),
+        )
