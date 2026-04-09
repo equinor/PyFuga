@@ -16,6 +16,7 @@ from tqdm import tqdm
 from pyfuga.common import get_cdivkL, get_psi
 from pyfuga.constants import COORD_S, COORD_T, MAX_NODES
 from pyfuga.preluts import PreLUT
+from pyfuga.typing import ComplexArray
 
 # ---------------------------------------------------------------------------
 # IMPORTANT: Dynamic preludium-equivalent switching
@@ -45,7 +46,7 @@ importlib.reload(_nodes)
 importlib.reload(_integration)
 
 from .integration import get_new_h2, integrate_between_stations, modified_midpoint_integration_step  # noqa: E402
-from .nodes import PreLUTNodeFirst  # noqa: E402
+from .nodes import PreLUTNode, PreLUTNodeFirst  # noqa: E402
 
 
 class PreLUTGenerator:
@@ -69,7 +70,7 @@ class PreLUTGenerator:
     - Uses second-order Runge-Kutta methods.
     """
 
-    def __init__(self, zeta0, kz0, beta, kzmax, ds, accgoal):
+    def __init__(self, zeta0: float, kz0: float, beta: float, kzmax: float, ds: float, accgoal: float) -> None:
         """
         Initialise the preLUT generator with simulation parameters.
 
@@ -143,7 +144,7 @@ class PreLUTGenerator:
         log_s_tr = min(self.log_smaxx, log_s_tr)
         return log_s_tr
 
-    def make_prelut(self):
+    def make_prelut(self) -> PreLUT:
         """
         Generate preliminary look-up tables by integrating atmospheric state.
 
@@ -194,11 +195,13 @@ class PreLUTGenerator:
         """
         self.nodes = []
         first = PreLUTNodeFirst(self.beta, self.ds)
+        assert first.Y_lower is not None
         h = np.sqrt(self.acc * 6 / 3.125)
         self.lastkz = self.kz0
 
         yerr = self.modified_midpoint_integration_step(first, first.Y_lower, 0.0, h, COORD_T)
         first.reset_forcing_accumulators()
+        assert first.Y_upper is not None
         h = get_new_h2(h, self.acc, yerr, first.Y_upper)
         s_tr = self.calculate_s_transition()
 
@@ -256,7 +259,14 @@ class PreLUTGenerator:
             attrs={"ds": self.ds, "kzmax": self.kzmax, "zeta0": self.zeta0, "accgoal": self.accgoal},
         )
 
-    def modified_midpoint_integration_step(self, node, y, x, h, j):
+    def modified_midpoint_integration_step(
+        self,
+        node: PreLUTNode,
+        y: ComplexArray,
+        x: float,
+        h: float,
+        j: int,
+    ) -> ComplexArray:
         """
         A wrapper for the jit-compilable rk2 function to allow it to be called from within a class.
 
@@ -286,7 +296,14 @@ class PreLUTGenerator:
         node.Y_upper = Y_upper
         return yerr
 
-    def integrate_between_stations(self, p, h, yerr, acc, j):
+    def integrate_between_stations(
+        self,
+        p: PreLUTNode,
+        h: float,
+        yerr: ComplexArray,
+        acc: float,
+        j: int,
+    ) -> tuple[PreLUTNode, float]:
         """
         A wrapper for the jit-compilable integrate_between_stations function to allow it to be called from within a
         class.

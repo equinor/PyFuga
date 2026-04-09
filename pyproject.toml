@@ -237,11 +237,6 @@ explicit_package_bases = true
 files = ["pyfuga"]
 mypy_path = ["typings"]
 
-# Silence all package code for now; remove overrides in follow-up MRs module by module.
-[[tool.mypy.overrides]]
-module = "pyfuga.*"
-ignore_errors = true
-
 # Enforce strict checking here first (shared type aliases; no untyped implementation yet).
 [[tool.mypy.overrides]]
 module = "pyfuga.typing"
@@ -293,6 +288,26 @@ ignore_errors = false
 module = "pyfuga.flut"
 ignore_errors = false
 disable_error_code = ["no-untyped-call"]
+
+[[tool.mypy.overrides]]
+module = "pyfuga.trafalgar"
+ignore_errors = false
+disable_error_code = ["no-untyped-call"]
+
+[[tool.mypy.overrides]]
+module = "pyfuga.preludium_eq_routines"
+ignore_errors = false
+disable_error_code = ["no-untyped-call", "no-any-return", "untyped-decorator"]
+
+[[tool.mypy.overrides]]
+module = "pyfuga.preluts_generator"
+ignore_errors = false
+disable_error_code = ["no-untyped-call", "no-untyped-def", "untyped-decorator", "no-any-return", "attr-defined"]
+
+[[tool.mypy.overrides]]
+module = "pyfuga.preluts_generator.*"
+ignore_errors = false
+disable_error_code = ["no-untyped-call", "no-untyped-def", "untyped-decorator", "no-any-return", "attr-defined"]
 
 [[tool.mypy.overrides]]
 module = "memory_profiler"

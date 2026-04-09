@@ -48,19 +48,19 @@ class PreLUTNode:
     Y_lower: ComplexArray | None
     R_upper: ComplexArray | None
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.reset_forcing_accumulators()
         self.Y_upper = None
         self.R_lower = None
         self.Y_lower = None
         self.R_upper = None
 
-    def set_segment_bounds(self, log_s_lower, log_s_upper):
+    def set_segment_bounds(self, log_s_lower: float, log_s_upper: float) -> None:
         """Set the lower and upper bounds for the segment in log(s)."""
         self.log_s_lower = log_s_lower
         self.log_s_upper = log_s_upper
 
-    def reset_forcing_accumulators(self):
+    def reset_forcing_accumulators(self) -> None:
         """Reset the differential error accumulators for forcing ($\\Delta b$)."""
         self.dbx_const = np.zeros(N_EQ, dtype=np.complex128)
         self.dby_const = np.zeros(N_EQ, dtype=np.complex128)
@@ -69,7 +69,7 @@ class PreLUTNode:
         self.dby_lin = np.zeros(N_EQ, dtype=np.complex128)
         self.dbz_lin = np.zeros(N_EQ, dtype=np.complex128)
 
-    def generate_next_node(self, sleft, sright) -> "PreLUTNode":
+    def generate_next_node(self, sleft: float, sright: float) -> "PreLUTNode":
         """Generate and return the next node via QR decomposition."""
         next_node = self.advance_node_by_qr_decomposition()
         next_node.set_segment_bounds(sleft, sright)
@@ -102,7 +102,7 @@ class PreLUTNodeFirst(PreLUTNode):
     Initialises the node with boundary conditions based on the phase angle (beta) and station spacing (ds).
     """
 
-    def __init__(self, beta, ds):
+    def __init__(self, beta: float, ds: float) -> None:
         """Initialise the first node with the prescribed boundary conditions.
         See eq. (9) in Numerical Solution."""
         PreLUTNode.__init__(self)

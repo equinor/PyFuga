@@ -13,6 +13,13 @@ from pyfuga.utils import jit
 from .matrices import getM
 from .transforms import s_to_t, t_to_s
 
+__all__ = [
+    "get_new_h2",
+    "rk2_integration_step",
+    "modified_midpoint_integration_step",
+    "integrate_between_stations",
+]
+
 if utils.preludium_equivalent:
     from pyfuga.preludium_eq_routines import get_new_h2_Preludium as get_new_h2
 else:
@@ -234,7 +241,7 @@ def integrate_between_stations(
     psi0: float,
     cosbeta: float,
     sinbeta: float,
-):
+) -> tuple[ComplexArray, float, float, float]:
     """
     Integrates the adjoint system between two stations using the Modified Midpoint Method with adaptive step size
     control.

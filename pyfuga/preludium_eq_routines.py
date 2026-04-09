@@ -9,24 +9,25 @@ model. Controlled via the :data:`pyfuga.utils.preludium_equivalent` flag.
 """
 
 import numpy as np
+from numpy import newaxis as na
+from numpy.typing import NDArray
 
 from pyfuga.common import complex_norm
 from pyfuga.preluts_generator import PreLUTNode
+from pyfuga.typing import ComplexArray
 from pyfuga.utils import jit
 
 
 @jit("double(double,double,complex128[:,:],complex128[:,:])")
-def get_new_h2_Preludium(h, acc, Yerr, Y):
+def get_new_h2_Preludium(h: float, acc: float, Yerr: ComplexArray, Y: ComplexArray) -> float:
     err = np.max(complex_norm(Yerr, axis=0) / complex_norm(Y, axis=0))
-    return np.maximum(np.minimum(0.9 * h * (acc * h / err) ** (1 / 3), 4.0e-1), 1.0e-4)
+    return float(np.maximum(np.minimum(0.9 * h * (acc * h / err) ** (1 / 3), 4.0e-1), 1.0e-4))
 
     # return np.clip(0.9 * h * (acc / err)**(1 / 3), 1.0E-4, 4.0E-1)
 
 
 class PrelutNodePreludium(PreLUTNode):
-    def advance_node_by_qr_decomposition(self):
-        from numpy import newaxis as na
-
+    def advance_node_by_qr_decomposition(self) -> "PrelutNodePreludium":
         # use params, only: mykind,n
         # use contr, only: Tprelutnode
         # use vector_functions, only: outer
@@ -51,6 +52,8 @@ class PrelutNodePreludium(PreLUTNode):
         #     Y_lower[:, j + 1:] =
         #  Y_lower[:, j + 1:] - (Y_lower[:, j] * np.conj(Y_lower[:, j])[:, na]) @ Y_lower[:, j + 1:]
 
+        if self.Y_upper is None:  # pragma: no cover
+            raise ValueError("Y_upper must be initialised before QR decomposition.")
         Y_lower = np.array(self.Y_upper, copy=True)
         node = PrelutNodePreludium()
         node.R_lower = np.zeros_like(Y_lower)
@@ -70,7 +73,7 @@ class PrelutNodePreludium(PreLUTNode):
         # B = np.zeros_like(Y_lower)
         # for j in range(1, 6):
         #     B[:j, j] = node.dat.Rleft[:j, j] / node.dat.Rleft[j, j]
-        B = np.triu(node.R_lower / np.diag(node.R_lower), 1)  # upper triangle without diagonal
+        B: NDArray[np.complex128] = np.triu(node.R_lower / np.diag(node.R_lower), 1)  # upper triangle without diagonal
         # self.dat.Rright = np.diag(1 / np.diag(node.dat.Rleft))
         # for i in range(6):
         #     for j in range(i + 1, 6):

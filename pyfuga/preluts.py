@@ -59,10 +59,7 @@ class PreLUT(ComplexXRDataset):  # type: ignore[no-untyped-call]
     def make_prelut(zeta0: float, kz0: float, beta: float, kzmax: float, ds: float, accgoal: float) -> PreLUT:
         from pyfuga.preluts_generator import PreLUTGenerator
 
-        return cast(
-            PreLUT,
-            PreLUTGenerator(zeta0, kz0, beta, kzmax, ds, accgoal).make_prelut(),  # type: ignore[no-untyped-call]
-        )
+        return PreLUTGenerator(zeta0, kz0, beta, kzmax, ds, accgoal).make_prelut()
 
     @staticmethod
     def make_prelut_args(args: tuple[Any, ...]) -> PreLUT:

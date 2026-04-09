@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import multiprocessing
 from collections.abc import Sequence
+from typing import Any, cast
 
 import numpy as np
 import xarray as xr
@@ -171,7 +172,7 @@ class Trafalgar:
         )
 
         # Accumulate tile contributions (linearity of Fourier integral)
-        luts_accum = None
+        luts_accum: xr.Dataset | None = None
         luts = list(
             tqdm(map_func(make_luts_per_mesh, args), total=len(tiles), disable=self.verbose, desc="LUTS: adding meshes")
         )
@@ -184,6 +185,8 @@ class Trafalgar:
                     for v in lut_vars:
                         luts_accum[v] = luts_accum[v] + lut[v]
 
+        if luts_accum is None:  # pragma: no cover
+            raise ValueError("No wavenumber tiles were generated for the requested parameters")
         return luts_accum
 
 
@@ -192,7 +195,7 @@ class Trafalgar:
 # ---------------------------------------------------------------------------
 
 
-def make_luts_per_mesh(args: tuple) -> xr.Dataset:
+def make_luts_per_mesh(args: tuple[Any, ...]) -> xr.Dataset:
     """
     Evaluate the FFIT for a single wavenumber tile and return wake fields.
 
@@ -336,7 +339,7 @@ def doKvectorFIT_double(
     """
     c = np.pi / (n * delta) / NNN
     k0_ = 0.0 if k0 is None else float(k0)
-    return k0_ + c * (np.arange(int(n)) + 0.5)
+    return cast(NDArray[np.float64], k0_ + c * (np.arange(int(n)) + 0.5))
 
 
 def doKvector_tiles(
@@ -373,17 +376,17 @@ def doKvector_tiles(
     kmin = float(kmin)
     kmax = float(kmax)
 
-    NNNs = np.sort(np.array(NNNs, dtype=int))[::-1]  # finest first
-    if NNNs.size == 0:
+    nnn_levels = np.sort(np.array(NNNs, dtype=int))[::-1]  # finest first
+    if nnn_levels.size == 0:
         return []
 
     # Special case: kmin=0 (legacy mode) — skip the kmax>kmin>0 check
     if kmin == 0.0:
         # Single tile starting at k=0 for each NNN level
-        tiles: list[tuple[float, float, float, float]] = []
-        for NNN in NNNs:
-            tiles.append((int(NNN), 0.0, int(NNN), 0.0))
-        return tiles
+        legacy_tiles: list[tuple[float, float, float, float]] = []
+        for NNN in nnn_levels:
+            legacy_tiles.append((int(NNN), 0.0, int(NNN), 0.0))
+        return legacy_tiles
 
     if not (kmax > kmin > 0):
         raise ValueError("Require kmax > kmin > 0")
@@ -397,7 +400,7 @@ def doKvector_tiles(
     def build_levels(n: int, delta: float) -> list[tuple[int, float]]:
         levels: list[tuple[int, float]] = []
         k0 = kmin
-        for NNN in NNNs:
+        for NNN in nnn_levels:
             span, _ = tile_span(n, delta, NNN)
             if k0 + span > kmax:
                 break
@@ -522,4 +525,4 @@ def FITFIT(
     tmpy = np.fft.ifft(hhatyList[na, :] * ghaty, axis=1) * 2 * ny
     field = 2.0 * (psiy[na, :] * tmpy[:, :ny]).real if sign == 1 else 2.0 * (psiy[na, :] * tmpy[:, :ny]).imag
 
-    return field
+    return cast(NDArray[np.float64], field)
