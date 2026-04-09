@@ -322,6 +322,7 @@ class PreLUTGenerator:
         """
         while True:
             log_s_upper = p.log_s_upper
+            assert p.Y_lower is not None
             Y_upper, h, s2, lastkz = integrate_between_stations(
                 p.Y_lower,
                 p.log_s_lower,

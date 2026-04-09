@@ -237,43 +237,11 @@ explicit_package_bases = true
 files = ["pyfuga"]
 mypy_path = ["typings"]
 
-# Enforce strict checking here first (shared type aliases; no untyped implementation yet).
-[[tool.mypy.overrides]]
-module = "pyfuga.typing"
-ignore_errors = false
-
-[[tool.mypy.overrides]]
-module = "pyfuga.constants"
-ignore_errors = false
-
-[[tool.mypy.overrides]]
-module = "pyfuga.paths"
-ignore_errors = false
-
-[[tool.mypy.overrides]]
-module = "pyfuga.profiling"
-ignore_errors = false
-
-[[tool.mypy.overrides]]
-module = "pyfuga.z0"
-ignore_errors = false
-
-[[tool.mypy.overrides]]
-module = "pyfuga.file_readers"
-ignore_errors = false
-
-[[tool.mypy.overrides]]
-module = "pyfuga.utils"
-ignore_errors = false
-
+# Targeted relaxations for modules that cross numba/runtime-typed boundaries.
 [[tool.mypy.overrides]]
 module = "pyfuga._fuga"
 ignore_errors = false
 disable_error_code = ["no-untyped-call"]
-
-[[tool.mypy.overrides]]
-module = "pyfuga"
-ignore_errors = false
 
 [[tool.mypy.overrides]]
 module = "pyfuga.common"
@@ -281,16 +249,7 @@ ignore_errors = false
 disable_error_code = ["no-untyped-call", "no-any-return", "untyped-decorator"]
 
 [[tool.mypy.overrides]]
-module = "pyfuga.preluts"
-ignore_errors = false
-
-[[tool.mypy.overrides]]
 module = "pyfuga.flut"
-ignore_errors = false
-disable_error_code = ["no-untyped-call"]
-
-[[tool.mypy.overrides]]
-module = "pyfuga.trafalgar"
 ignore_errors = false
 disable_error_code = ["no-untyped-call"]
 
@@ -299,6 +258,7 @@ module = "pyfuga.preludium_eq_routines"
 ignore_errors = false
 disable_error_code = ["no-untyped-call", "no-any-return", "untyped-decorator"]
 
+# The split preluts_generator pipeline still contains dynamic/numba-heavy codepaths.
 [[tool.mypy.overrides]]
 module = "pyfuga.preluts_generator"
 ignore_errors = false
@@ -312,7 +272,6 @@ disable_error_code = ["no-untyped-call", "no-untyped-def", "untyped-decorator", 
 [[tool.mypy.overrides]]
 module = "memory_profiler"
 ignore_missing_imports = true
-disable_error_code = ["import-untyped"]
 
 # --------------------------------------------------------------------------------------------------
 # PyFuga project configuration

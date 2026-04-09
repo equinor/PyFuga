@@ -181,7 +181,7 @@ class Trafalgar:
                 luts_accum = lut
             else:
                 lut_vars = [v for v in lut.data_vars if lut[v].dims == ("z", "x", "y")]
-                with xr.set_options(keep_attrs=True):
+                with xr.set_options(keep_attrs=True):  # type: ignore[no-untyped-call]
                     for v in lut_vars:
                         luts_accum[v] = luts_accum[v] + lut[v]
 

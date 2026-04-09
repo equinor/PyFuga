@@ -13,7 +13,7 @@ import functools
 import sys
 import time
 from collections.abc import Callable, Sequence
-from typing import Any, ParamSpec, TypeVar
+from typing import Any, ParamSpec, TypeVar, cast
 
 import numpy as np
 
@@ -73,14 +73,15 @@ def line_timeit(  # pragma: no cover
     from line_profiler import LineProfiler
 
     lp = LineProfiler()
-    lp.timer_unit = 1e-6
+    lp_any = cast(Any, lp)
+    lp_any.timer_unit = 1e-6
 
     for f in profile_funcs_list:
-        lp.add_function(f)
-    lp_wrapper = lp(func) if sys.gettrace() is None else func
+        lp_any.add_function(f)
+    lp_wrapper = lp_any(func) if sys.gettrace() is None else func
 
     def _wrapped(*args: P.args, **kwargs: P.kwargs) -> tuple[R, Any]:
-        return lp_wrapper(*args, **kwargs), lp
+        return lp_wrapper(*args, **kwargs), lp_any
 
     return _wrapped
 

@@ -17,7 +17,7 @@ import importlib
 import sys
 import time
 from collections.abc import Callable
-from typing import Any, TypeVar, cast
+from typing import Any, ParamSpec, TypeVar, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -40,18 +40,31 @@ numba_jit = False  # and not debugging
 jit_modules = set()
 preludium_equivalent = False
 
+P = ParamSpec("P")
+_R = TypeVar("_R")
+
+
+@overload
+def jit(signature: str, /, **kwargs: Any) -> Callable[[Callable[P, _R]], Callable[P, _R]]: ...
+
+
+@overload
+def jit(func: Callable[P, _R], /, **kwargs: Any) -> Callable[P, _R]: ...
+
 
 def jit(*args: Any, **kwargs: Any) -> Any:
     global jit_modules
     jit_modules.add(sys._getframe(1).f_globals["__name__"])
     if numba_jit:
         return njit(*args, cache=True, **kwargs)
-    else:
-        if isinstance(args[0], str):
-            return lambda f: f
-        else:
-            # print(f'{args[0]} has no signature')
-            return args[0]
+    if isinstance(args[0], str):
+
+        def _identity(func: Callable[P, _R]) -> Callable[P, _R]:
+            return func
+
+        return _identity
+    # print(f'{args[0]} has no signature')
+    return args[0]
 
 
 def compile(jit: bool = True) -> None:
@@ -119,7 +132,8 @@ def read_complex(*args: Any, **kwargs: Any) -> xr.Dataset:
         if "ReIm" not in ds[k].dims:
             ds_new[k] = ds[k]
     ds_new.attrs.update(ds.attrs)
-    return cast(xr.Dataset, ds_new)
+    ds_typed: xr.Dataset = ds_new
+    return ds_typed
 
 
 class ComplexXRDataset(xr.Dataset):  # type: ignore[no-untyped-call]
