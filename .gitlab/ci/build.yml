@@ -27,9 +27,8 @@ build_linux_base_image:
       }
       EOF
 
-    # Build and push base image
+    # Build and push base image (only :latest to limit registry tag churn)
     - |
-      DEST_SHA="${CI_IMAGE_REPO}:${CI_COMMIT_SHA}"
       DEST_LATEST="${CI_IMAGE_REPO}:latest"
 
       /kaniko/executor \
@@ -40,7 +39,6 @@ build_linux_base_image:
         --cache-ttl 168h \
         --build-arg "PYTHON_VERSION=${PYTHON_VERSION}" \
         --target "base" \
-        --destination "$DEST_SHA" \
         --destination "$DEST_LATEST"
 
   rules:
@@ -93,7 +91,6 @@ build_linux_test_images:
       }
       EOF
     - |
-      DEST_SHA="${CI_IMAGE_REPO}:${CI_COMMIT_SHA}"
       DEST_LATEST="${CI_IMAGE_REPO}:latest"
 
       /kaniko/executor \
@@ -105,7 +102,6 @@ build_linux_test_images:
         --build-arg "PYTHON_VERSION=${PYTHON_VERSION}" \
         --build-arg "CONSTRAINT_FILE=${CONSTRAINT_FILE}" \
         --target "tests" \
-        --destination "$DEST_SHA" \
         --destination "$DEST_LATEST"
   rules:
     - changes:
@@ -147,9 +143,8 @@ build_linux_docs_image:
       }
       EOF
 
-    # Build and push docs image
+    # Build and push docs image (only :latest to limit registry tag churn)
     - |
-      DEST_SHA="${CI_IMAGE_REPO_DOCS}:${CI_COMMIT_SHA}"
       DEST_LATEST="${CI_IMAGE_REPO_DOCS}:latest"
 
       /kaniko/executor \
@@ -157,7 +152,6 @@ build_linux_docs_image:
         --dockerfile "$CI_PROJECT_DIR/ci/Dockerfile.docs" \
         --build-arg "PYTHON_VERSION=${PYTHON_DEFAULT_VERSION}" \
         --target "docs" \
-        --destination "$DEST_SHA" \
         --destination "$DEST_LATEST"
 
   rules:
@@ -233,14 +227,19 @@ build_windows_pixi_base:
     - docker push $DestLatest
     - |
       $ProjectImagePrefix = "$env:CI_REGISTRY_IMAGE/ci/windows-pixi"
+      # Skip :<none> — docker image rm cannot use that pseudo-tag; prune removes dangling images.
       $ProjectImagesToDelete = docker image ls --format "{{.Repository}}:{{.Tag}}" |
-        Where-Object { $_ -like "$ProjectImagePrefix*" -and $_ -notmatch ":(latest|$($env:ENV_TAG))$" }
+        Where-Object {
+          $_ -like "$ProjectImagePrefix*" -and
+          $_ -notmatch ":(latest|$($env:ENV_TAG))$" -and
+          $_ -notmatch ':<none>$'
+        }
       if ($ProjectImagesToDelete) {
         Write-Host "Removing old project images after push (keeping :latest and :$env:ENV_TAG):"
         $ProjectImagesToDelete | ForEach-Object { Write-Host " - $_" }
         $ProjectImagesToDelete | ForEach-Object { docker image rm -f $_ }
       } else {
-        Write-Host "No old project images to remove after push."
+        Write-Host "No old tagged project images to remove after push (dangling layers left for prune)."
       }
     - Remove-Item -Recurse -Force $DockerConfigDir
   rules:
@@ -302,14 +301,19 @@ build_windows_pixi_envs:
     - docker push $DestLatest
     - |
       $ProjectImagePrefix = "$env:CI_REGISTRY_IMAGE/ci/windows-pixi"
+      # Skip :<none> — docker image rm cannot use that pseudo-tag; prune removes dangling images.
       $ProjectImagesToDelete = docker image ls --format "{{.Repository}}:{{.Tag}}" |
-        Where-Object { $_ -like "$ProjectImagePrefix*" -and $_ -notmatch ":(latest|$($env:ENV_TAG))$" }
+        Where-Object {
+          $_ -like "$ProjectImagePrefix*" -and
+          $_ -notmatch ":(latest|$($env:ENV_TAG))$" -and
+          $_ -notmatch ':<none>$'
+        }
       if ($ProjectImagesToDelete) {
         Write-Host "Removing old project images after push (keeping :latest and :$env:ENV_TAG):"
         $ProjectImagesToDelete | ForEach-Object { Write-Host " - $_" }
         $ProjectImagesToDelete | ForEach-Object { docker image rm -f $_ }
       } else {
-        Write-Host "No old project images to remove after push."
+        Write-Host "No old tagged project images to remove after push (dangling layers left for prune)."
       }
     - Remove-Item -Recurse -Force $DockerConfigDir
   rules:
@@ -330,6 +334,53 @@ build_windows_pixi_envs:
     - windows
     - docker
     - shell
+
+# ----- Prune dangling images on Windows shell executor (after Pixi image builds) -----
+# Single job avoids parallel matrix jobs racing on "docker image prune already running".
+# Plain `docker image prune -f` would remove every dangling image on the shared daemon; we only
+# remove dangling images whose repository path starts with CI_REGISTRY_IMAGE (this project).
+prune_windows_docker_images:
+  stage: build
+  cache: []
+  needs:
+    - job: build_windows_pixi_base
+      optional: true
+    - job: build_windows_pixi_envs
+  tags:
+    - windows
+    - docker
+    - shell
+  script:
+    - |
+      Write-Host "Pruning dangling images for this project only (registry prefix: $env:CI_REGISTRY_IMAGE)..."
+      $prefix = $env:CI_REGISTRY_IMAGE.TrimEnd('/')
+      $removed = 0
+      docker image ls --filter "dangling=true" --format "{{.ID}}\t{{.Repository}}" | ForEach-Object {
+        $parts = $_ -split "`t", 2, [System.StringSplitOptions]::None
+        if ($parts.Count -lt 2) { return }
+        $id = $parts[0].Trim()
+        $repo = $parts[1].Trim()
+        if ($repo.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {
+          docker rmi -f $id 2>&1 | Out-Null
+          if ($LASTEXITCODE -eq 0) { $removed++ }
+        }
+      }
+      Write-Host "Removed $removed dangling image(s) under this project's registry path."
+      docker system df
+  rules:
+    - if: '$CI_COMMIT_REF_PROTECTED == "true"'
+      changes:
+        - ci/Dockerfile.windows-pixi-base
+        - ci/Dockerfile.windows-pixi-ci-env
+        - .gitlab/ci/build.yml
+        - pyproject.toml
+        - pixi.lock
+      when: on_success
+      allow_failure: false
+    - if: '$CI_COMMIT_REF_PROTECTED == "true" && $FORCE_WINDOWS_IMAGE_BUILD == "1"'
+      when: on_success
+      allow_failure: true
+    - when: never
 
 # ===== Documentation builds =====
 
