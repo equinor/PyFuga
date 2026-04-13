@@ -19,7 +19,8 @@ test_linux_default:
       artifacts: false
       optional: true
   script:
-    - python -m pytest -n 3 --dist loadfile --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc --import-mode=importlib -m "not local" tests/
+    # -n auto uses *physical* cores (often 2 on small VMs); -n logical matches typical vCPU / HT counts.
+    - python -m pytest -n logical --dist loadfile --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc --import-mode=importlib -m "not local" tests/
 
 # ----- Test PyFuga on Windows (Stage 1: default Python only) -----
 test_windows_default:
@@ -104,9 +105,9 @@ test_windows_default:
       $UseXdist = ($LASTEXITCODE -eq 0)
       $PytestArgs = @("-m", "pytest", "--import-mode=importlib", "-m", "not local", "tests/")
       if ($UseXdist) {
-        # Windows: keep parallelism but reduce worker count for native-library stability.
-        Write-Host "Using pytest-xdist with 2 workers"
-        $PytestArgs = @("-m", "pytest", "-n", "2", "--dist", "loadfile", "--import-mode=importlib", "-m", "not local", "tests/")
+        # Windows: pytest-xdist (-n logical; see linux test job comment) + per-worker NUMBA_CACHE_DIR (tests/conftest.py).
+        Write-Host "Using pytest-xdist (-n logical)"
+        $PytestArgs = @("-m", "pytest", "-n", "logical", "--dist", "loadfile", "--import-mode=importlib", "-m", "not local", "tests/")
       } else {
         Write-Host "pytest-xdist not available; running serial pytest"
       }
@@ -212,9 +213,9 @@ test_windows_matrix:
       $UseXdist = ($LASTEXITCODE -eq 0)
       $PytestArgs = @("-m", "pytest", "--import-mode=importlib", "-m", "not local", "tests/")
       if ($UseXdist) {
-        # Windows: keep parallelism but reduce worker count for native-library stability.
-        Write-Host "Using pytest-xdist with 2 workers"
-        $PytestArgs = @("-m", "pytest", "-n", "2", "--dist", "loadfile", "--import-mode=importlib", "-m", "not local", "tests/")
+        # Windows: pytest-xdist (-n logical; see linux test job comment) + per-worker NUMBA_CACHE_DIR (tests/conftest.py).
+        Write-Host "Using pytest-xdist (-n logical)"
+        $PytestArgs = @("-m", "pytest", "-n", "logical", "--dist", "loadfile", "--import-mode=importlib", "-m", "not local", "tests/")
       } else {
         Write-Host "pytest-xdist not available; running serial pytest"
       }
@@ -244,7 +245,7 @@ test_linux_matrix:
       artifacts: false
       optional: true
   script:
-    - python -m pytest -n 3 --dist loadfile --cov-report term-missing:skip-covered --import-mode=importlib -m "not local" tests/
+    - python -m pytest -n logical --dist loadfile --cov-report term-missing:skip-covered --import-mode=importlib -m "not local" tests/
 
 # ----- Check formatting, imports and linting with Black and Ruff -----
 lint:
