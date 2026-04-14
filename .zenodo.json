@@ -1,7 +1,7 @@
 {
   "metadata": {
     "title": "PyFuga: Python implementation of the Fuga linearised wake model",
-    "description": "<p>PyFuga is an open-source Python implementation of the Fuga linearised CFD wake model and lookup table (LUT) generator for wind turbine wakes.</p><p>Source code repository (and issue tracker): <a href=\"https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga\">https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga</a></p><p>Documentation and installation guides: <a href=\"https://topfarm.pages.windenergy.dtu.dk/PyFuga/main/index.html\">https://topfarm.pages.windenergy.dtu.dk/PyFuga/main/index.html</a></p><p>PyPI package: <a href=\"https://pypi.org/project/pyfuga/\">https://pypi.org/project/pyfuga/</a></p>",
+    "description": "<p>PyFuga is an open-source Python implementation of the Fuga linearised CFD wake model and lookup table (LUT) generator for wind turbine wakes.</p><p>Source code repository (and issue tracker): <a href=\"https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga\">https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga</a></p><p>Documentation and installation guides: <a href=\"https://topfarm.pages.windenergy.dtu.dk/PyFuga\">https://topfarm.pages.windenergy.dtu.dk/PyFuga</a></p><p>PyPI package: <a href=\"https://pypi.org/project/pyfuga/\">https://pypi.org/project/pyfuga/</a></p>",
     "publisher": "DTU Wind and Energy Systems",
     "languages": [
       {
@@ -53,7 +53,7 @@
         }
       },
       {
-        "identifier": "https://topfarm.pages.windenergy.dtu.dk/PyFuga/main/index.html",
+        "identifier": "https://topfarm.pages.windenergy.dtu.dk/PyFuga",
         "scheme": "url",
         "relation_type": {
           "id": "isdocumentedby"

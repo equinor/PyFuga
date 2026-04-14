@@ -8,7 +8,7 @@ PyFuga is part of the [**PyWake**](https://gitlab.windenergy.dtu.dk/TOPFARM/PyWa
 
 [![pipeline status](https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga/badges/main/pipeline.svg)](https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga/-/commits/main)
 [![coverage report](https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga/badges/main/coverage.svg)](https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga/-/commits/main)
-[![documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://topfarm.pages.windenergy.dtu.dk/PyFuga/main/index.html)
+[![documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://topfarm.pages.windenergy.dtu.dk/PyFuga)
 <!-- Replace 000000000 with the Zenodo badge id after first deposit. -->
 [![Latest release DOI (Zenodo)](https://zenodo.org/badge/000000000.svg)](https://zenodo.org/badge/latestdoi/000000000)
 
@@ -36,7 +36,7 @@ A minimal example to get you started is available in **[the QuickStart Jupyter n
 
 ## Documentation
 
-Learn more about PyFuga at the **[official documentation](https://topfarm.pages.windenergy.dtu.dk/PyFuga/main/index.html)**.
+Learn more about PyFuga at the **[official documentation](https://topfarm.pages.windenergy.dtu.dk/PyFuga)**.
 
 ## Release history
 
