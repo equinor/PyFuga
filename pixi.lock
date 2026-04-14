@@ -8829,7 +8829,7 @@ packages:
 - pypi: ./
   name: pyfuga
   version: 0.2.1.dev0
-  sha256: 70aee5bd3d5db3b728085d203e4818e1d81237ad3ee3f20938f513d60edb8aef
+  sha256: 167029fb2864299bcccb07175a814ef8db9260f1b41f6e341c241ea7357a911e
   requires_dist:
   - numpy>=1.26
   - scipy>=1.10

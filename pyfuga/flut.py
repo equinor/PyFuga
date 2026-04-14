@@ -27,7 +27,7 @@ import multiprocessing as mp
 import warnings
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import AbstractContextManager, nullcontext
-from typing import Any, cast
+from typing import Any, Literal, NamedTuple, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -38,6 +38,59 @@ from tqdm import tqdm
 from pyfuga.constants import FIRST_Z_OUTPUT, KAPPA, UVW_LT
 from pyfuga.preluts import PreLUTs
 from pyfuga.utils import ComplexXRDataset, jit
+
+# Index into the 6-component state vector for each LUT variable prefix (U, V, W, P).
+_LUT_COMPONENT_INDEX: dict[str, int] = {"U": 0, "V": 2, "W": 4, "P": 5}
+
+
+class SolveLayersJob(NamedTuple):
+    """Arguments for :func:`solve_layers` (one ``(beta, kz0, forcing)`` task)."""
+
+    prelut: Any
+    beta: Any
+    kz0: Any
+    z0: float
+    zhub: float
+    radius: float
+    forcing: Literal["L", "T"]
+    lowerjf: int
+    upperjf: int
+    minlevel: int
+    maxlevel: int
+    low_level_out: int
+    high_level_out: int
+
+
+def _iter_solve_layer_jobs(
+    preluts: PreLUTs,
+    beta_kz0_lst: list[tuple[Any, Any]],
+    z0: float,
+    zhub: float,
+    radius: float,
+    forcing: Literal["L", "T"],
+    lowerjf: int,
+    upperjf: int,
+    minlevel: int,
+    maxlevel: int,
+    low_level_out: int,
+    high_level_out: int,
+) -> Iterator[SolveLayersJob]:
+    for beta, kz0 in beta_kz0_lst:
+        yield SolveLayersJob(
+            prelut=preluts.sel(beta=beta, kz0=kz0),
+            beta=beta,
+            kz0=kz0,
+            z0=z0,
+            zhub=zhub,
+            radius=radius,
+            forcing=forcing,
+            lowerjf=lowerjf,
+            upperjf=upperjf,
+            minlevel=minlevel,
+            maxlevel=maxlevel,
+            low_level_out=low_level_out,
+            high_level_out=high_level_out,
+        )
 
 
 class FourierLUTGenerator:
@@ -75,8 +128,8 @@ class FourierLUTGenerator:
         n_cpu: int | None = 1,
     ) -> ComplexXRDataset:  # for wake solution only at hub height
         ds = self.preluts.ds
-        low_level_out = int(np.floor(np.log((self.zhub) / z0) / ds))
-        high_level_out = int(np.ceil(np.log((self.zhub) / z0) / ds))
+        low_level_out = int(np.floor(np.log(self.zhub / z0) / ds))
+        high_level_out = int(np.ceil(np.log(self.zhub / z0) / ds))
 
         flut_ds = self.make_lut(z0, low_level_out, high_level_out, luts, n_cpu=n_cpu)
         if low_level_out == high_level_out:
@@ -157,10 +210,12 @@ class FourierLUTGenerator:
         out as physically irrelevant. The computation is embarrassingly parallel over
         (beta, kz0) pairs and uses multiprocessing when n_cpu > 1.
         """
-        assert all(lut in UVW_LT for lut in luts)
+        invalid = [lut for lut in luts if lut not in UVW_LT]
+        if invalid:
+            raise ValueError(f"luts must be a subset of {list(UVW_LT)!r}, invalid entries: {invalid!r}")
         zh = self.zhub
         R = self.radius
-        ds, kzmax, zeta0 = [self.preluts.attrs[k] for k in ["ds", "kzmax", "zeta0"]]
+        ds, _, zeta0 = [self.preluts.attrs[k] for k in ["ds", "kzmax", "zeta0"]]
 
         # Get all unique kz0 values from the prelut, sorted in ascending order
         kz0_lst = np.sort(np.unique(self.preluts.kz0.values))
@@ -178,18 +233,26 @@ class FourierLUTGenerator:
 
         # Validate that output levels are within the range of prelut levels
         if low_level_out < minlevel + 1:
-            print(f"LoLevelOut ({low_level_out}) raised to MinLevel ({minlevel + 1}).")
+            warnings.warn(
+                f"LoLevelOut ({low_level_out}) raised to MinLevel ({minlevel + 1}).",
+                UserWarning,
+                stacklevel=2,
+            )
             low_level_out = minlevel + 1
 
         if high_level_out > maxlevel - 1:
-            print(f"HiLevelOut ({high_level_out}) lowered to MaxLevel ({maxlevel - 1}).")
+            warnings.warn(
+                f"HiLevelOut ({high_level_out}) lowered to MaxLevel ({maxlevel - 1}).",
+                UserWarning,
+                stacklevel=2,
+            )
             high_level_out = maxlevel - 1
 
-        logZiZ0 = np.log(self.zi / z0)
+        log_zi_z0 = np.log(self.zi / z0)
 
         # Calculate maximum meaningful vertical wake extent
         # assert smaxx>self.preluts.ds * upperjf # TODO: smaxx not available here
-        smax = np.minimum(np.log((16 * np.pi * (1 + zh / R) + 120.0) / kz0_lst), logZiZ0)  # Neutral
+        smax = np.minimum(np.log((16 * np.pi * (1 + zh / R) + 120.0) / kz0_lst), log_zi_z0)  # Neutral
         if np.abs(zeta0) > 0:
             smax = np.minimum(smax, np.log(np.abs(15 / zeta0)))  # Stable and unstable
 
@@ -217,28 +280,23 @@ class FourierLUTGenerator:
                 map_func = pool.imap
 
             if any(lut[1] == "L" for lut in luts):
-                args_lst = (
-                    (
-                        self.preluts.sel(beta=beta, kz0=kz0),
-                        beta,
-                        kz0,
-                        z0,
-                        self.zhub,
-                        self.radius,
-                        "L",
-                        lowerjf,
-                        upperjf,
-                        minlevel,
-                        maxlevel,
-                        low_level_out,
-                        high_level_out,
-                    )
-                    for beta, kz0 in beta_kz0_lst
+                jobs_l = _iter_solve_layer_jobs(
+                    self.preluts,
+                    beta_kz0_lst,
+                    z0,
+                    self.zhub,
+                    self.radius,
+                    "L",
+                    lowerjf,
+                    upperjf,
+                    minlevel,
+                    maxlevel,
+                    low_level_out,
+                    high_level_out,
                 )
-
                 xL = list(
                     tqdm(
-                        map_func(solve_layers, args_lst),
+                        map_func(solve_layers, jobs_l),
                         total=len(beta_kz0_lst),
                         disable=(not self.verbose),
                         desc="Fourier LUTS: Solving for longitudinal forcing",
@@ -246,28 +304,23 @@ class FourierLUTGenerator:
                 )
 
             if any(lut[1] == "T" for lut in luts):
-                args_lst = (
-                    (
-                        self.preluts.sel(beta=beta, kz0=kz0),
-                        beta,
-                        kz0,
-                        z0,
-                        self.zhub,
-                        self.radius,
-                        "T",
-                        lowerjf,
-                        upperjf,
-                        minlevel,
-                        maxlevel,
-                        low_level_out,
-                        high_level_out,
-                    )
-                    for beta, kz0 in beta_kz0_lst
+                jobs_t = _iter_solve_layer_jobs(
+                    self.preluts,
+                    beta_kz0_lst,
+                    z0,
+                    self.zhub,
+                    self.radius,
+                    "T",
+                    lowerjf,
+                    upperjf,
+                    minlevel,
+                    maxlevel,
+                    low_level_out,
+                    high_level_out,
                 )
-
                 xT = list(
                     tqdm(
-                        map_func(solve_layers, args_lst),
+                        map_func(solve_layers, jobs_t),
                         total=len(beta_kz0_lst),
                         disable=(not self.verbose),
                         desc="Fourier LUTS: Solving for transversal forcing",
@@ -277,7 +330,7 @@ class FourierLUTGenerator:
         def get_var(s: str) -> npt.NDArray[np.complex128]:
             """Extract specific component and forcing direction from results."""
             x = xL if s[1] == "L" else xT
-            i = {"U": 0, "V": 2, "W": 4, "P": 5}[s[0]]
+            i = _LUT_COMPONENT_INDEX[s[0]]
             # Extract: (n_beta, n_kz0, n_levels)
             return np.reshape(x, (len(beta_lst), len(kz0_lst)) + np.shape(x)[1:])[..., i]
 
@@ -298,49 +351,49 @@ class FourierLUTGenerator:
         )
 
 
-def solve_layers(args: tuple[Any, ...]) -> npt.NDArray[np.complex128]:
-    (
-        prelut,
-        beta,
-        kz0,
-        z0,
-        zhub,
-        radius,
-        forcing,
-        lowerjf,
-        upperjf,
-        minlevel,
-        maxlevel,
-        low_level_out,
-        high_level_out,
-    ) = args
+def solve_layers(job: SolveLayersJob | tuple[Any, ...]) -> npt.NDArray[np.complex128]:
     """
-    Solves for a single (beta, kz0, forcing direction) combination.
+    Solve for a single (beta, kz0, forcing direction) combination.
+
     Discards pre-calculated levels outside of min/max level range for memory optimisation.
-    Returns: X(z) at all output levels for that specific (beta, kz0, forcing direction) combination.
-    See eq. (5) in Forcing decomposition for the definition of Triangular forcing.
+    Returns ``X(z)`` at all output levels for that (beta, kz0, forcing) pair.
+    See eq. (5) in Forcing decomposition for the definition of triangular forcing.
+
+    Parameters
+    ----------
+    job
+        :class:`SolveLayersJob` or a 14-element tuple in the same field order (for tests
+        and backward compatibility).
     """
+    if not isinstance(job, SolveLayersJob):
+        job = SolveLayersJob._make(job)
 
-    if forcing not in ("L", "T"):
-        raise ValueError(f"forcing must be 'L' or 'T', got {forcing!r}")
+    if job.forcing not in ("L", "T"):
+        raise ValueError(f"forcing must be 'L' or 'T', got {job.forcing!r}")
 
-    axis = forcing.replace("L", "x").replace("T", "y")
-    ds = prelut.ds
-    jf_l = np.arange(lowerjf + 1, upperjf)  # layers within rotor
+    axis = job.forcing.replace("L", "x").replace("T", "y")
+    ds = job.prelut.ds
+    jf_l = np.arange(job.lowerjf + 1, job.upperjf)  # layers within rotor
 
-    z = z0 * np.exp(ds * (jf_l + np.array([-1, 0, 1])[:, na]))  # height blow, at and above current layer
-    k = kz0 / z0
+    z = job.z0 * np.exp(ds * (jf_l + np.array([-1, 0, 1])[:, na]))  # height blow, at and above current layer
+    k = job.kz0 / job.z0
 
-    max_table_level = prelut.level.max().item()
+    max_table_level = job.prelut.level.max().item()
 
     # Memory optimisation: discard irrelevant prelut data
-    if max_table_level < minlevel:
-        return np.zeros((high_level_out - low_level_out + 1, 6), dtype=np.complex128)  # Discard if below min level
+    if max_table_level < job.minlevel:
+        return np.zeros(
+            (job.high_level_out - job.low_level_out + 1, 6),
+            dtype=np.complex128,
+        )  # Discard if below min level
 
-    imin, imax = np.searchsorted(prelut.level, [minlevel, min(maxlevel, max_table_level)])
-    prelut = prelut.sel(i=slice(imin, imax))  # discard unused levels (outside min/max range)
+    imin, imax = np.searchsorted(
+        job.prelut.level,
+        [job.minlevel, min(job.maxlevel, max_table_level)],
+    )
+    prelut = job.prelut.sel(i=slice(imin, imax))  # discard unused levels (outside min/max range)
 
-    zero_pad_levels = int(max(0, maxlevel - max_table_level))
+    zero_pad_levels = int(max(0, job.maxlevel - max_table_level))
 
     ijf0_l, ijf1_l, ijf2_l = np.searchsorted(prelut.level, [jf_l - 1, jf_l, jf_l + 1])  # the three levels per layer
     # e.g. ijf0_l[0], ijf1_l[0], ijf2_l[0] makes up the first layer
@@ -360,25 +413,28 @@ def solve_layers(args: tuple[Any, ...]) -> npt.NDArray[np.complex128]:
 
     # Solve for each layer - returns (n_levels, 6) for each layer
     layer_blocks: list[npt.NDArray[np.complex128]] = [
-        np.concatenate(
-            [
-                solve_layer(
-                    R_upper,
-                    R_lower,
-                    Q,
-                    levels,
-                    db_const,
-                    db_lin,
-                    phi_const_low,
-                    phi_lin_low,
-                    phi_const_high,
-                    phi_lin_high,
-                    ijf0,
-                    ijf1,
-                    ijf2,
-                ),
-                np.zeros((zero_pad_levels, 6), dtype=np.complex128),
-            ]
+        cast(
+            npt.NDArray[np.complex128],
+            np.concatenate(
+                [
+                    solve_layer(
+                        R_upper,
+                        R_lower,
+                        Q,
+                        levels,
+                        db_const,
+                        db_lin,
+                        phi_const_low,
+                        phi_lin_low,
+                        phi_const_high,
+                        phi_lin_high,
+                        ijf0,
+                        ijf1,
+                        ijf2,
+                    ),
+                    np.zeros((zero_pad_levels, 6), dtype=np.complex128),
+                ]
+            ),
         )
         for ijf0, ijf1, ijf2, phi_const_low, phi_lin_low, phi_const_high, phi_lin_high in zip(
             ijf0_l,
@@ -393,19 +449,21 @@ def solve_layers(args: tuple[Any, ...]) -> npt.NDArray[np.complex128]:
     ]
 
     # Apply geometric weighting (Fourier transform of circular rotor)
-    zf = z0 * np.exp(ds * np.arange(lowerjf, upperjf + 1))
-    layer_halfwidth = np.sqrt(radius**2 - (zf - zhub) ** 2)
-    ky = k * np.sin(beta)
+    zf = job.z0 * np.exp(ds * np.arange(job.lowerjf, job.upperjf + 1))
+    layer_halfwidth = np.sqrt(job.radius**2 - (zf - job.zhub) ** 2)
+    ky = k * np.sin(job.beta)
 
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", r"invalid value encountered in true_divide")
         warnings.filterwarnings("ignore", r"invalid value encountered in divide")
         fac = np.where(ky == 0, layer_halfwidth, np.sin(ky * layer_halfwidth) / ky)
 
-    area_err_fac = radius**2 * np.pi / np.sum(np.sqrt(radius**2 - (zf - zhub) ** 2) * zf * (np.exp(ds) - np.exp(-ds)))
+    area_err_fac = (
+        job.radius**2 * np.pi / np.sum(np.sqrt(job.radius**2 - (zf - job.zhub) ** 2) * zf * (np.exp(ds) - np.exp(-ds)))
+    )
 
     # Extract output levels
-    s = slice(low_level_out - minlevel - 1, high_level_out - minlevel)
+    s = slice(job.low_level_out - job.minlevel - 1, job.high_level_out - job.minlevel)
     stacked = np.array(layer_blocks)[:, s]  # dim: (from_level, to_level, uu'vv'wp)
 
     # Sum over layers with geometric weights

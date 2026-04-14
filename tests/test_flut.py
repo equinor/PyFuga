@@ -6,7 +6,7 @@ from numpy.testing import assert_array_almost_equal, assert_array_equal
 
 from pyfuga.constants import UVW_LT
 from pyfuga.file_readers import read_lut_file
-from pyfuga.flut import FourierLUTGenerator, solve_layer
+from pyfuga.flut import FourierLUTGenerator, SolveLayersJob, _iter_solve_layer_jobs, solve_layer, solve_layers
 from pyfuga.preluts import PreLUTs
 from pyfuga.profiling import timeit
 from pyfuga.utils import compile, get_beta_lst
@@ -138,8 +138,6 @@ def test_jit_luts():
 
 
 def test_solve_layers_invalid_forcing_raises_valueerror():
-    from pyfuga.flut import solve_layers
-
     args = (
         None,  # prelut (won't be used if forcing check happens first)
         0.0,  # beta
@@ -155,8 +153,6 @@ def test_solve_layers_invalid_forcing_raises_valueerror():
         0,  # low_level_out
         0,  # high_level_out
     )
-
-    import pytest
 
     with pytest.raises(ValueError, match=r"forcing must be 'L' or 'T'"):
         solve_layers(args)
@@ -210,32 +206,103 @@ def test_make_lut_parallel_uses_spawn_context(monkeypatch):
     assert seen["arg"] == "spawn"
 
 
-def test_make_lut_clamps_low_level_out(capsys):
+def test_make_lut_clamps_low_level_out():
     preluts = PreLUTs.from_netcdf(tfp + "preLUTs_Zeta0=0.00E+00_1_2.nc")
     preluts = expose_new_names(preluts)
     gen = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False)
 
     # With z0=0.00001 and ds=0.05, minlevel=230 so minlevel+1=231.
     # Passing low_level_out=229 should be clamped up to 231.
-    luts = gen.make_lut(z0=0.00001, low_level_out=229, high_level_out=235, luts=["UL"])
+    with pytest.warns(UserWarning, match=r"LoLevelOut \(229\) raised to MinLevel \(231\)"):
+        luts = gen.make_lut(z0=0.00001, low_level_out=229, high_level_out=235, luts=["UL"])
 
-    out = capsys.readouterr().out
-    assert "LoLevelOut" in out
     assert luts.level.values[0] == 231
 
 
-def test_make_lut_clamps_high_level_out(capsys):
+def test_make_lut_clamps_high_level_out():
     preluts = PreLUTs.from_netcdf(tfp + "preLUTs_Zeta0=0.00E+00_1_2.nc")
     preluts = expose_new_names(preluts)
     gen = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False)
 
     # With z0=0.00001, zi=400 and ds=0.05, maxlevel=351 so maxlevel-1=350.
     # Passing high_level_out=352 should be clamped down to 350.
-    luts = gen.make_lut(z0=0.00001, low_level_out=346, high_level_out=352, luts=["UL"])
+    with pytest.warns(UserWarning, match=r"HiLevelOut \(352\) lowered to MaxLevel \(350\)"):
+        luts = gen.make_lut(z0=0.00001, low_level_out=346, high_level_out=352, luts=["UL"])
 
-    out = capsys.readouterr().out
-    assert "HiLevelOut" in out
     assert luts.level.values[-1] == 350
+
+
+def test_make_lut_rejects_invalid_lut_names():
+    preluts = PreLUTs.from_netcdf(tfp + "preLUTs_Zeta0=0.00E+00_1_2.nc")
+    preluts = expose_new_names(preluts)
+    gen = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False)
+
+    with pytest.raises(ValueError, match=r"invalid entries: \['XX'\]"):
+        gen.make_lut(z0=0.00001, low_level_out=314, high_level_out=314, luts=["UL", "XX"])
+
+
+def test_solve_layers_accepts_solve_layers_job_without_tuple_coercion():
+    # isinstance(job, SolveLayersJob) is True, so SolveLayersJob._make is skipped.
+    job = SolveLayersJob(
+        prelut=None,
+        beta=0.0,
+        kz0=0.0,
+        z0=1.0,
+        zhub=70.0,
+        radius=40.0,
+        forcing="X",  # type: ignore[arg-type]
+        lowerjf=0,
+        upperjf=0,
+        minlevel=0,
+        maxlevel=0,
+        low_level_out=0,
+        high_level_out=0,
+    )
+    with pytest.raises(ValueError, match=r"forcing must be 'L' or 'T'"):
+        solve_layers(job)
+
+
+def test_iter_solve_layer_jobs_forcing_and_length():
+    preluts = PreLUTs.from_netcdf(tfp + "preLUTs_Zeta0=0.00E+00_1_2.nc")
+    preluts = expose_new_names(preluts)
+    beta_kz0 = [(b, k) for b in preluts.beta.values[:2] for k in preluts.kz0.values[:2]]
+    jobs = list(
+        _iter_solve_layer_jobs(
+            preluts,
+            beta_kz0,
+            z0=0.00001,
+            zhub=70.0,
+            radius=40.0,
+            forcing="T",
+            lowerjf=10,
+            upperjf=20,
+            minlevel=1,
+            maxlevel=300,
+            low_level_out=314,
+            high_level_out=314,
+        )
+    )
+    assert len(jobs) == len(beta_kz0)
+    assert all(j.forcing == "T" for j in jobs)
+    assert jobs[0].prelut is not None
+
+
+def test_make_lut_t_only_skips_longitudinal_solve():
+    preluts = PreLUTs.from_netcdf(tfp + "preLUTs_Zeta0=0.00E+00_1_2.nc")
+    preluts = expose_new_names(preluts)
+    gen = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False)
+    luts = gen.make_lut(z0=0.00001, low_level_out=314, high_level_out=314, luts=["UT"])
+    assert "UT" in luts.data_vars
+    assert luts.UT.shape == (len(luts.beta), len(luts.kz0), 1)
+
+
+def test_make_lut_ncpu_none_serial_matches_ncpu_one():
+    preluts = PreLUTs.from_netcdf(tfp + "preLUTs_Zeta0=0.00E+00_1_2.nc")
+    preluts = expose_new_names(preluts)
+    gen = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False)
+    a = gen.make_lut(z0=0.00001, low_level_out=314, high_level_out=314, luts=["UL"], n_cpu=None)
+    b = gen.make_lut(z0=0.00001, low_level_out=314, high_level_out=314, luts=["UL"], n_cpu=1)
+    assert a.equals(b)
 
 
 def test_solve_layer_raises_on_forcing_increments_up_mismatch():
