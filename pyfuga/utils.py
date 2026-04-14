@@ -172,7 +172,9 @@ class ComplexXRDataset(xr.Dataset):  # type: ignore[no-untyped-call]
     @classmethod
     def from_netcdf(cls, filename: Any) -> "ComplexXRDataset":
         ds = read_complex(filename)
-        return cls(ds, attrs=ds.attrs)
+        # xarray no longer accepts passing a Dataset instance as `data_vars`
+        # to Dataset subclass constructors. Rebuild explicitly from components.
+        return cls(ds.data_vars, coords=ds.coords, attrs=ds.attrs)
 
 
 def equal(A: Any, n: str) -> None:  # pragma: no cover

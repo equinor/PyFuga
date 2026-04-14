@@ -222,9 +222,9 @@ class PreLUTs(ComplexXRDataset):  # type: ignore[no-untyped-call]
     def from_netcdf(cls, filename: str | Path) -> PreLUTs | CompactPreLUTs:
         ds = read_complex(filename)
         if "kz0_beta_i" in ds.dims:
-            return CompactPreLUTs(ds, attrs=ds.attrs)
+            return CompactPreLUTs(ds.data_vars, coords=ds.coords, attrs=ds.attrs)
         else:
-            return PreLUTs(ds, attrs=ds.attrs)
+            return PreLUTs(ds.data_vars, coords=ds.coords, attrs=ds.attrs)
 
 
 class CompactPreLUTs(PreLUTs):  # type: ignore[no-untyped-call]

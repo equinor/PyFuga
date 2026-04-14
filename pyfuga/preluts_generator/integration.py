@@ -2,6 +2,8 @@
 Integration routines for preLUT generation.
 """
 
+from collections.abc import Callable
+
 import numpy as np
 
 import pyfuga.utils as utils
@@ -20,10 +22,19 @@ __all__ = [
     "integrate_between_stations",
 ]
 
-if utils.preludium_equivalent:
-    from pyfuga.preludium_eq_routines import get_new_h2_Preludium as get_new_h2
-else:
+
+def _get_new_h2_impl() -> Callable[[float, float, ComplexArray, ComplexArray], float]:
+    """Resolve step-size control at import time without a cyclic mypy graph."""
+    if utils.preludium_equivalent:
+        from pyfuga.preludium_eq_routines import get_new_h2_Preludium
+
+        return get_new_h2_Preludium
     from pyfuga.common import get_new_h2
+
+    return get_new_h2
+
+
+get_new_h2 = _get_new_h2_impl()
 
 # 2nd order Runge-Kutta coefficients
 B1 = 4.0 / 3.0
