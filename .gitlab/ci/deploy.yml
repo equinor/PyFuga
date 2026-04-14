@@ -527,7 +527,7 @@ zenodo_upload_for_tag:
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
       when: manual
-      allow_failure: false
+      allow_failure: true
     - if: '$CI_COMMIT_BRANCH && ($ALLOW_ZENODO_TEST == "1" || $ALLOW_ZENODO_TEST == "true")'
       when: manual
       allow_failure: true
