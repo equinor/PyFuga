@@ -1,0 +1,79 @@
+# Verify CI configuration (Phase A: report-only security scans + lint).
+
+# ----- Check formatting, imports and linting with Black and Ruff -----
+lint:
+  stage: verify
+  extends:
+    - .default_python_job
+    - .rules_always_auto
+  script:
+    - VENV_DIR=".venv-${CI_JOB_ID}"
+    - uv venv "${VENV_DIR}"
+    - . "${VENV_DIR}/bin/activate"
+    - uv pip install ".[lint]"
+    - python -m black --version
+    - python -m black --check .
+    - python -m ruff --version
+    - python -m ruff check .
+    - python scripts/check_project_version_consistency.py
+    - python -m mypy --version
+    - python -m mypy pyfuga
+
+# ----- Secret scanning with gitleaks (report-only) -----
+security_secret_scan:
+  stage: verify
+  image:
+    name: zricethezav/gitleaks:v8.24.2
+    entrypoint: [""]
+  extends: .rules_always_auto
+  allow_failure: true
+  script:
+    - gitleaks version
+    # Exit non-zero when leaks are found; allow_failure keeps Phase A non-blocking.
+    - gitleaks git . --report-format json --report-path gitleaks-report.json --redact --exit-code 1
+  artifacts:
+    when: always
+    paths:
+      - gitleaks-report.json
+    expire_in: 1 week
+
+# ----- Dependency vulnerability audit with pip-audit (report-only) -----
+security_dependency_audit:
+  stage: verify
+  extends:
+    - .default_python_job
+    - .rules_always_auto
+  allow_failure: true
+  script:
+    - VENV_DIR=".venv-${CI_JOB_ID}"
+    - uv venv "${VENV_DIR}"
+    - . "${VENV_DIR}/bin/activate"
+    - uv pip install ".[tests]" pip-audit
+    # pip-audit exits non-zero on findings; allow_failure keeps Phase A non-blocking.
+    - pip-audit --desc --format json --output pip-audit-report.json
+  artifacts:
+    when: always
+    paths:
+      - pip-audit-report.json
+    expire_in: 1 week
+
+# ----- Python static security checks with Bandit (report-only) -----
+security_bandit:
+  stage: verify
+  extends:
+    - .default_python_job
+    - .rules_always_auto
+  allow_failure: true
+  script:
+    - VENV_DIR=".venv-${CI_JOB_ID}"
+    - uv venv "${VENV_DIR}"
+    - . "${VENV_DIR}/bin/activate"
+    - uv pip install bandit
+    - bandit --version
+    # Medium-and-above severity/confidence baseline.
+    - bandit -r pyfuga -ll -ii -f json -o bandit-report.json
+  artifacts:
+    when: always
+    paths:
+      - bandit-report.json
+    expire_in: 1 week

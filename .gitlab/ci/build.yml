@@ -172,7 +172,7 @@ build_linux_docs_image:
 # Runs on every pipeline so test jobs can always resolve the image tag,
 # even when the build jobs are skipped (no dep-file changes).
 prepare_windows_env_tag:
-  stage: .pre
+  stage: prepare
   image: alpine:latest
   cache: []
   script:

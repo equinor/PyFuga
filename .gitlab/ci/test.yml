@@ -15,6 +15,15 @@ test_linux_default:
     # Linux pytest reads Git LFS test fixtures (tests/test_files/**).
     GIT_LFS_SKIP_SMUDGE: "0"
   needs:
+    # Keep DAG scheduling for image availability, but still gate on verify-stage checks.
+    - job: lint
+      artifacts: false
+    - job: security_secret_scan
+      artifacts: false
+    - job: security_dependency_audit
+      artifacts: false
+    - job: security_bandit
+      artifacts: false
     - job: build_linux_test_images
       artifacts: false
       optional: true
@@ -241,25 +250,18 @@ test_linux_matrix:
     # Linux pytest reads Git LFS test fixtures (tests/test_files/**).
     GIT_LFS_SKIP_SMUDGE: "0"
   needs:
+    # Keep DAG scheduling for image availability, but still gate on verify-stage checks.
+    - job: lint
+      artifacts: false
+    - job: security_secret_scan
+      artifacts: false
+    - job: security_dependency_audit
+      artifacts: false
+    - job: security_bandit
+      artifacts: false
     - job: build_linux_test_images
       artifacts: false
       optional: true
   script:
     - python -m pytest -n logical --dist loadfile --cov-report term-missing:skip-covered --import-mode=importlib -m "not local" tests/
 
-# ----- Check formatting, imports and linting with Black and Ruff -----
-lint:
-  stage: test
-  extends: .default_python_job
-  script:
-    - VENV_DIR=".venv-${CI_JOB_ID}"
-    - uv venv "${VENV_DIR}"
-    - . "${VENV_DIR}/bin/activate"
-    - uv pip install ".[lint]"
-    - python -m black --version
-    - python -m black --check .
-    - python -m ruff --version
-    - python -m ruff check .
-    - python scripts/check_project_version_consistency.py
-    - python -m mypy --version
-    - python -m mypy pyfuga

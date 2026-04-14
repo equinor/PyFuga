@@ -18,6 +18,8 @@ spec:
       description: "Auto-publish on Zenodo after upload (default keeps draft/manual review)."
 ---
 stages:
+  - verify
+  - prepare
   - build
   - test
   - deploy
@@ -33,4 +35,5 @@ include:
   - local: .gitlab/ci/common.yml
   - local: .gitlab/ci/build.yml
   - local: .gitlab/ci/test.yml
+  - local: .gitlab/ci/verify.yml
   - local: .gitlab/ci/deploy.yml

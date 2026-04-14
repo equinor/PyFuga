@@ -50,6 +50,11 @@ image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv:latest
     - when: manual
       allow_failure: true
 
+.rules_always_auto:
+  rules:
+    - when: on_success
+      allow_failure: false
+
 .rules_python_matrix_default_excluded:
   rules:
     - if: "$PYTHON_VERSION == $PYTHON_DEFAULT_VERSION"
