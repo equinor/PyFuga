@@ -9,8 +9,8 @@ PyFuga is part of the [**PyWake**](https://gitlab.windenergy.dtu.dk/TOPFARM/PyWa
 [![pipeline status](https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga/badges/main/pipeline.svg)](https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga/-/commits/main)
 [![coverage report](https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga/badges/main/coverage.svg)](https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga/-/commits/main)
 [![documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://topfarm.pages.windenergy.dtu.dk/PyFuga/main/index.html)
-<!-- Replace 000000000 with the Zenodo badge id after first deposit -->
-[![DOI](https://zenodo.org/badge/000000000.svg)](https://zenodo.org/badge/latestdoi/000000000)
+<!-- Replace 000000000 with the Zenodo badge id after first deposit. -->
+[![Latest release DOI (Zenodo)](https://zenodo.org/badge/000000000.svg)](https://zenodo.org/badge/latestdoi/000000000)
 
 ## Installation
 
@@ -52,7 +52,19 @@ Issues and feature requests can be submitted through the project's [**GitLab iss
 
 ## Citing PyFuga
 
-Please cite both the underlying Fuga theory and the PyFuga software implementation. See the "Citing PyFuga" section in the documentation for recommended references and BibTeX entries.
+Please cite both the underlying Fuga theory and the PyFuga software implementation.
+
+For PyFuga itself, **use the DOI on the Zenodo record for the release version you used** (this is the canonical source of truth). The repository `CITATION.cff` mirrors this metadata for convenience.
+
+The badge above points to the latest release DOI. For scientific citation, always use the DOI for the exact release version used in your work.
+
+If you have PyFuga installed, you can print a Zenodo search link for your installed version:
+
+```bash
+python scripts/citation.py
+```
+
+See the "Citing PyFuga" section in the documentation for recommended references and BibTeX entries.
 
 ## Authors and acknowledgements
 

@@ -113,7 +113,19 @@ linearised RANS formulation, the mixed–spectral method, and the original
 Fuga development at DTU.
 
 Please also cite the PyFuga software directly (citation entry provided below).
-Zenodo automatically mints a DOI for each protected GitLab release tag. For the version you used, use the DOI shown on the corresponding Zenodo record (it is also reflected in the repository's citation metadata).
+Zenodo automatically mints a DOI for each protected GitLab release tag. For the version you used, use the DOI shown on the corresponding Zenodo record. This Zenodo record is the single source of truth for citation metadata (the repository `CITATION.cff` mirrors it for convenience).
+
+Quickly finding the right Zenodo record
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+If you have PyFuga installed, you can print the installed version and a Zenodo search link:
+
+.. code-block:: bash
+
+   python scripts/citation.py
+
+This will print a Zenodo search URL for the installed version. Open the matching Zenodo record and use
+Zenodo's export function (BibTeX/APA/etc.) as your software citation.
 
 Why cite?
 ^^^^^^^^^
@@ -155,21 +167,7 @@ DTU Wind Energy. The most relevant references are:
 If you use the Python implementation directly (for simulations, optimisation,
 or integration into workflows such as PyWake), please cite the software:
 
-.. code-block:: bibtex
-
-    @misc{PyFuga,
-        title        = {PyFuga: Python implementation of the {Fuga} linearised wake model},
-        author       = {Alcayaga Rom{\'a}n, Leonardo and
-                        Gaukroger, Nils Joseph and
-                        Jacobsen, Elvira Caroline Jarmb{\ae}k and
-                        Larsen, Gunner Christian and
-                        Pedersen, Mads M{\o}lgaard and
-                        Ott, S{\o}ren},
-        year         = {2026},
-        institution  = {DTU Wind \& Energy Systems},
-        howpublished = {\url{https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga}},
-        note         = {Version X.Y (DOI minted by Zenodo for this tagged release), access date: \today}
-    }
+Use the Zenodo record for the exact release version you used, and copy the BibTeX from Zenodo.
 
 
 Acknowledgements

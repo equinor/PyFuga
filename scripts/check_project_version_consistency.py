@@ -2,7 +2,6 @@
 """Fail if tracked release metadata disagrees with pyproject.toml [project].version.
 
 Checked files (extend this script when adding new pinned locations):
-  - CITATION.cff (version)
   - CHANGELOG.md (first ## [x] heading, PEP 440 vs pyproject)
   - conda-recipe/meta.yaml (package version + sdist name in source url)
   - docs/conf.py (must load version from pyproject.toml, no hard-coded semver)
@@ -32,20 +31,6 @@ def _pyproject_version() -> str:
 
 def _canonical_version(v: str) -> str:
     return str(Version(v))
-
-
-def check_citation_cff(expected: str) -> list[str]:
-    path = ROOT / "CITATION.cff"
-    text = path.read_text(encoding="utf-8")
-    m = re.search(r"(?m)^version:\s*(?:\"([^\"]*)\"|'([^']*)'|([^#\s]+))\s*$", text)
-    if not m:
-        return [f"{path.relative_to(ROOT)}: missing or unparseable top-level version field"]
-    found = next(g for g in m.groups() if g is not None).strip()
-    if Version(found) != Version(expected):
-        return [
-            f"{path.relative_to(ROOT)}: version is {found!r}; " f"pyproject.toml has {expected!r} (PEP 440 unequal)"
-        ]
-    return []
 
 
 def _recipe_package_version(text: str) -> str:
@@ -136,7 +121,6 @@ def main() -> int:
     expected = _pyproject_version()
     errors: list[str] = []
     for check in (
-        check_citation_cff(expected),
         check_conda_recipe(expected),
         check_changelog(expected),
         check_docs_conf(),

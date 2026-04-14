@@ -1,7 +1,33 @@
+spec:
+  inputs:
+    allow_zenodo_test:
+      type: boolean
+      default: false
+      description: "Enable zenodo_upload_for_tag as a manual branch job."
+    zenodo_use_sandbox:
+      type: boolean
+      default: true
+      description: "Use Zenodo Sandbox for manual zenodo_upload_for_tag runs."
+    zenodo_target_tag:
+      type: string
+      default: ""
+      description: "Optional tag to upload (for example v0.2.0); empty uses CI_COMMIT_TAG."
+    zenodo_auto_publish:
+      type: boolean
+      default: false
+      description: "Auto-publish on Zenodo after upload (default keeps draft/manual review)."
+---
 stages:
   - build
   - test
   - deploy
+
+variables:
+  # Map pipeline inputs onto existing variables consumed by included CI files.
+  ALLOW_ZENODO_TEST: "$[[ inputs.allow_zenodo_test ]]"
+  ZENODO_USE_SANDBOX: "$[[ inputs.zenodo_use_sandbox ]]"
+  ZENODO_TARGET_TAG: "$[[ inputs.zenodo_target_tag ]]"
+  ZENODO_AUTO_PUBLISH: "$[[ inputs.zenodo_auto_publish ]]"
 
 include:
   - local: .gitlab/ci/common.yml

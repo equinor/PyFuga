@@ -7,6 +7,12 @@ tests/test_files/**/*.nc filter=lfs diff=lfs merge=lfs -text
 tests/test_files/**/*.pre filter=lfs diff=lfs merge=lfs -text
 fuga/tests/test_files/**/*.nc filter=lfs diff=lfs merge=lfs -text
 fuga/tests/test_files/**/*.pre filter=lfs diff=lfs merge=lfs -text
+ci export-ignore
+conda-recipe export-ignore
+constraints export-ignore
+scripts export-ignore
+environment.yml export-ignore
+pixi.lock export-ignore
 pyfuga/tests/test_files/**/*.nc filter=lfs diff=lfs merge=lfs -text
 pyfuga/tests/test_files/**/*.pre filter=lfs diff=lfs merge=lfs -text
 pypreludium/tests/test_files/**/*.nc filter=lfs diff=lfs merge=lfs -text

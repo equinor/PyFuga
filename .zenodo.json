@@ -1,25 +1,63 @@
 {
   "metadata": {
     "title": "PyFuga: Python implementation of the Fuga linearised wake model",
-    "description": "<p>PyFuga is an open-source Python implementation of the Fuga linearised CFD wake model and lookup table (LUT) generator for wind turbine wakes.</p><p>Source code repository (and issue tracker): <a href=\"https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga\">https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga</a></p><p>Documentation and installation guides: <a href=\"https://topfarm.pages.windenergy.dtu.dk/PyFuga/main/index.html\">https://topfarm.pages.windenergy.dtu.dk/PyFuga/main/index.html</a></p>",
-    "upload_type": "software",
-    "license": "MIT",
+    "description": "<p>PyFuga is an open-source Python implementation of the Fuga linearised CFD wake model and lookup table (LUT) generator for wind turbine wakes.</p><p>Source code repository (and issue tracker): <a href=\"https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga\">https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga</a></p><p>Documentation and installation guides: <a href=\"https://topfarm.pages.windenergy.dtu.dk/PyFuga/main/index.html\">https://topfarm.pages.windenergy.dtu.dk/PyFuga/main/index.html</a></p><p>PyPI package: <a href=\"https://pypi.org/project/pyfuga/\">https://pypi.org/project/pyfuga/</a></p>",
+    "publisher": "DTU Wind and Energy Systems",
+    "languages": [
+      {
+        "id": "eng"
+      }
+    ],
     "access_right": "open",
     "resource_type": {
-      "type": "software",
-      "title": "Software"
+      "id": "software"
     },
-    "keywords": ["wind energy", "wind turbine wakes", "wake modeling", "CFD", "Fuga", "PyFuga", "PyWake", "Python"],
+    "rights": [
+      {
+        "id": "mit"
+      }
+    ],
+    "subjects": [
+      {
+        "subject": "wind energy"
+      },
+      {
+        "subject": "wind turbine wakes"
+      },
+      {
+        "subject": "wake modeling"
+      },
+      {
+        "subject": "CFD"
+      },
+      {
+        "subject": "Fuga"
+      },
+      {
+        "subject": "PyFuga"
+      },
+      {
+        "subject": "PyWake"
+      },
+      {
+        "subject": "Python"
+      }
+    ],
+    "copyright": "Copyright (c) 2018 DTU Wind And Energy Systems.",
     "related_identifiers": [
       {
         "identifier": "https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga",
-        "relation": "isSupplementTo",
-        "scheme": "url"
+        "scheme": "url",
+        "relation_type": {
+          "id": "issupplementto"
+        }
       },
       {
         "identifier": "https://topfarm.pages.windenergy.dtu.dk/PyFuga/main/index.html",
-        "relation": "isDocumentedBy",
-        "scheme": "url"
+        "scheme": "url",
+        "relation_type": {
+          "id": "isdocumentedby"
+        }
       }
     ],
     "creators": [
@@ -28,11 +66,35 @@
           "name": "Alcayaga Román, Leonardo",
           "type": "personal",
           "given_name": "Leonardo",
-          "family_name": "Alcayaga Román"
+          "family_name": "Alcayaga Román",
+          "identifiers": [
+            {
+              "scheme": "orcid",
+              "identifier": "0000-0003-4175-9024"
+            }
+          ]
         },
         "affiliations": [
           {
-            "id": "DTU-Wind-Energy-Systems",
+            "name": "DTU Wind and Energy Systems"
+          }
+        ]
+      },
+      {
+        "person_or_org": {
+          "name": "Pedersen, Mads Mølgaard",
+          "type": "personal",
+          "given_name": "Mads Mølgaard",
+          "family_name": "Pedersen",
+          "identifiers": [
+            {
+              "scheme": "orcid",
+              "identifier": "0000-0003-1411-6402"
+            }
+          ]
+        },
+        "affiliations": [
+          {
             "name": "DTU Wind and Energy Systems"
           }
         ]
@@ -52,7 +114,6 @@
         },
         "affiliations": [
           {
-            "id": "DTU-Wind-Energy-Systems",
             "name": "DTU Wind and Energy Systems"
           }
         ]
@@ -66,7 +127,6 @@
         },
         "affiliations": [
           {
-            "id": "DTU-Wind-Energy-Systems",
             "name": "DTU Wind and Energy Systems"
           }
         ]
@@ -76,25 +136,16 @@
           "name": "Larsen, Gunner Christian",
           "type": "personal",
           "given_name": "Gunner Christian",
-          "family_name": "Larsen"
+          "family_name": "Larsen",
+          "identifiers": [
+            {
+              "scheme": "orcid",
+              "identifier": "0000-0002-6482-8208"
+            }
+          ]
         },
         "affiliations": [
           {
-            "id": "DTU-Wind-Energy-Systems",
-            "name": "DTU Wind and Energy Systems"
-          }
-        ]
-      },
-      {
-        "person_or_org": {
-          "name": "Pedersen, Mads Mølgaard",
-          "type": "personal",
-          "given_name": "Mads Mølgaard",
-          "family_name": "Pedersen"
-        },
-        "affiliations": [
-          {
-            "id": "DTU-Wind-Energy-Systems",
             "name": "DTU Wind and Energy Systems"
           }
         ]
@@ -104,15 +155,31 @@
           "name": "Ott, Søren",
           "type": "personal",
           "given_name": "Søren",
-          "family_name": "Ott"
+          "family_name": "Ott",
+          "identifiers": [
+            {
+              "scheme": "orcid",
+              "identifier": "0000-0003-2079-9422"
+            }
+          ]
         },
         "affiliations": [
           {
-            "id": "DTU-Wind-Energy-Systems",
             "name": "DTU Wind and Energy Systems"
           }
         ]
       }
     ]
+  },
+  "custom_fields": {
+    "code:codeRepository": "https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga",
+    "code:programmingLanguage": [
+      {
+        "id": "python"
+      }
+    ],
+    "code:developmentStatus": {
+      "id": "active"
+    }
   }
 }
