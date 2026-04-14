@@ -30,6 +30,9 @@ tests/notebook_outputs/
 .mypy_cache/
 .ruff_cache/
 
+# Pre-commit
+.pre-commit-cache/
+
 # Documentation
 docs/_build*/
 docs/api/generated/

@@ -9,8 +9,7 @@ PyFuga is part of the [**PyWake**](https://gitlab.windenergy.dtu.dk/TOPFARM/PyWa
 [![pipeline status](https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga/badges/main/pipeline.svg)](https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga/-/commits/main)
 [![coverage report](https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga/badges/main/coverage.svg)](https://gitlab.windenergy.dtu.dk/TOPFARM/PyFuga/-/commits/main)
 [![documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://topfarm.pages.windenergy.dtu.dk/PyFuga)
-<!-- Replace 000000000 with the Zenodo badge id after first deposit. -->
-[![Latest release DOI (Zenodo)](https://zenodo.org/badge/000000000.svg)](https://zenodo.org/badge/latestdoi/000000000)
+[![All versions DOI (Zenodo)](https://zenodo.org/badge/DOI/10.5281/zenodo.19569518.svg)](https://doi.org/10.5281/zenodo.19569518)
 
 ## Installation
 
