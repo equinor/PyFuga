@@ -31,7 +31,7 @@ import numpy as np
 import numpy.typing as npt
 from numpy import linalg
 from numpy import newaxis as na
-from tqdm import tqdm
+from tqdm import tqdm  # pyright: ignore[reportMissingImports]
 
 from pyfuga.constants import FIRST_Z_OUTPUT, KAPPA, UVW_LT
 from pyfuga.preluts import PreLUTs

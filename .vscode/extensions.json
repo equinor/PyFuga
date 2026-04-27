@@ -4,6 +4,7 @@
     "ms-python.vscode-pylance",
     "ms-python.black-formatter",
     "charliermarsh.ruff",
-    "eamodio.gitlens"
+    "eamodio.gitlens",
+    "renan-r-santos.pixi-code"
   ]
 }

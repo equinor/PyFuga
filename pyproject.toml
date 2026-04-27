@@ -107,19 +107,20 @@ pyfuga = { path = ".", editable = true, extras = ["tests"] }
 
 [tool.pixi.tasks]
 # Formatting
-check-fmt = "black --check . && ruff check ."
-fmt = "black . && ruff check . --fix"
+check-fmt = "pixi run -e py312 black --check . && pixi run -e py312 ruff check ."
+fmt = "pixi run -e py312 black . && pixi run -e py312 ruff check . --fix"
 
 # Static typing (strict; see [tool.mypy] — only pyfuga.typing is fully enforced until follow-up MRs)
-mypy = "python -m mypy pyfuga"
+# Run in the pinned py312 environment by default for consistent local/editor behavior.
+mypy = "pixi run -e py312 python -m mypy pyfuga"
 
 # Testing
-test = "pytest --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc --import-mode=importlib"
+test = "pixi run -e py312 pytest --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc --import-mode=importlib"
 
 # Documentation
-build-docs = "rm -rf docs/_build && rm -rf docs/api/generated && NUMBA_DISABLE_JIT=1 sphinx-build -b html docs docs/_build"
+build-docs = "rm -rf docs/_build && rm -rf docs/api/generated && NUMBA_DISABLE_JIT=1 pixi run -e py312 sphinx-build -b html docs docs/_build"
 autobuild-docs = """
-sphinx-autobuild docs docs/_build \
+pixi run -e py312 sphinx-autobuild docs docs/_build \
   --port 8000 \
   --watch pyfuga \
   --open-browser
@@ -262,12 +263,24 @@ disable_error_code = ["no-untyped-call", "no-any-return", "untyped-decorator"]
 [[tool.mypy.overrides]]
 module = "pyfuga.preluts_generator"
 ignore_errors = false
-disable_error_code = ["no-untyped-call", "no-untyped-def", "untyped-decorator", "no-any-return", "attr-defined"]
+disable_error_code = [
+  "no-untyped-call",
+  "no-untyped-def",
+  "untyped-decorator",
+  "no-any-return",
+  "attr-defined",
+]
 
 [[tool.mypy.overrides]]
 module = "pyfuga.preluts_generator.*"
 ignore_errors = false
-disable_error_code = ["no-untyped-call", "no-untyped-def", "untyped-decorator", "no-any-return", "attr-defined"]
+disable_error_code = [
+  "no-untyped-call",
+  "no-untyped-def",
+  "untyped-decorator",
+  "no-any-return",
+  "attr-defined",
+]
 
 [[tool.mypy.overrides]]
 module = "memory_profiler"
@@ -289,3 +302,13 @@ supported-python-versions = ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
 [tool.pytest.ini_options]
 markers = ["local: mark test as local-only (not run in CI)"]
+
+# --------------------------------------------------------------------------------------------------
+# Pyright configuration
+# --------------------------------------------------------------------------------------------------
+
+[tool.basedpyright]
+typeCheckingMode = "off"
+venvPath = ".pixi/envs"
+venv = "py312"
+pythonVersion = "3.12"

@@ -7,7 +7,7 @@ from pyfuga.preluts import PreLUTs
 from .test_files import tfp
 
 sys.path.append(r"C:\mmpe\programming\python\Topfarm\CuttingEdge\Fuga\Easylut")  # nopep8
-from run import run
+from run import run  # type: ignore[import-not-found]  # pyright: ignore[reportMissingImports]
 
 os.chdir(r"C:\mmpe\programming\python\Topfarm\CuttingEdge\Fuga\Easylut")
 Path("lut_path.txt").write_text(tfp)
