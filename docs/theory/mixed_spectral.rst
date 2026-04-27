@@ -154,9 +154,9 @@ in eq. :eq:`eq:Eom Fourier transformed`. That means we show one out of three pos
 we restrict the equation to the triangular function of a single vertical level :math:`z_n`, so that 
 we can replace :math:`f_1` by :math:`f_{1,n}\phi_n`.
 
-We introduce the dimensionless zeroth order velocity in the :math:`x`-direction 
-:math:`U^{0*}=U^0/u_*` together with :math:`K^* = K/u_*`, which we note has dimension length and 
-appears in :math:`kK^*` factors in the dimensionless equations. We use the relation for wind shear 
+We introduce the dimensionless zeroth order velocity in the :math:`x`-direction
+:math:`U^{0*}=U^0/u_*` together with the non-dimensional eddy viscosity
+:math:`K^* = kK/u_*`. We use the relation for wind shear
 in the boundary layer :math:`\partial U^{0*} / \partial z = 1/K^*(z)`. 
 
 Using the new independent variable :math:`s = kz` and the new dependent variables 
@@ -169,13 +169,13 @@ with :math:`f_2=f_3=0` to be
 
     \begin{aligned}
         \frac{\partial \tilde{u}}{\partial s} &= \tilde{u}' \\
-        \frac{\partial \tilde{u}'}{\partial s} &= \left( 1 + \frac{i \cos{\beta} U^{0*}}{k K^*} \right) \tilde{u} - \frac{1}{K^*} \frac{\partial K^*}{\partial s} \tilde{u}' + \left(\frac{1}{(kK^*)^2} - \frac{1}{K^*} \frac{\partial K^*}{\partial s} i \cos{\beta} \right) \tilde{w} \\
-        & \qquad + \frac{ i \cos{\beta}}{k K^*} \tilde{p} - \frac{\phi_n}{k K^*} \\
+        \frac{\partial \tilde{u}'}{\partial s} &= \left( 1 + \frac{i \cos{\beta} U^{0*}}{K^*} \right) \tilde{u} - \frac{1}{K^*} \frac{\partial K^*}{\partial s} \tilde{u}' + \left(\frac{1}{(K^*)^2} - \frac{1}{K^*} \frac{\partial K^*}{\partial s} i \cos{\beta} \right) \tilde{w} \\
+        & \qquad + \frac{ i \cos{\beta}}{K^*} \tilde{p} - \frac{\phi_n}{K^*} \\
         \frac{\partial \tilde{v}}{\partial s} &= \tilde{v}' \\
-        \frac{\partial \tilde{v}'}{\partial s} &= \left(1+\frac{i\cos{\beta}U^{0*}}{kK^*}\right) \tilde{v} -\frac{1}{K^*} \frac{\partial K^*}{\partial s} \tilde{v}' - \frac{1}{K^*} \frac{\partial K^*}{\partial s}i \sin{\beta} \tilde{w} + \frac{ i \sin{\beta}}{k K^*} \tilde{p} \\
+        \frac{\partial \tilde{v}'}{\partial s} &= \left(1+\frac{i\cos{\beta}U^{0*}}{K^*}\right) \tilde{v} -\frac{1}{K^*} \frac{\partial K^*}{\partial s} \tilde{v}' - \frac{1}{K^*} \frac{\partial K^*}{\partial s}i \sin{\beta} \tilde{w} + \frac{ i \sin{\beta}}{K^*} \tilde{p} \\
         \frac{\partial \tilde{w}}{\partial s} &= - i \cos{\beta} \tilde{u} - i \sin{\beta}\tilde{v} \\
-        \frac{\partial \tilde{p}}{\partial s} &= - 2 i k \frac{\partial K^*}{\partial s}(\cos{\beta}\tilde{u} + \sin{\beta} \tilde{v}) - i k K^* (\cos{\beta} \tilde{u}' + \sin{\beta} \tilde{v}') \\
-        & \qquad - \left(k K^* + U^{0*} i \cos{\beta} \right) \tilde{w},
+        \frac{\partial \tilde{p}}{\partial s} &= - 2 i \frac{\partial K^*}{\partial s}(\cos{\beta}\tilde{u} + \sin{\beta} \tilde{v}) - i K^* (\cos{\beta} \tilde{u}' + \sin{\beta} \tilde{v}') \\
+        & \qquad - \left(K^* + U^{0*} i \cos{\beta} \right) \tilde{w},
     \end{aligned}
 
 valid at the vertical level :math:`z_n`. The great advantage of this formulation is that it is 
@@ -194,13 +194,13 @@ formulation with :math:`t = U^{0}\kappa/u_*` as the independent variable,
 
     \begin{aligned}
         \frac{\partial \tilde{u}}{\partial t} &= \tilde{u}' \\
-        \frac{\partial \tilde{u}'}{\partial t} &= \left( \frac{U^{0*} i \cos{\beta} k K^*}{\kappa^2} + \frac{(k K^*)^2}{\kappa^2} \right) \tilde{u} + \left( \frac{1}{\kappa^2} - \frac{k}{\kappa} \frac{\partial K^*}{\partial t} i \cos{\beta} \right) \tilde{w} \\
-        & \qquad + \frac{i \cos{\beta} k K^*}{\kappa^2} \tilde{p} - \frac{k K^* \phi_n}{\kappa^2} \\
+        \frac{\partial \tilde{u}'}{\partial t} &= \left( \frac{U^{0*} i \cos{\beta} K^*}{\kappa^2} + \frac{(K^*)^2}{\kappa^2} \right) \tilde{u} + \left( \frac{1}{\kappa^2} - \frac{1}{\kappa} \frac{\partial K^*}{\partial t} i \cos{\beta} \right) \tilde{w} \\
+        & \qquad + \frac{i \cos{\beta} K^*}{\kappa^2} \tilde{p} - \frac{K^* \phi_n}{\kappa^2} \\
         \frac{\partial \tilde{v}}{\partial t} &= \tilde{v}' \\
-        \frac{\partial \tilde{v}'}{\partial t} &= \left( \frac{U^{0*} i \cos{\beta} k K^*}{\kappa^2}+\frac{(k K^*)^2}{\kappa^2} \right) \tilde{v} - \frac{k}{\kappa} \frac{\partial K^*}{\partial t}i \sin{\beta} \tilde{w} + \frac{i \sin{\beta} k K^*}{\kappa^2} \tilde{p} \\
-        \frac{\partial \tilde{w}}{\partial t} &= - \frac{ikK^*}{\kappa} \left( \cos{\beta} \tilde{u} + \sin{\beta} \tilde{v} \right) \\
-        \frac{\partial\tilde{p}}{\partial t} &= - 2 i k \frac{\partial K^*}{\partial t} (\cos{\beta}\tilde{u} + \sin{\beta}\tilde{v}) - i k K^* (\cos{\beta} \tilde{u}' + \sin{\beta} \tilde{v}') \\
-        & \qquad - \left( \frac{(kK^*)^2}{\kappa} + \frac{U^{0*} i \cos{\beta} kK^*}{\kappa} \right) \tilde{w}.
+        \frac{\partial \tilde{v}'}{\partial t} &= \left( \frac{U^{0*} i \cos{\beta} K^*}{\kappa^2}+\frac{(K^*)^2}{\kappa^2} \right) \tilde{v} - \frac{1}{\kappa} \frac{\partial K^*}{\partial t}i \sin{\beta} \tilde{w} + \frac{i \sin{\beta} K^*}{\kappa^2} \tilde{p} \\
+        \frac{\partial \tilde{w}}{\partial t} &= - \frac{iK^*}{\kappa} \left( \cos{\beta} \tilde{u} + \sin{\beta} \tilde{v} \right) \\
+        \frac{\partial\tilde{p}}{\partial t} &= - 2 i \frac{\partial K^*}{\partial t} (\cos{\beta}\tilde{u} + \sin{\beta}\tilde{v}) - i K^* (\cos{\beta} \tilde{u}' + \sin{\beta} \tilde{v}') \\
+        & \qquad - \left( \frac{(K^*)^2}{\kappa} + \frac{U^{0*} i \cos{\beta} K^*}{\kappa} \right) \tilde{w}.
     \end{aligned}
 
 The non-dimensional solutions then become functions of :math:`k z` and three parameters: 

@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 Development version after the 0.2.0 release.
 
+### Changed
+
+- Updated non-dimensional eddy-viscosity notation to use :math:`K^* = kK/u_*` consistently in both implementation and theory docs.
+- Refactored `pyfuga.preluts_generator.matrices` variable naming from `kK`-style terms to `K_star`-style terms without changing numerical behavior.
+
 ## [0.2.0] - 2026-04-02
 
 Second public beta release focused on API expansion, LUT pipeline refactoring, and release/distribution workflow improvements.

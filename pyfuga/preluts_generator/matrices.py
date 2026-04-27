@@ -26,58 +26,58 @@ def compute_kz_u(
 
 
 @jit("Tuple((double, double, double, double))(double, double, double, double, double)")
-def compute_kK_params(
+def compute_kstar_params(
     zeta0: float, kz: float, cdivkL: float, cosbeta: float, sinbeta: float
 ) -> tuple[float, float, float, float]:
-    """Compute kK, dKdz, kKcos, and kKsin based on stability."""
+    """Compute K_star, dKstar_dz, K_star_cos, and K_star_sin based on stability."""
     if zeta0 < 0:  # unstable
-        kK = KAPPA * kz * get_phi_inverse(kz, cdivkL)
-        dKdz = kK * (1.0 / kz + 0.25 / (1.0 / cdivkL + kz))
+        K_star = KAPPA * kz * get_phi_inverse(kz, cdivkL)
+        dKstar_dz = K_star * (1.0 / kz + 0.25 / (1.0 / cdivkL + kz))
     else:  # stable or neutral
         aux = get_phi(zeta0, kz, cdivkL)
-        kK = KAPPA * kz / aux
-        dKdz = KAPPA / (aux**2)
-    kKcos = kK * cosbeta
-    kKsin = kK * sinbeta
-    return kK, dKdz, kKcos, kKsin
+        K_star = KAPPA * kz / aux
+        dKstar_dz = KAPPA / (aux**2)
+    K_star_cos = K_star * cosbeta
+    K_star_sin = K_star * sinbeta
+    return K_star, dKstar_dz, K_star_cos, K_star_sin
 
 
 @jit("complex128[:,:](double, double, double, double, double)")
-def create_M_t(u: float, kK: float, dKdz: float, kKcos: float, kKsin: float) -> ComplexArray:
+def create_M_t(u: float, K_star: float, dKstar_dz: float, K_star_cos: float, K_star_sin: float) -> ComplexArray:
     """Create the 6x6 adjoint system matrix M = -A* in t-space."""
     return np.array(
         [
             [
                 0,
-                complex(-(kK**2), kKcos * u) / KAPPA_SQUARED,
+                complex(-(K_star**2), K_star_cos * u) / KAPPA_SQUARED,
                 0,
                 0,
-                complex(0, -kKcos / KAPPA),
-                complex(0, -2 * dKdz * kKcos / KAPPA),  # TODO: misplaced factor of kK*/KAPPA?
+                complex(0, -K_star_cos / KAPPA),
+                complex(0, -2 * dKstar_dz * K_star_cos / KAPPA),  # TODO: misplaced factor of K*/KAPPA?
             ],
-            [-1, 0, 0, 0, 0, complex(0, -kKcos)],
+            [-1, 0, 0, 0, 0, complex(0, -K_star_cos)],
             [
                 0,
                 0,
                 0,
-                complex(-(kK**2), kKcos * u) / KAPPA_SQUARED,
-                complex(0, -kKsin / KAPPA),
-                complex(0, -2 * dKdz * kKsin / KAPPA),  # TODO: misplaced factor of kK*/KAPPA?
+                complex(-(K_star**2), K_star_cos * u) / KAPPA_SQUARED,
+                complex(0, -K_star_sin / KAPPA),
+                complex(0, -2 * dKstar_dz * K_star_sin / KAPPA),  # TODO: misplaced factor of K*/KAPPA?
             ],
-            [0, 0, -1, 0, 0, complex(0, -kKsin)],
+            [0, 0, -1, 0, 0, complex(0, -K_star_sin)],
             [
                 0,
-                complex(-1, -dKdz * kKcos) / KAPPA_SQUARED,  # TODO: misplaced factor of kK*/KAPPA?
+                complex(-1, -dKstar_dz * K_star_cos) / KAPPA_SQUARED,  # TODO: misplaced factor of K*/KAPPA?
                 0,
-                complex(0, -dKdz * kKsin / KAPPA_SQUARED),  # TODO: misplaced factor of kK*/KAPPA?
+                complex(0, -dKstar_dz * K_star_sin / KAPPA_SQUARED),  # TODO: misplaced factor of K*/KAPPA?
                 0,
-                complex(kK**2, -kKcos * u) / (KAPPA),
+                complex(K_star**2, -K_star_cos * u) / (KAPPA),
             ],
             [
                 0,
-                complex(0, kKcos / KAPPA_SQUARED),
+                complex(0, K_star_cos / KAPPA_SQUARED),
                 0,
-                complex(0, kKsin / KAPPA_SQUARED),
+                complex(0, K_star_sin / KAPPA_SQUARED),
                 0,
                 0,
             ],
@@ -87,56 +87,56 @@ def create_M_t(u: float, kK: float, dKdz: float, kKcos: float, kKsin: float) -> 
 
 @jit("complex128[:,:](double, double, double, double, double, double, double)")
 def create_M_s(
-    u: float, kK: float, dKdz: float, cosbeta: float, sinbeta: float, kKcos: float, kKsin: float
+    u: float, K_star: float, dKstar_dz: float, cosbeta: float, sinbeta: float, K_star_cos: float, K_star_sin: float
 ) -> ComplexArray:
     """Create the 6x6 adjoint system matrix M = -A* in s-space."""
     return np.array(
         [
             [
                 0,
-                complex(-1, cosbeta * u / kK),
+                complex(-1, cosbeta * u / K_star),
                 0,
                 0,
                 complex(0, -cosbeta),
-                complex(0, -2 * dKdz * cosbeta),
+                complex(0, -2 * dKstar_dz * cosbeta),
             ],
             [
                 -1,
-                dKdz / kK,
+                dKstar_dz / K_star,
                 0,
                 0,
                 0,
-                complex(0, -kKcos),
+                complex(0, -K_star_cos),
             ],
             [
                 0,
                 0,
                 0,
-                complex(-1, cosbeta * u / kK),
+                complex(-1, cosbeta * u / K_star),
                 complex(0, -sinbeta),
-                complex(0, -2 * dKdz * sinbeta),
+                complex(0, -2 * dKstar_dz * sinbeta),
             ],
             [
                 0,
                 0,
                 -1,
-                dKdz / kK,
+                dKstar_dz / K_star,
                 0,
-                complex(0, -kKsin),
+                complex(0, -K_star_sin),
             ],
             [
                 0,
-                complex(-1 / kK**2, dKdz / kK * cosbeta),  # TODO: missing complex conjugation?
+                complex(-1 / K_star**2, dKstar_dz / K_star * cosbeta),  # TODO: missing complex conjugation?
                 0,
-                complex(0, -dKdz / kK * sinbeta),
+                complex(0, -dKstar_dz / K_star * sinbeta),
                 0,
-                complex(kK, -cosbeta * u),
+                complex(K_star, -cosbeta * u),
             ],
             [
                 0,
-                complex(0, cosbeta / kK),
+                complex(0, cosbeta / K_star),
                 0,
-                complex(0, sinbeta / kK),
+                complex(0, sinbeta / K_star),
                 0,
                 0,
             ],
@@ -175,8 +175,8 @@ def getM(
         A 6x6 complex matrix M.
     """
     kz, u = compute_kz_u(j, t, kz0, psi0, lastkz, zeta0, cdivkL)
-    kK, dKdz, kKcos, kKsin = compute_kK_params(zeta0, kz, cdivkL, cosbeta, sinbeta)
+    K_star, dKstar_dz, K_star_cos, K_star_sin = compute_kstar_params(zeta0, kz, cdivkL, cosbeta, sinbeta)
     if j == COORD_T:
-        return create_M_t(u, kK, dKdz, kKcos, kKsin)
+        return create_M_t(u, K_star, dKstar_dz, K_star_cos, K_star_sin)
     else:  # j == COORD_S:
-        return create_M_s(u, kK, dKdz, cosbeta, sinbeta, kKcos, kKsin)
+        return create_M_s(u, K_star, dKstar_dz, cosbeta, sinbeta, K_star_cos, K_star_sin)

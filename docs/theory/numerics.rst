@@ -17,7 +17,7 @@ Stating the problem as a matrix equation and using :math:`z` as a general vertic
  
    \frac{\partial X_i(z)}{\partial z} = A_{ij}X_j(z)+F_i
  
-for each vertical level :math:`z_n`, where :math:`\mathbf{X}^T(z) = [u(z),u'(z),v(z),v'(z),w(z),p(z)]`, and :math:`F_i` is non-zero for :math:`i=2,4\,\,\text{or}\,\,6` - representing longitudinal, transverse and vertical forcing, respectively. The three orthogonal forcing directions represent three separate solutions, which can in the end be scaled and superimposed to give the response of the full three-dimensional forcing. Depending on which vertical variable is used, :math:`F_i =\phi_n(z)\hat{\mathbf{e}}_i/kK^*` in the case of :math:`s` and :math:`F_i = kK^*\phi_n(z)\hat{\mathbf{e}}_i/\kappa^2` in the case of :math:`t`.
+for each vertical level :math:`z_n`, where :math:`\mathbf{X}^T(z) = [u(z),u'(z),v(z),v'(z),w(z),p(z)]`, and :math:`F_i` is non-zero for :math:`i=2,4\,\,\text{or}\,\,6` - representing longitudinal, transverse and vertical forcing, respectively. The three orthogonal forcing directions represent three separate solutions, which can in the end be scaled and superimposed to give the response of the full three-dimensional forcing. Depending on which vertical variable is used, :math:`F_i =\phi_n(z)\hat{\mathbf{e}}_i/K^*` in the case of :math:`s` and :math:`F_i = K^*\phi_n(z)\hat{\mathbf{e}}_i/\kappa^2` in the case of :math:`t`.
  
 Note that the equation is dimensionless as defined in equations :eq:`eq:Eom Fourier transformed nondim s` and :eq:`eq:Eom Fourier transformed nondim t` of the previous section, but we are omitting the tilde's on the variables for brevity. See appendix C.4 for more detail.
  
