@@ -5,6 +5,7 @@ __pycache__/
 # Virtual Environments
 .venv*
 .pixi/
+.pixi-cache/
 
 # Build & Distribution
 build/

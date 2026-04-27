@@ -59,3 +59,10 @@ def test_calculate_s_transition_max_iterations_runtime_error(monkeypatch):
 
     with pytest.raises(RuntimeError, match="Maximum iterations reached without convergence."):
         gen.calculate_s_transition()
+
+
+def test_calculate_s_transition_unstable_converges_on_forced_isclose(monkeypatch: pytest.MonkeyPatch) -> None:
+    gen = PreLUTGenerator(zeta0=-0.1, kz0=0.1, beta=0.0, kzmax=1000.0, ds=0.1, accgoal=1e-2)
+    monkeypatch.setattr(math, "isclose", lambda a, b, rel_tol=..., abs_tol=...: True)
+    log_s_tr = gen.calculate_s_transition()
+    assert np.isfinite(log_s_tr)

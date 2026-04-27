@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import importlib.metadata as importlib_metadata
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -12,6 +13,7 @@ import pyfuga
 import pyfuga._fuga as _fuga
 from pyfuga import get_luts
 from pyfuga.paths import get_fluts_path, get_luts_path, get_preluts_path
+from pyfuga.utils import normalise_n_cpu_workers, resolve_n_cpu_stage, validate_n_cpu
 
 
 @pytest.mark.parametrize("name", ["get_luts", "get_fluts", "get_preluts"])
@@ -81,7 +83,7 @@ def test_get_luts_public_api_smoke(tmp_path: Path):
         dx=None,
         dy=None,
         jit=True,
-        n_cpu=None,
+        n_cpu=1,
     )
 
     # Basic "public API returned something" checks
@@ -143,3 +145,266 @@ def test_get_luts_orchestration_and_caching(tmp_path: Path):
 
     assert before == after, "cache files were rewritten on second call"
     xr.testing.assert_identical(luts, luts2)
+
+
+def test_validate_n_cpu_rejects_non_positive() -> None:
+    validate_n_cpu(None)
+    with pytest.raises(ValueError, match="None or >= 1"):
+        validate_n_cpu(0)
+    with pytest.raises(ValueError, match="None or >= 1"):
+        validate_n_cpu(-3)
+
+
+def test_normalise_n_cpu_workers_none_uses_cpu_count(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("pyfuga.utils.os.cpu_count", lambda: 11)
+    assert normalise_n_cpu_workers(None) == 11
+
+
+def test_normalise_n_cpu_workers_none_falls_back_when_cpu_count_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("pyfuga.utils.os.cpu_count", lambda: None)
+    assert normalise_n_cpu_workers(None) == 1
+
+
+def test_resolve_n_cpu_stage_defaults_to_global() -> None:
+    assert resolve_n_cpu_stage(3, None) == {"preluts": 3, "fluts": 3, "trafalgar": 3}
+
+
+def test_resolve_n_cpu_stage_defaults_none_to_cpu_count(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("pyfuga.utils.os.cpu_count", lambda: 7)
+    assert resolve_n_cpu_stage(None, None) == {"preluts": 7, "fluts": 7, "trafalgar": 7}
+
+
+def test_resolve_n_cpu_stage_applies_overrides() -> None:
+    assert resolve_n_cpu_stage(4, {"trafalgar": 1, "preluts": 2}) == {"preluts": 2, "fluts": 4, "trafalgar": 1}
+
+
+def test_resolve_n_cpu_stage_none_override_for_one_stage(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("pyfuga.utils.os.cpu_count", lambda: 6)
+    assert resolve_n_cpu_stage(2, {"trafalgar": None}) == {"preluts": 2, "fluts": 2, "trafalgar": 6}
+
+
+def test_resolve_n_cpu_stage_stage_aware_defaults_with_partial_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("pyfuga.utils.os.cpu_count", lambda: 5)
+    assert resolve_n_cpu_stage(None, {"trafalgar": 2}) == {"preluts": 5, "fluts": 5, "trafalgar": 2}
+
+
+def test_resolve_n_cpu_stage_rejects_unknown_or_invalid() -> None:
+    with pytest.raises(ValueError, match="unknown stage keys"):
+        resolve_n_cpu_stage(1, {"stage3": 2})  # type: ignore[typeddict-unknown-key]
+    with pytest.raises(ValueError, match="None or >= 1"):
+        resolve_n_cpu_stage(1, {"fluts": 0})
+    with pytest.raises(ValueError, match="int or None"):
+        resolve_n_cpu_stage(1, {"fluts": 1.5})  # type: ignore[arg-type]
+
+
+def test_get_luts_rejects_invalid_n_cpu(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="None or >= 1"):
+        get_luts(
+            folder=tmp_path,
+            zeta0=0,
+            nkz0=2,
+            nbeta=8,
+            diameter=80,
+            zhub=70,
+            z0=1e-5,
+            zi=400,
+            zlow=70,
+            zhigh=70,
+            lut_vars=["UL"],
+            nx=64,
+            ny=32,
+            n_cpu=0,
+        )
+
+
+@pytest.mark.parametrize("passed_n_cpu, expected", [(4, 4), (1, 1)])
+def test_get_luts_forwards_n_cpu_to_trafalgar(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, passed_n_cpu: int, expected: int
+) -> None:
+    recorded: list[int] = []
+
+    class FakeTrafalgar:
+        def __init__(self, *a: object, **k: object) -> None:
+            pass
+
+        def make_luts(self, *, interpolation_order: int = 0, n_cpu: int = -1, **kwargs: object) -> xr.Dataset:
+            recorded.append(n_cpu)
+            return xr.Dataset()
+
+    monkeypatch.setattr(_fuga, "Trafalgar", FakeTrafalgar)
+    monkeypatch.setattr(_fuga, "get_fluts", lambda *args, **kwargs: object())
+
+    base: dict[str, Any] = {
+        "folder": tmp_path,
+        "zeta0": 0,
+        "nkz0": 2,
+        "nbeta": 8,
+        "diameter": 80,
+        "zhub": 70,
+        "z0": 1e-5,
+        "zi": 400,
+        "zlow": 70,
+        "zhigh": 70,
+        "lut_vars": ["UL"],
+        "nx": 64,
+        "ny": 32,
+    }
+    base["n_cpu"] = passed_n_cpu
+    _fuga.get_luts(**base)
+    assert recorded == [expected]
+
+
+def test_get_luts_default_n_cpu_none_forwards_all_cpu_to_trafalgar(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr("pyfuga.utils.os.cpu_count", lambda: 9)
+    recorded: list[int] = []
+
+    class FakeTrafalgar:
+        def __init__(self, *a: object, **k: object) -> None:
+            pass
+
+        def make_luts(self, *, interpolation_order: int = 0, n_cpu: int = -1, **kwargs: object) -> xr.Dataset:
+            recorded.append(n_cpu)
+            return xr.Dataset()
+
+    monkeypatch.setattr(_fuga, "Trafalgar", FakeTrafalgar)
+    monkeypatch.setattr(_fuga, "get_fluts", lambda *args, **kwargs: object())
+
+    _fuga.get_luts(
+        folder=tmp_path,
+        zeta0=0,
+        nkz0=2,
+        nbeta=8,
+        diameter=80,
+        zhub=70,
+        z0=1e-5,
+        zi=400,
+        zlow=70,
+        zhigh=70,
+        lut_vars=["UL"],
+        nx=64,
+        ny=32,
+        n_cpu=None,
+    )
+    assert recorded == [9]
+
+
+def test_get_luts_forwards_stage_specific_n_cpu(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    calls: dict[str, int] = {}
+
+    class FakeTrafalgar:
+        def __init__(self, *a: object, **k: object) -> None:
+            pass
+
+        def make_luts(self, *, interpolation_order: int = 0, n_cpu: int = -1, **kwargs: object) -> xr.Dataset:
+            calls["trafalgar"] = n_cpu
+            return xr.Dataset()
+
+    def fake_get_fluts(*args: object, **kwargs: object) -> object:
+        calls["fluts"] = int(args[12])  # n_cpu positional arg in get_fluts call
+        calls["preluts"] = int(kwargs["n_cpu_stage"]["preluts"])  # forwarded from get_luts
+        return object()
+
+    monkeypatch.setattr(_fuga, "Trafalgar", FakeTrafalgar)
+    monkeypatch.setattr(_fuga, "get_fluts", fake_get_fluts)
+
+    _fuga.get_luts(
+        folder=tmp_path,
+        zeta0=0,
+        nkz0=2,
+        nbeta=8,
+        diameter=80,
+        zhub=70,
+        z0=1e-5,
+        zi=400,
+        zlow=70,
+        zhigh=70,
+        lut_vars=["UL"],
+        nx=64,
+        ny=32,
+        n_cpu=4,
+        n_cpu_stage={"preluts": 2, "fluts": 3, "trafalgar": 1},
+    )
+    assert calls == {"preluts": 2, "fluts": 3, "trafalgar": 1}
+
+
+def test_get_luts_defaults_to_parallel_preluts_fluts_and_trafalgar(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr("pyfuga.utils.os.cpu_count", lambda: 8)
+    calls: dict[str, int] = {}
+
+    class FakeTrafalgar:
+        def __init__(self, *a: object, **k: object) -> None:
+            pass
+
+        def make_luts(self, *, interpolation_order: int = 0, n_cpu: int = -1, **kwargs: object) -> xr.Dataset:
+            calls["trafalgar"] = n_cpu
+            return xr.Dataset()
+
+    def fake_get_fluts(*args: object, **kwargs: object) -> object:
+        calls["fluts"] = int(args[12])  # n_cpu positional arg in get_fluts call
+        calls["preluts"] = int(kwargs["n_cpu_stage"]["preluts"])
+        return object()
+
+    monkeypatch.setattr(_fuga, "Trafalgar", FakeTrafalgar)
+    monkeypatch.setattr(_fuga, "get_fluts", fake_get_fluts)
+
+    _fuga.get_luts(
+        folder=tmp_path,
+        zeta0=0,
+        nkz0=2,
+        nbeta=8,
+        diameter=80,
+        zhub=70,
+        z0=1e-5,
+        zi=400,
+        zlow=70,
+        zhigh=70,
+        lut_vars=["UL"],
+        nx=64,
+        ny=32,
+    )
+    assert calls == {"preluts": 8, "fluts": 8, "trafalgar": 8}
+
+
+def test_get_fluts_forwards_stage_specific_n_cpu(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    calls: dict[str, int] = {}
+
+    class FakeFluts:
+        def save(self, filename: object) -> None:
+            Path(filename).touch()
+
+    class FakeGenerator:
+        def __init__(self, *a: object, **k: object) -> None:
+            pass
+
+        def make_hubheight_luts(self, *args: object, **kwargs: object) -> FakeFluts:
+            calls["fluts"] = int(kwargs["n_cpu"])
+            return FakeFluts()
+
+    def fake_get_preluts(*args: object, **kwargs: object) -> object:
+        calls["preluts"] = int(args[5])  # n_cpu positional arg in get_preluts call
+        return object()
+
+    monkeypatch.setattr(_fuga, "get_preluts", fake_get_preluts)
+    monkeypatch.setattr(_fuga, "FourierLUTGenerator", FakeGenerator)
+    monkeypatch.setattr(_fuga, "get_level_range", lambda *a, **k: (9999, 9999))
+
+    _fuga.get_fluts(
+        folder=tmp_path,
+        zeta0=0,
+        nkz0=2,
+        nbeta=8,
+        diameter=80,
+        zhub=70,
+        z0=1e-5,
+        zi=400,
+        zlow=70,
+        zhigh=70,
+        lut_vars=["UL"],
+        n_cpu=4,
+        n_cpu_stage={"preluts": 2, "fluts": 3},
+    )
+    assert calls == {"preluts": 2, "fluts": 3}

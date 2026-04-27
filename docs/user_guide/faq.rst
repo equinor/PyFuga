@@ -103,6 +103,36 @@ What does ``lut_vars`` control?
 
 Use only the variables you need. This can reduce runtime and output size.
 
+How does ``n_cpu`` relate to memory use?
+----------------------------------------
+
+``n_cpu`` must be ``None`` or an integer of at least ``1``. With
+:func:`pyfuga.get_luts`, the default ``n_cpu=None``
+runs all stages on all CPUs through stage-aware defaults in
+:func:`pyfuga.get_luts`. Values greater than ``1`` select that many workers when
+explicitly set; memory use can grow quickly because each worker may hold large
+grids. Increase parallelism only when you have headroom.
+
+Can I set different CPU counts for each stage?
+----------------------------------------------
+
+Yes. Use ``n_cpu_stage`` to override selected stages, optionally combined with
+an explicit global ``n_cpu`` value.
+
+Supported keys are ``"preluts"``, ``"fluts"``, and ``"trafalgar"``. Omitted
+keys keep the resolved defaults (or explicit global ``n_cpu`` if set). You may
+set a stage to ``None`` to use all CPUs for that stage only.
+
+Example:
+
+.. code-block:: python
+
+   get_luts(
+       ...,
+       n_cpu=4,
+       n_cpu_stage={"trafalgar": 1},
+   )
+
 Do I need legacy binary files?
 ------------------------------
 

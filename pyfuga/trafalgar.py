@@ -29,7 +29,6 @@ This module implements the Fast Fourier Integral Transform (FFIT) described in
 
 from __future__ import annotations
 
-import multiprocessing
 from collections.abc import Sequence
 from typing import Any, cast
 
@@ -41,6 +40,7 @@ from scipy.interpolate import RectBivariateSpline
 from tqdm import tqdm
 
 from pyfuga.constants import KAPPA
+from pyfuga.utils import multiprocessing_map, normalise_n_cpu_workers
 
 M_PI = 3.141592653589793
 
@@ -125,9 +125,12 @@ class Trafalgar:
             implementation: NNN=4, single tile starting at k=0, no arms,
             sign applied to spectral data before interpolation, and
             DC component zeroed.
-        n_cpu : int or None
-            Number of parallel worker processes.  ``None`` uses all available
-            CPUs; ``1`` disables multiprocessing.
+        n_cpu : int or None, optional
+            Number of parallel worker processes for evaluating FFIT over
+            wavenumber tiles. ``None`` (default) uses all available
+            CPUs (at least ``1``). Values greater than ``1`` use a process pool.
+            In :func:`pyfuga.get_luts`, default policy also resolves to all CPUs
+            unless overridden via ``n_cpu``/``n_cpu_stage``.
 
         Returns
         -------
@@ -135,6 +138,7 @@ class Trafalgar:
             Wake fields ``UL``, ``VL``, ... with dimensions ``(z, x, y)`` and
             coordinates ``x``, ``y``, ``z``.
         """
+        workers = normalise_n_cpu_workers(n_cpu)
         kz0_lst = np.asarray(self.fourier_luts.kz0.values)
         self.ny0 = self.ny // 2
 
@@ -149,8 +153,6 @@ class Trafalgar:
 
         # Build tile list (L-shaped coverage of wavenumber space)
         tiles = doKvector_tiles(self.nx, self.ny, self.dx, self.dy, NNNs, kmin, kmax, use_arms=(not legacy))
-
-        map_func = map if n_cpu == 1 else multiprocessing.Pool(n_cpu).imap
 
         args = (
             (self.fourier_luts,)
@@ -171,11 +173,20 @@ class Trafalgar:
             for t in tiles
         )
 
+        # Parallelism is per wavenumber tile (FFIT). Future work: optionally parallelise
+        # over vertical levels instead (e.g. for 3D LUTs) and choose strategy here.
+        with multiprocessing_map(workers) as map_func:
+            luts = list(
+                tqdm(
+                    map_func(make_luts_per_mesh, args),
+                    total=len(tiles),
+                    disable=self.verbose,
+                    desc="LUTS: adding meshes",
+                )
+            )
+
         # Accumulate tile contributions (linearity of Fourier integral)
         luts_accum: xr.Dataset | None = None
-        luts = list(
-            tqdm(map_func(make_luts_per_mesh, args), total=len(tiles), disable=self.verbose, desc="LUTS: adding meshes")
-        )
         for lut in luts:
             if luts_accum is None:
                 luts_accum = lut

@@ -14,10 +14,13 @@ alternative formulations of atmospheric code.
 """
 
 import importlib
+import multiprocessing as mp
+import os
 import sys
 import time
-from collections.abc import Callable
-from typing import Any, ParamSpec, TypeVar, overload
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
+from typing import Any, ParamSpec, TypedDict, TypeVar, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -83,6 +86,102 @@ def compile(jit: bool = True) -> None:
                 importlib.reload(mod)
         if numba_jit:
             print(f"JIT compiled in {time.time() - t}s")
+
+
+def validate_n_cpu(n_cpu: int | None) -> None:
+    """Raise ValueError if ``n_cpu`` is not a valid request (``None`` or ``int`` >= 1)."""
+    if n_cpu is None:
+        return
+    if n_cpu < 1:
+        raise ValueError(f"n_cpu must be None or >= 1, got {n_cpu}")
+
+
+def normalise_n_cpu_workers(n_cpu: int | None) -> int:
+    """Map ``None`` to a process count (all CPUs) or pass through explicit ``int`` >= 1."""
+    validate_n_cpu(n_cpu)
+    if n_cpu is None:
+        return max(1, os.cpu_count() or 1)
+    return n_cpu
+
+
+@contextmanager
+def multiprocessing_map(
+    workers: int, chunksize: int = 1
+) -> Iterator[Callable[[Callable[..., Any], Iterable[Any]], Iterator[Any]]]:
+    """Yield a map-like callable (serial ``map`` or ``spawn`` pool ``imap``)."""
+    if workers == 1:
+        yield map
+        return
+
+    ctx = mp.get_context("spawn")  # or "forkserver"
+    with ctx.Pool(processes=workers) as pool:
+
+        def pool_map(func: Callable[..., Any], items: Iterable[Any]) -> Iterator[Any]:
+            return pool.imap(func, items, chunksize=chunksize)
+
+        yield pool_map
+
+
+class NCpuStageConfig(TypedDict, total=False):
+    preluts: int | None
+    fluts: int | None
+    trafalgar: int | None
+
+
+class ResolvedNCpuStageConfig(TypedDict):
+    preluts: int
+    fluts: int
+    trafalgar: int
+
+
+def resolve_n_cpu_stage(n_cpu: int | None, n_cpu_stage: NCpuStageConfig | None = None) -> ResolvedNCpuStageConfig:
+    """Resolve per-stage workers with stage-aware defaults and optional global override.
+
+    Default policy (when both ``n_cpu`` and ``n_cpu_stage`` are omitted/``None``):
+        - ``preluts``: all CPUs
+        - ``fluts``: all CPUs
+        - ``trafalgar``: all CPUs
+
+    ``n_cpu`` (when provided as an ``int`` >= 1) acts as a global override for all
+    stages unless a specific stage is overridden via ``n_cpu_stage``.
+
+    Precedence:
+        1) Start from default policy above.
+        2) If ``n_cpu`` is an integer, apply it to all stages.
+        3) Apply ``n_cpu_stage`` overrides for provided stage keys.
+    """
+    validate_n_cpu(n_cpu)
+
+    default_stage: dict[str, int | None] = {"preluts": None, "fluts": None, "trafalgar": None}
+
+    if n_cpu_stage is None:
+        merged_default: dict[str, int | None] = (
+            default_stage if n_cpu is None else {"preluts": n_cpu, "fluts": n_cpu, "trafalgar": n_cpu}
+        )
+        return {
+            "preluts": normalise_n_cpu_workers(merged_default["preluts"]),
+            "fluts": normalise_n_cpu_workers(merged_default["fluts"]),
+            "trafalgar": normalise_n_cpu_workers(merged_default["trafalgar"]),
+        }
+
+    allowed = {"preluts", "fluts", "trafalgar"}
+    unknown = set(n_cpu_stage) - allowed
+    if unknown:
+        raise ValueError(f"n_cpu_stage has unknown stage keys: {sorted(unknown)}")
+
+    merged: dict[str, int | None] = (
+        default_stage.copy() if n_cpu is None else {"preluts": n_cpu, "fluts": n_cpu, "trafalgar": n_cpu}
+    )
+    for stage, stage_n_cpu in n_cpu_stage.items():
+        if stage_n_cpu is not None and not isinstance(stage_n_cpu, int):
+            raise ValueError(f"n_cpu_stage['{stage}'] must be an int or None, got {type(stage_n_cpu).__name__}")
+        validate_n_cpu(stage_n_cpu)
+        merged[stage] = stage_n_cpu
+    return {
+        "preluts": normalise_n_cpu_workers(merged["preluts"]),
+        "fluts": normalise_n_cpu_workers(merged["fluts"]),
+        "trafalgar": normalise_n_cpu_workers(merged["trafalgar"]),
+    }
 
 
 def get_beta(x: npt.ArrayLike) -> npt.NDArray[np.float64]:

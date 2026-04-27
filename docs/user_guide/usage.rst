@@ -54,8 +54,30 @@ A minimal workflow looks like this:
        dx=None,
        dy=None,
        jit=True,
-       n_cpu=None,
    )
+
+Advanced per-stage parallel tuning
+----------------------------------
+
+By default, :func:`pyfuga.get_luts` uses stage-aware workers:
+
+- ``preluts``: all CPUs
+- ``fluts``: all CPUs
+- ``trafalgar``: all CPUs
+
+You can provide ``n_cpu`` as a global override for all stages, and use
+``n_cpu_stage`` to override selected stages:
+
+.. code-block:: python
+
+   luts = get_luts(
+       ...,
+       n_cpu=4,
+       n_cpu_stage={"preluts": 2, "fluts": 4, "trafalgar": 1},
+   )
+
+In this example, stage 3 (Trafalgar) runs serially to reduce memory pressure,
+while stage 1-2 use 4 workers each from the global ``n_cpu`` value.
 
 The output folder
 -----------------
@@ -136,7 +158,7 @@ To plot a cross-wind profile 5D downstream:
        ax.grid()
 
    axes[1].set_ylim([-0.0025, 0.0025])
-   axes[0].set_title("Normalized deficit profile 5D downstream")
+   axes[0].set_title("Normalised deficit profile 5D downstream")
    axes[1].set_title("Zoom of speedup region")
 
 Reusing cached files

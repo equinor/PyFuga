@@ -29,7 +29,6 @@ Example configuration
        dx=None,
        dy=None,
        jit=True,
-       n_cpu=None,
    )
 
 Physical and atmospheric parameters
@@ -188,9 +187,44 @@ recommended for production runs.
 ``n_cpu``
 ^^^^^^^^^
 
-Number of CPUs used for parallelisation.
+Number of parallel worker processes used in each LUT pipeline stage (PreLUT
+generation, Fourier LUTs, and Trafalgar), when you call
+:func:`pyfuga.get_luts`.
 
-If set to ``None``, PyFuga uses all available CPUs.
+For :func:`pyfuga.get_luts`, leaving ``n_cpu=None`` (default) enables stage-aware
+defaults:
+
+- ``preluts``: all CPUs
+- ``fluts``: all CPUs
+- ``trafalgar``: all CPUs
+
+Provide an explicit integer to use a single global worker count across stages.
+Large ``nx``/``ny`` and several workers can require substantial RAM.
+
+``n_cpu_stage``
+^^^^^^^^^^^^^^^
+
+Optional per-stage override dictionary for advanced tuning. Supported keys are
+``"preluts"``, ``"fluts"``, and ``"trafalgar"``.
+
+Each provided key overrides the resolved stage setting for that stage only.
+When ``n_cpu`` is omitted/``None``, omitted keys keep the stage-aware defaults.
+Precedence is: stage defaults -> global ``n_cpu`` (if provided) ->
+``n_cpu_stage`` keys.
+A stage may be set to ``None`` to use all CPUs for that stage only.
+
+Example:
+
+.. code-block:: python
+
+   get_luts(
+       ...,
+       n_cpu=4,
+       n_cpu_stage={"preluts": 2, "fluts": 4, "trafalgar": 1},
+   )
+
+This runs stage 3 serially to reduce memory pressure while keeping earlier
+stages parallel.
 
 Practical parameter tradeoffs
 -----------------------------

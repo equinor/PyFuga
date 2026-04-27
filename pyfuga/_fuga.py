@@ -27,7 +27,7 @@ from pyfuga.flut import FourierLUTGenerator
 from pyfuga.paths import get_fluts_path, get_level_range, get_luts_path, get_preluts_path
 from pyfuga.preluts import PreLUTs
 from pyfuga.trafalgar import Trafalgar
-from pyfuga.utils import ComplexXRDataset, get_beta_lst, get_kz0_lst
+from pyfuga.utils import ComplexXRDataset, NCpuStageConfig, get_beta_lst, get_kz0_lst
 
 
 def get_luts(
@@ -47,7 +47,8 @@ def get_luts(
     dx: float | None = None,
     dy: float | None = None,
     jit: bool = True,
-    n_cpu: int | None = 1,
+    n_cpu: int | None = None,
+    n_cpu_stage: NCpuStageConfig | None = None,
 ) -> xr.Dataset:  # pragma: no cover
     """Generate physical-space wake look-up tables via the full PyFuga pipeline.
 
@@ -97,7 +98,17 @@ def get_luts(
     jit : bool, optional
         Enable JIT compilation (Numba). Default is True.
     n_cpu : int or None, optional
-        CPU cores for parallel computation. None uses all; 1 disables parallelisation.
+        Optional global worker-count override. If ``None`` (default), stage-aware
+        defaults are used and all stages run on all CPUs. If an integer is provided, that
+        worker count is applied to all stages unless overridden by
+        ``n_cpu_stage``. Large ``nx``/``ny`` and multiple workers can increase
+        memory use substantially.
+    n_cpu_stage : dict, optional
+        Optional per-stage overrides for worker counts. Supported keys are
+        ``"preluts"``, ``"fluts"``, and ``"trafalgar"``. Provided keys override
+        the resolved default/global setting for that stage. Precedence is:
+        defaults -> global ``n_cpu`` (if provided) -> ``n_cpu_stage`` keys.
+        A stage value may be ``None`` meaning all CPUs for that stage only.
 
     Returns
     -------
@@ -112,6 +123,7 @@ def get_luts(
     """
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
+    resolved_n_cpu = utils.resolve_n_cpu_stage(n_cpu, n_cpu_stage)
     dx = dx or diameter / 4
     dy = dy or diameter / 16
 
@@ -121,8 +133,23 @@ def get_luts(
         luts.attrs["name"] = luts_path.stem
         return luts
 
-    fluts = get_fluts(folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh, lut_vars, jit, n_cpu)
-    luts = Trafalgar(fluts, nx, ny, dx, dy).make_luts(3)
+    fluts = get_fluts(
+        folder,
+        zeta0,
+        nkz0,
+        nbeta,
+        diameter,
+        zhub,
+        z0,
+        zi,
+        zlow,
+        zhigh,
+        lut_vars,
+        jit,
+        resolved_n_cpu["fluts"],
+        n_cpu_stage={"preluts": resolved_n_cpu["preluts"]},
+    )
+    luts = Trafalgar(fluts, nx, ny, dx, dy).make_luts(interpolation_order=3, n_cpu=resolved_n_cpu["trafalgar"])
     luts.to_netcdf(luts_path)
     luts.attrs["name"] = luts_path.stem
     return luts
@@ -141,25 +168,27 @@ def get_fluts(
     zhigh: float,
     lut_vars: list[str] = UVW_LT,
     jit: bool = True,
-    n_cpu: int | None = 1,
+    n_cpu: int | None = None,
+    n_cpu_stage: NCpuStageConfig | None = None,
 ) -> ComplexXRDataset:  # pragma: no cover
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
+    resolved_n_cpu = utils.resolve_n_cpu_stage(n_cpu, n_cpu_stage)
 
     fluts_path = get_fluts_path(folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh, lut_vars)
     if fluts_path.exists():
         return ComplexXRDataset.from_netcdf(fluts_path)
 
     utils.compile(jit)
-    preluts = get_preluts(folder, zeta0, nkz0, nbeta, jit, n_cpu)
+    preluts = get_preluts(folder, zeta0, nkz0, nbeta, jit, resolved_n_cpu["preluts"], None)
 
     low_level_out, high_level_out = get_level_range(zlow, zhigh, zhub, z0)
 
     flut_generator = FourierLUTGenerator(preluts, zhub, diameter, zi)
     if low_level_out == high_level_out == 9999:
-        fluts = flut_generator.make_hubheight_luts(z0, lut_vars, n_cpu=n_cpu)
+        fluts = flut_generator.make_hubheight_luts(z0, lut_vars, n_cpu=resolved_n_cpu["fluts"])
     else:
-        fluts = flut_generator.make_lut(z0, low_level_out, high_level_out, lut_vars, n_cpu=n_cpu)
+        fluts = flut_generator.make_lut(z0, low_level_out, high_level_out, lut_vars, n_cpu=resolved_n_cpu["fluts"])
 
     fluts.save(fluts_path)
     return fluts
@@ -171,10 +200,12 @@ def get_preluts(
     nkz0: int,
     nbeta: int,
     jit: bool = True,
-    n_cpu: int | None = 1,
+    n_cpu: int | None = None,
+    n_cpu_stage: NCpuStageConfig | None = None,
 ) -> PreLUTs:  # pragma: no cover
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
+    resolved_n_cpu = utils.resolve_n_cpu_stage(n_cpu, n_cpu_stage)
 
     preluts_path = get_preluts_path(folder, zeta0, nkz0, nbeta)
     if preluts_path.exists():
@@ -189,7 +220,7 @@ def get_preluts(
         ds=DS,
         accgoal=0.0001,
         jit=jit,
-        n_cpu=n_cpu,
+        n_cpu=resolved_n_cpu["preluts"],
     )
     preluts.attrs["nkz0"] = nkz0
     preluts.attrs["nbeta"] = nbeta

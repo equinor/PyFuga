@@ -14,7 +14,6 @@ Main classes:
 
 from __future__ import annotations
 
-import multiprocessing as mp
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, cast
@@ -25,7 +24,7 @@ import xarray as xr
 from tqdm import tqdm
 
 from pyfuga.file_readers import read_pre_file, read_prelut_list
-from pyfuga.utils import ComplexXRDataset, read_complex
+from pyfuga.utils import ComplexXRDataset, multiprocessing_map, normalise_n_cpu_workers, read_complex
 
 
 class PreLUT(ComplexXRDataset):  # type: ignore[no-untyped-call]
@@ -135,14 +134,15 @@ class PreLUTs(ComplexXRDataset):  # type: ignore[no-untyped-call]
         ds: float,
         accgoal: float,
         jit: bool = True,
-        n_cpu: int | None = 1,
+        n_cpu: int | None = None,
         verbose: bool = True,
         compact: bool = True,
     ) -> PreLUTs | CompactPreLUTs:
+        workers = normalise_n_cpu_workers(n_cpu)
         args_lst = [(zeta0, kz0, beta, kzmax, ds, accgoal, jit) for beta in beta_lst for kz0 in kz0_lst]
 
         iterator: Iterator[PreLUT]
-        if n_cpu in (None, 1):
+        if workers == 1:
             iterator = map(PreLUT.make_prelut_args, args_lst)
             ds_lst = list(
                 tqdm(
@@ -153,9 +153,8 @@ class PreLUTs(ComplexXRDataset):  # type: ignore[no-untyped-call]
                 )
             )
         else:
-            ctx = mp.get_context("spawn")  # or "forkserver"
-            with ctx.Pool(processes=n_cpu) as pool:
-                iterator = pool.imap(PreLUT.make_prelut_args, args_lst, chunksize=1)
+            with multiprocessing_map(workers, chunksize=1) as map_func:
+                iterator = map_func(PreLUT.make_prelut_args, args_lst)
                 ds_lst = list(
                     tqdm(
                         iterator,

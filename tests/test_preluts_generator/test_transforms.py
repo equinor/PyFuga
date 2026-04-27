@@ -52,3 +52,8 @@ def test_t_to_s_unstable_negative_x_fallback_branch():
     finally:
         # Restore original function to avoid leaking the patch into other tests
         transforms.get_phi_inverse = original_get_phi_inverse
+
+
+def test_t_to_s_dispatch_unstable_branch() -> None:
+    out = transforms.t_to_s(t=0.5, zeta0=-0.1, kz0=0.1, lastkz=1.0, psi0=0.0, cdivkL=0.2)
+    assert np.isfinite(out)

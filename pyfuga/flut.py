@@ -23,10 +23,8 @@ solution stored in the preliminary LUTs.
     or at hub height. Uses parallel processing where applicable.
 """
 
-import multiprocessing as mp
 import warnings
-from collections.abc import Callable, Iterable, Iterator
-from contextlib import AbstractContextManager, nullcontext
+from collections.abc import Iterator
 from typing import Any, Literal, NamedTuple, cast
 
 import numpy as np
@@ -37,7 +35,7 @@ from tqdm import tqdm
 
 from pyfuga.constants import FIRST_Z_OUTPUT, KAPPA, UVW_LT
 from pyfuga.preluts import PreLUTs
-from pyfuga.utils import ComplexXRDataset, jit
+from pyfuga.utils import ComplexXRDataset, jit, multiprocessing_map, normalise_n_cpu_workers
 
 # Index into the 6-component state vector for each LUT variable prefix (U, V, W, P).
 _LUT_COMPONENT_INDEX: dict[str, int] = {"U": 0, "V": 2, "W": 4, "P": 5}
@@ -112,7 +110,7 @@ class FourierLUTGenerator:
         self,
         z0: float,
         luts: list[str] = UVW_LT,
-        n_cpu: int | None = 1,
+        n_cpu: int | None = None,
     ) -> ComplexXRDataset:  # for wake solution at all levels within rotor plane
         # note: can change z0 --> modify T.I. through z=z0*exp(1/T.I.)
         ds = self.preluts.ds
@@ -125,7 +123,7 @@ class FourierLUTGenerator:
         self,
         z0: float,
         luts: list[str] = UVW_LT,
-        n_cpu: int | None = 1,
+        n_cpu: int | None = None,
     ) -> ComplexXRDataset:  # for wake solution only at hub height
         ds = self.preluts.ds
         low_level_out = int(np.floor(np.log(self.zhub / z0) / ds))
@@ -159,7 +157,7 @@ class FourierLUTGenerator:
         low_level_out: int,
         high_level_out: int,
         luts: list[str] = UVW_LT,
-        n_cpu: int | None = 1,
+        n_cpu: int | None = None,
     ) -> ComplexXRDataset:
         """
         Generate Fourier-space wake look-up tables for specified height range.
@@ -184,9 +182,10 @@ class FourierLUTGenerator:
             Variable names to generate. Default is all 8 variables: 'UL', 'UT', 'VL',
             'VT', 'WL', 'WT', 'PL', 'PT' (L = longitudinal forcing, T = transverse
             forcing). Variables are u, v, w (velocity components) and p (pressure).
-        n_cpu : int, optional
-            Number of CPU cores for parallel (beta, kz0) computation. Default is 1
-            (serial). Pass None to use all available cores.
+        n_cpu : int or None, optional
+            Number of CPU cores for parallel (beta, kz0) computation. Default is
+            ``None`` (all available CPUs, at least ``1``). Pass ``1`` for serial
+            execution. Values greater than ``1`` enable a process pool.
 
         Returns
         -------
@@ -213,6 +212,7 @@ class FourierLUTGenerator:
         invalid = [lut for lut in luts if lut not in UVW_LT]
         if invalid:
             raise ValueError(f"luts must be a subset of {list(UVW_LT)!r}, invalid entries: {invalid!r}")
+        workers = normalise_n_cpu_workers(n_cpu)
         zh = self.zhub
         R = self.radius
         ds, _, zeta0 = [self.preluts.attrs[k] for k in ["ds", "kzmax", "zeta0"]]
@@ -261,24 +261,10 @@ class FourierLUTGenerator:
         ktab = kz0_lst / z0
         beta_kz0_lst = [(beta, kz0) for beta in beta_lst for kz0 in kz0_lst]
 
-        # Choose serial vs parallel mapping
-        if n_cpu in (None, 1):
-            pool_cm: AbstractContextManager[Any] = nullcontext[None]()
-        else:
-            ctx = mp.get_context("spawn")  # or "forkserver"
-            pool_cm = ctx.Pool(processes=n_cpu)
-
         xL: list[npt.NDArray[np.complex128]] = []  # longitudinal forcing
         xT: list[npt.NDArray[np.complex128]] = []  # transversal forcing
 
-        with pool_cm as pool:
-            map_func: Callable[[Any, Iterable[tuple[Any, ...]]], Iterator[Any]]
-            if n_cpu in (None, 1):
-                map_func = map
-            else:
-                assert pool is not None
-                map_func = pool.imap
-
+        with multiprocessing_map(workers) as map_func:
             if any(lut[1] == "L" for lut in luts):
                 jobs_l = _iter_solve_layer_jobs(
                     self.preluts,

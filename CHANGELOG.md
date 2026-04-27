@@ -6,10 +6,28 @@ All notable changes to this project will be documented in this file.
 
 Development version after the 0.2.0 release.
 
+### Added
+
+- Optional ``n_cpu_stage`` per-stage overrides in the public LUT API, allowing
+  explicit worker counts for ``preluts``, ``fluts``, and ``trafalgar``.
+
 ### Changed
 
 - Updated non-dimensional eddy-viscosity notation to use :math:`K^* = kK/u_*` consistently in both implementation and theory docs.
 - Refactored `pyfuga.preluts_generator.matrices` variable naming from `kK`-style terms to `K_star`-style terms without changing numerical behavior.
+- **Breaking:** ``n_cpu`` must be ``None`` or an ``int`` of at least ``1`` across
+  the public LUT API and related stages. ``None`` means use all CPUs
+  (``os.cpu_count()``, at least ``1``); ``1`` is serial. Invalid values such as
+  ``0`` are rejected.
+- **Breaking:** default stage behavior in ``get_luts`` is now stage-aware when
+  ``n_cpu``/``n_cpu_stage`` are omitted: all stages use all CPUs by default.
+  Precedence is explicit: stage defaults -> global ``n_cpu`` (if provided) ->
+  ``n_cpu_stage`` per-stage overrides.
+
+### Fixed
+
+- Multiprocessing mapping is now uniformized across ``preluts``, ``flut``, and
+  ``trafalgar`` via a shared helper with consistent spawn-based pool handling.
 
 ## [0.2.0] - 2026-04-02
 
@@ -19,7 +37,7 @@ Second public beta release focused on API expansion, LUT pipeline refactoring, a
 
 - Public `get_fluts()` and `get_preluts()` API wrappers in `pyfuga`, in addition to `get_luts()`.
 - New `pyfuga.paths` helper module for stable naming/path construction of PreLUT, fLUT, and LUT artifacts.
-- Tests for path-id stability, orchestration, and cache behavior across LUT generation stages.
+- Tests for path-id stability, orchestration, and cache behaviour across LUT generation stages.
 - Sphinx multiversion documentation setup with version selector and updated documentation templates.
 - Zenodo metadata and automated Zenodo upload integration in release CI.
 - Conda packaging/deployment jobs and recipe sync checks in release pipeline.
@@ -33,7 +51,7 @@ Second public beta release focused on API expansion, LUT pipeline refactoring, a
 - Moved vertical spacing constant to shared constant `DS` for consistent level/range computations.
 - Improved docs build and publishing workflow for branch/tag-aware multiversion output.
 - Updated project metadata and release tooling for the `0.2.x` development cycle.
-- Migrated large test LUT fixtures to Git LFS and optimized CI checkout behavior.
+- Migrated large test LUT fixtures to Git LFS and optimised CI checkout behaviour.
 
 ### Fixed
 

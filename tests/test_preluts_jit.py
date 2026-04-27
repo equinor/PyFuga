@@ -268,6 +268,6 @@ def test_make_preluts_jit_parallel():
         kzmax=300,
         ds=0.05,
         accgoal=0.0001,
-        n_cpu=None,
+        n_cpu=1,
     )
     print(t3)
