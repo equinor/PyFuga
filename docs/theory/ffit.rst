@@ -264,7 +264,7 @@ The main entry point is :class:`~pyfuga.trafalgar.Trafalgar`.  Its
    * - ``NNNs``
      - List of spectral density factors per tile level (larger = finer spectral sampling)
    * - ``n_cpu``
-    - Parallel processes for tile FFIT: ``1`` is serial, ``None`` uses all CPUs, or pass an integer ``>= 1``. In ``get_luts`` default settings, Trafalgar also uses all CPUs unless overridden.
+     - Parallel processes for tile FFIT: ``1`` is serial, ``None`` uses all CPUs, or pass an integer ``>= 1``. In ``get_luts`` default settings, Trafalgar also uses all CPUs unless overridden.
 
 .. seealso::
 

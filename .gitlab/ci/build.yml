@@ -395,7 +395,12 @@ build_docs:
     - . "${VENV_DIR}/bin/activate"
     - uv pip install ".[docs]"
     - cd docs
-    - sphinx-build -b html . _build # for branch builds, a simple single-version build is enough
+    - sphinx-build -b html -W --keep-going . _build 2>&1 | tee ../sphinx-build-docs.log # for branch builds, a simple single-version build is enough
+    - |
+      if rg -n ": ERROR:" ../sphinx-build-docs.log; then
+        echo "Sphinx reported one or more errors."
+        exit 1
+      fi
   artifacts:
     paths:
       - docs/_build
@@ -443,8 +448,12 @@ build_pages:
     # (If you add docs/figures + generate_figures.py like PyWakeEllipSys, run that here before sphinx-build.)
     - |
       cd docs
-      sphinx-build -b html . _build/main
-      sphinx-multiversion . _build
+      sphinx-build -b html -W --keep-going . _build/main 2>&1 | tee ../sphinx-main.log
+      sphinx-multiversion . _build 2>&1 | tee ../sphinx-multiversion.log
+      if rg -n ": ERROR:" ../sphinx-main.log ../sphinx-multiversion.log; then
+        echo "Sphinx reported one or more errors."
+        exit 1
+      fi
       if [ -d figures ]; then
         cp -r figures _build/
       fi

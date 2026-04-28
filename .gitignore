@@ -46,3 +46,6 @@ docs/api/generated/
 *.nc
 !tests/test_files/*.nc
 tests/test_files/tmp_preluts*.nc
+
+# Other
+.cache/
