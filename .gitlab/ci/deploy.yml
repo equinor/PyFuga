@@ -511,17 +511,36 @@ zenodo_upload_for_tag:
       # Verify what Zenodo stored (draft).
       if [ -n "${ZENODO_VERIFY_RECORD}" ]; then
         python - <<'PY'
-      import json, os, subprocess
+      import json
+      import os
+      import subprocess
       record = os.environ["ZENODO_VERIFY_RECORD"]
       token = os.environ["ZENODO_TOKEN"]
       sandbox = os.environ.get("ZENODO_USE_SANDBOX", "true") == "true"
-      cmd = ["g2z-get-meta", "-i", record, "-t", token, "-d"]
+
+      base_cmd = ["g2z-get-meta", "-i", record, "-t", token]
       if sandbox:
-        cmd.insert(3, "-s")
-      out = subprocess.check_output(cmd, text=True)
+        base_cmd.insert(3, "-s")
+
+      # Prefer draft metadata for unpublished deposits, but do not fail if draft
+      # is unavailable (for example when the deposit is already published).
+      cmd = [*base_cmd, "-d"]
+      try:
+        out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT)
+        source = "draft"
+      except subprocess.CalledProcessError as exc:
+        error_output = exc.output or ""
+        if "status: 404" not in error_output:
+          raise
+        out = subprocess.check_output(base_cmd, text=True)
+        source = "record"
+
       data = json.loads(out)
       md = data.get("metadata", {})
-      print(f"Verified Zenodo draft record {record} metadata.publication_date =", md.get("publication_date"))
+      print(
+        f"Verified Zenodo {source} metadata for record {record} publication_date =",
+        md.get("publication_date"),
+      )
       PY
       fi
   rules:
