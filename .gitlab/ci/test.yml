@@ -29,7 +29,9 @@ test_linux_default:
       optional: true
   script:
     # -n auto uses *physical* cores (often 2 on small VMs); -n logical matches typical vCPU / HT counts.
-    - python -m pytest -n logical --dist loadfile --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc --import-mode=importlib -m "not local" tests/
+    - python -m pytest -n logical --dist loadfile --cov-report
+      term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc
+      --import-mode=importlib -m "not local" tests/
 
 # ----- Test PyFuga on Windows (Stage 1: default Python only) -----
 test_windows_default:
@@ -55,11 +57,15 @@ test_windows_default:
     # Run tests in the matching Pixi environment for the default Python version
     - $PixiEnv = "$env:PIXI_ENV"
     - |
+      if ($env:CI_PROJECT_DIR) { Set-Location $env:CI_PROJECT_DIR }
       if (-not (Get-Command git-lfs -ErrorAction SilentlyContinue)) {
         throw "git-lfs is required for Windows CI to fetch large test fixtures (Git LFS pointers checked out). Install git-lfs in the Windows CI image."
       }
       git lfs install --local
+      $LfsSw = [System.Diagnostics.Stopwatch]::StartNew()
       git lfs pull
+      $LfsSw.Stop()
+      Write-Host ("git lfs pull took {0:N1}s" -f $LfsSw.Elapsed.TotalSeconds)
     - |
       $PixiEnvDir = "C:\work\.pixi\envs\$PixiEnv"
       $PythonExe = Join-Path $PixiEnvDir "python.exe"
@@ -110,13 +116,17 @@ test_windows_default:
 
       & $PythonExe --version
       & $PythonExe -c "import numpy; print('numpy', numpy.__version__)"
+      & $PythonExe -c "import os,platform; print(platform.platform()); print('cpu', os.cpu_count())"
       & $PythonExe -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('xdist') else 1)"
       $UseXdist = ($LASTEXITCODE -eq 0)
-      $PytestArgs = @("-m", "pytest", "--import-mode=importlib", "-m", "not local", "tests/")
+      $DurationsArgs = @()
+      if (("$env:CI_DEBUG" -eq "1") -or ("$env:CI_DEBUG" -eq "true")) {
+        $DurationsArgs = @("--durations=25", "--durations-min=1")
+      }
+      $PytestArgs = @("-m", "pytest", "--import-mode=importlib") + $DurationsArgs + @("-m", "not local", "tests/")
       if ($UseXdist) {
-        # Windows: pytest-xdist (-n logical; see linux test job comment) + per-worker NUMBA_CACHE_DIR (tests/conftest.py).
         Write-Host "Using pytest-xdist (-n logical)"
-        $PytestArgs = @("-m", "pytest", "-n", "logical", "--dist", "loadfile", "--import-mode=importlib", "-m", "not local", "tests/")
+        $PytestArgs = @("-m", "pytest", "-n", "logical", "--dist", "loadfile", "--import-mode=importlib") + $DurationsArgs + @("-m", "not local", "tests/")
       } else {
         Write-Host "pytest-xdist not available; running serial pytest"
       }
@@ -135,6 +145,9 @@ test_windows_matrix:
   extends:
     - .windows_test_job
     - .rules_python_matrix_default_excluded
+  # Shared Windows runners can become unstable when all matrix jobs run concurrently.
+  # Use a single resource group so matrix entries execute serially.
+  resource_group: windows-test-matrix
   image:
     name: ${CI_REGISTRY_IMAGE}/ci/windows-pixi-${PIXI_ENV}:${ENV_TAG}
     pull_policy: always
@@ -163,11 +176,15 @@ test_windows_matrix:
   script:
     # Run tests in the version-specific Pixi environment
     - |
+      if ($env:CI_PROJECT_DIR) { Set-Location $env:CI_PROJECT_DIR }
       if (-not (Get-Command git-lfs -ErrorAction SilentlyContinue)) {
         throw "git-lfs is required for Windows CI to fetch large test fixtures (Git LFS pointers checked out). Install git-lfs in the Windows CI image."
       }
       git lfs install --local
+      $LfsSw = [System.Diagnostics.Stopwatch]::StartNew()
       git lfs pull
+      $LfsSw.Stop()
+      Write-Host ("git lfs pull took {0:N1}s" -f $LfsSw.Elapsed.TotalSeconds)
     - |
       $PixiEnvDir = "C:\work\.pixi\envs\$env:PIXI_ENV"
       $PythonExe = Join-Path $PixiEnvDir "python.exe"
@@ -218,13 +235,17 @@ test_windows_matrix:
 
       & $PythonExe --version
       & $PythonExe -c "import numpy; print('numpy', numpy.__version__)"
+      & $PythonExe -c "import os,platform; print(platform.platform()); print('cpu', os.cpu_count())"
       & $PythonExe -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('xdist') else 1)"
       $UseXdist = ($LASTEXITCODE -eq 0)
-      $PytestArgs = @("-m", "pytest", "--import-mode=importlib", "-m", "not local", "tests/")
+      $DurationsArgs = @()
+      if (("$env:CI_DEBUG" -eq "1") -or ("$env:CI_DEBUG" -eq "true")) {
+        $DurationsArgs = @("--durations=25", "--durations-min=1")
+      }
+      $PytestArgs = @("-m", "pytest", "--import-mode=importlib") + $DurationsArgs + @("-m", "not local", "tests/")
       if ($UseXdist) {
-        # Windows: pytest-xdist (-n logical; see linux test job comment) + per-worker NUMBA_CACHE_DIR (tests/conftest.py).
         Write-Host "Using pytest-xdist (-n logical)"
-        $PytestArgs = @("-m", "pytest", "-n", "logical", "--dist", "loadfile", "--import-mode=importlib", "-m", "not local", "tests/")
+        $PytestArgs = @("-m", "pytest", "-n", "logical", "--dist", "loadfile", "--import-mode=importlib") + $DurationsArgs + @("-m", "not local", "tests/")
       } else {
         Write-Host "pytest-xdist not available; running serial pytest"
       }
@@ -240,7 +261,7 @@ test_linux_matrix:
   image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_VERSION}-uv-tests:latest
   parallel:
     matrix:
-      - PYTHON_VERSION: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+      - PYTHON_VERSION: [ "3.10", "3.11", "3.12", "3.13", "3.14" ]
   extends:
     - .default_python_job
     - .pytest_coverage
@@ -263,5 +284,5 @@ test_linux_matrix:
       artifacts: false
       optional: true
   script:
-    - python -m pytest -n logical --dist loadfile --cov-report term-missing:skip-covered --import-mode=importlib -m "not local" tests/
-
+    - python -m pytest -n logical --dist loadfile --cov-report
+      term-missing:skip-covered --import-mode=importlib -m "not local" tests/

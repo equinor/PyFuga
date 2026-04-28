@@ -9,7 +9,6 @@ variables:
   NUMEXPR_NUM_THREADS: "1"
   PYTHON_DEFAULT_VERSION: "3.12"
   PYTHON_DEFAULT_VERSION_TAG: "312"
-  CI_DEBUG: "0"
   UV_CACHE_DIR: "$CI_PROJECT_DIR/.cache/uv"
   UV_LINK_MODE: "copy"
   PIXI_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pixi"
@@ -97,7 +96,7 @@ image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv:latest
 
     # Optional deep diagnostics for runner troubleshooting (disabled by default for speed).
     - |
-      if [ "${CI_DEBUG:-0}" = "1" ]; then
+      if [ "${CI_DEBUG:-0}" = "1" ] || [ "${CI_DEBUG:-false}" = "true" ]; then
         echo "=== Runner Info ==="
         echo "Hostname:$(hostname)"
         echo "Runner:${CI_RUNNER_DESCRIPTION:-unknown}"
@@ -138,5 +137,40 @@ image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv:latest
     GIT_STRATEGY: clone
     # Windows CI needs Git LFS to fetch large test fixtures.
     GIT_LFS_SKIP_SMUDGE: "0"
+  before_script:
+    - |
+      if (("$env:CI_DEBUG" -eq "1") -or ("$env:CI_DEBUG" -eq "true")) {
+        Write-Host "=== Windows Runner Diagnostics (CI_DEBUG=1) ==="
+        Write-Host ("Timestamp: {0:o}" -f (Get-Date))
+        $RunnerDesc = if ($env:CI_RUNNER_DESCRIPTION) { $env:CI_RUNNER_DESCRIPTION } else { "unknown" }
+        $RunnerId = if ($env:CI_RUNNER_ID) { $env:CI_RUNNER_ID } else { "unknown" }
+        $RunnerTags = if ($env:CI_RUNNER_TAGS) { $env:CI_RUNNER_TAGS } else { "unknown" }
+        Write-Host ("Runner: {0}" -f $RunnerDesc)
+        Write-Host ("Runner ID: {0}" -f $RunnerId)
+        Write-Host ("Runner tags: {0}" -f $RunnerTags)
+
+        Write-Host "=== CPU ==="
+        Write-Host ("ProcessorCount: {0}" -f [Environment]::ProcessorCount)
+
+        Write-Host "=== OS ==="
+        try { (Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,BuildNumber | Format-List | Out-String).TrimEnd() | Write-Host } catch { Write-Host "Get-CimInstance Win32_OperatingSystem failed" }
+
+        Write-Host "=== Memory ==="
+        try { (Get-CimInstance Win32_ComputerSystem | Select-Object TotalPhysicalMemory | Format-List | Out-String).TrimEnd() | Write-Host } catch { Write-Host "Get-CimInstance Win32_ComputerSystem failed" }
+
+        Write-Host "=== Disk (PS drives) ==="
+        try { (Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize | Out-String).TrimEnd() | Write-Host } catch { Write-Host "Get-PSDrive failed" }
+
+        Write-Host "=== Paths ==="
+        $ProjectDir = if ($env:CI_PROJECT_DIR) { $env:CI_PROJECT_DIR } else { "" }
+        $Temp = if ($env:TEMP) { $env:TEMP } else { "" }
+        $Tmp = if ($env:TMP) { $env:TMP } else { "" }
+        Write-Host ("CI_PROJECT_DIR: {0}" -f $ProjectDir)
+        Write-Host ("TEMP: {0}" -f $Temp)
+        Write-Host ("TMP: {0}" -f $Tmp)
+        Write-Host ("GetTempPath: {0}" -f [System.IO.Path]::GetTempPath())
+      } else {
+        Write-Host "CI_DEBUG!=1; skipping Windows runner diagnostics"
+      }
   tags:
     - docker-windows

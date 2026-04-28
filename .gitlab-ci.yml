@@ -16,6 +16,10 @@ spec:
       type: boolean
       default: false
       description: "Auto-publish on Zenodo after upload (default keeps draft/manual review)."
+    ci_debug:
+      type: boolean
+      default: false
+      description: "Enable debug mode for CI jobs."
 ---
 stages:
   - verify
@@ -30,6 +34,7 @@ variables:
   ZENODO_USE_SANDBOX: "$[[ inputs.zenodo_use_sandbox ]]"
   ZENODO_TARGET_TAG: "$[[ inputs.zenodo_target_tag ]]"
   ZENODO_AUTO_PUBLISH: "$[[ inputs.zenodo_auto_publish ]]"
+  CI_DEBUG: "$[[ inputs.ci_debug ]]"
 
 include:
   - local: .gitlab/ci/common.yml
