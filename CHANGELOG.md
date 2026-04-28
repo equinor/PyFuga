@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1-dev]
+
+Most recent development version.
+
 ## [0.3.0] - 2026-04-28
 
 Third public beta release focused on clarifying LUT multiprocessing semantics, tightening the public LUT API around CPU selection, and aligning the non-dimensional eddy-viscosity notation used across code and docs.
