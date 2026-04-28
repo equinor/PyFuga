@@ -2,32 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.2.1-dev] - Unreleased
+## [0.3.0] - 2026-04-28
 
-Development version after the 0.2.0 release.
+Third public beta release focused on clarifying LUT multiprocessing semantics, tightening the public LUT API around CPU selection, and aligning the non-dimensional eddy-viscosity notation used across code and docs.
 
 ### Added
 
-- Optional ``n_cpu_stage`` per-stage overrides in the public LUT API, allowing
-  explicit worker counts for ``preluts``, ``fluts``, and ``trafalgar``.
+- Optional `n_cpu_stage` per-stage overrides in the public LUT API, allowing
+  explicit worker counts for `preluts`, `fluts`, and `trafalgar`.
 
 ### Changed
 
-- Updated non-dimensional eddy-viscosity notation to use :math:`K^* = kK/u_*` consistently in both implementation and theory docs.
-- Refactored `pyfuga.preluts_generator.matrices` variable naming from `kK`-style terms to `K_star`-style terms without changing numerical behavior.
-- **Breaking:** ``n_cpu`` must be ``None`` or an ``int`` of at least ``1`` across
-  the public LUT API and related stages. ``None`` means use all CPUs
-  (``os.cpu_count()``, at least ``1``); ``1`` is serial. Invalid values such as
-  ``0`` are rejected.
-- **Breaking:** default stage behavior in ``get_luts`` is now stage-aware when
-  ``n_cpu``/``n_cpu_stage`` are omitted: all stages use all CPUs by default.
-  Precedence is explicit: stage defaults -> global ``n_cpu`` (if provided) ->
-  ``n_cpu_stage`` per-stage overrides.
+- Updated non-dimensional eddy-viscosity notation to use \(K^* = kK/u_*\)
+  consistently in both implementation and theory docs.
+- Refactored `pyfuga.preluts_generator.matrices` variable naming from `kK`-style
+  terms to `K_star`-style terms without changing numerical behavior.
+- **Breaking:** `n_cpu` must be `None` or an `int >= 1` across the public LUT API
+  and related stages. `None` means use all CPUs (`os.cpu_count()`, at least `1`);
+  `1` is serial. Invalid values such as `0` are rejected.
+- **Breaking:** default stage behavior in `get_luts` is now stage-aware when
+  `n_cpu`/`n_cpu_stage` are omitted: all stages use all CPUs by default.
+  Precedence is explicit: stage defaults -> global `n_cpu` (if provided) ->
+  `n_cpu_stage` per-stage overrides.
 
 ### Fixed
 
-- Multiprocessing mapping is now uniformized across ``preluts``, ``flut``, and
-  ``trafalgar`` via a shared helper with consistent spawn-based pool handling.
+- Multiprocessing mapping is now uniformized across `preluts`, `fluts`, and
+  `trafalgar` via a shared helper with consistent spawn-based pool handling.
 
 ## [0.2.0] - 2026-04-02
 
