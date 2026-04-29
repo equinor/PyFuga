@@ -12,14 +12,15 @@ pages:
     - job: build_pages
       artifacts: true
   script:
-    - test -d "public" || (echo "Missing public artifact from build_pages"; exit 1)
+    - test -d "public" || (echo "Missing public artifact from build_pages"; exit
+      1)
   artifacts:
     paths:
       - public
     expire_in: 1 week
   rules:
     # Only build and deploy docs for main branch and tags (releases)
-    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG'
+    - if: "$CI_COMMIT_BRANCH == \"main\" || $CI_COMMIT_TAG"
       when: on_success
       allow_failure: false
 
@@ -43,7 +44,8 @@ publish_pypi:
     - python -m twine upload -u "$TWINE_USERNAME" -p "$TWINE_PASSWORD" dist/*
   rules:
     # Publish only for protected tags when credentials are configured
-    - if: '$CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED == "true" && $TWINE_USERNAME && $TWINE_PASSWORD'
+    - if: "$CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED == \"true\" && $TWINE_USERNAME
+        && $TWINE_PASSWORD"
       when: on_success
       allow_failure: false
 
@@ -63,10 +65,12 @@ publish_gitlab_pypi:
     - uv venv "${VENV_DIR}"
     - . "${VENV_DIR}/bin/activate"
     - uv pip install twine
-    - python -m twine upload --repository-url "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi" -u gitlab-ci-token -p "$CI_JOB_TOKEN" dist/*
+    - python -m twine upload --repository-url
+      "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi" -u
+      gitlab-ci-token -p "$CI_JOB_TOKEN" dist/*
   rules:
     # Manual private test publish on this branch
-    - if: '$CI_COMMIT_BRANCH == "test-pypi"'
+    - if: "$CI_COMMIT_BRANCH == \"test-pypi\""
       when: manual
       allow_failure: true
 
@@ -84,13 +88,16 @@ verify_gitlab_pypi:
     - VENV_DIR=".venv-${CI_JOB_ID}"
     - uv venv "${VENV_DIR}"
     - . "${VENV_DIR}/bin/activate"
-    - PYPROJECT_VERSION="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
-    - uv pip install --index-url "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/api/v4/projects/${CI_PROJECT_ID}/packages/pypi/simple" --no-deps "pyfuga==${PYPROJECT_VERSION}"
+    - PYPROJECT_VERSION="$(python -c 'import tomllib;
+      print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+    - uv pip install --index-url
+      "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/api/v4/projects/${CI_PROJECT_ID}/packages/pypi/simple"
+      --no-deps "pyfuga==${PYPROJECT_VERSION}"
     - uv pip install packaging
     - |
       python -c 'import importlib.metadata, pyfuga, tomllib; from packaging.version import Version; expected=tomllib.load(open("pyproject.toml", "rb"))["project"]["version"]; metadata_version=importlib.metadata.version("pyfuga"); attr_version=pyfuga.__version__; print(f"Installed pyfuga metadata={metadata_version}, attr={attr_version}"); assert Version(metadata_version) == Version(expected), f"Metadata version mismatch: expected {expected}, got {metadata_version}"; assert Version(attr_version) == Version(expected), f"pyfuga.__version__ mismatch: expected {expected}, got {attr_version}"'
   rules:
-    - if: '$CI_COMMIT_BRANCH == "test-pypi"'
+    - if: "$CI_COMMIT_BRANCH == \"test-pypi\""
       when: manual
       allow_failure: true
     - when: never
@@ -99,10 +106,15 @@ verify_gitlab_pypi:
 build_conda:
   stage: deploy
   image: condaforge/miniforge3:latest
+  cache: []
+  variables:
+    PIP_ROOT_USER_ACTION: "ignore"
+    CONDA_NPY: "126"
   needs:
     - job: publish_pypi
   script:
     - mamba install -c conda-forge --override-channels -y conda-build
+      python-build
     - python -m build --sdist
     - |
       for i in 1 2 3 4 5 6; do
@@ -114,16 +126,54 @@ build_conda:
         echo "Remote source not ready yet (attempt ${i}/6), retrying in 20s..."
         sleep 20
       done
-    - conda build --no-anaconda-upload -c conda-forge --override-channels --output-folder ./conda_channel conda-recipe/
+    - conda build --no-anaconda-upload -c conda-forge --override-channels
+      --output-folder ./conda_channel conda-recipe/
   artifacts:
     untracked: false
     expire_in: "1 week"
     paths:
       - conda_channel/noarch/pyfuga*
   rules:
-    - if: '$CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED == "true"'
+    - if: "$CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED == \"true\""
       when: on_success
       allow_failure: false
+    - when: never
+  tags:
+    - docker
+    - ubuntu
+    - linux
+
+# ----- Smoke-test conda build on non-protected refs (no publish/deploy) -----
+build_conda_smoke:
+  stage: deploy
+  image: condaforge/miniforge3:latest
+  cache: []
+  variables:
+    CONDA_NPY: "126"
+  needs: []
+  script:
+    - mamba install -c conda-forge --override-channels -y conda-build
+      python-build
+    - python -m build --sdist
+    - python scripts/sync_conda_recipe.py --check
+    - |
+      DIST_FILE="$(ls dist/pyfuga-*.tar.gz)"
+      DIST_SHA256="$(sha256sum "${DIST_FILE}" | awk '{print $1}')"
+      TMP_RECIPE_DIR="$(mktemp -d)"
+      cp -r conda-recipe "${TMP_RECIPE_DIR}/"
+      sed -i "s|^  url:.*$|  url: file://${CI_PROJECT_DIR}/${DIST_FILE}|" "${TMP_RECIPE_DIR}/conda-recipe/meta.yaml"
+      sed -i "s|^  sha256:.*$|  sha256: \"${DIST_SHA256}\"|" "${TMP_RECIPE_DIR}/conda-recipe/meta.yaml"
+      conda build --no-anaconda-upload -c conda-forge --override-channels --output-folder ./conda_channel "${TMP_RECIPE_DIR}/conda-recipe/"
+  artifacts:
+    untracked: false
+    expire_in: "1 week"
+    paths:
+      - conda_channel/noarch/pyfuga*
+  rules:
+    - if: "$CI_COMMIT_BRANCH && ($ALLOW_CONDA_TEST == \"1\" || $ALLOW_CONDA_TEST ==
+        \"true\")"
+      when: manual
+      allow_failure: true
     - when: never
   tags:
     - docker
@@ -148,7 +198,7 @@ deploy_conda:
         echo "Deployed ${BASENAME}"
       done
   rules:
-    - if: '$CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED == "true"'
+    - if: "$CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED == \"true\""
       when: on_success
       allow_failure: false
     - when: never
@@ -168,15 +218,16 @@ publish_testpypi:
     - uv venv "${VENV_DIR}"
     - . "${VENV_DIR}/bin/activate"
     - uv pip install twine
-    - python -m twine upload --skip-existing --repository-url https://test.pypi.org/legacy/ -u "__token__" -p "$TEST_PYPI_TOKEN" dist/*
+    - python -m twine upload --skip-existing --repository-url
+      https://test.pypi.org/legacy/ -u "__token__" -p "$TEST_PYPI_TOKEN" dist/*
   rules:
     # Publish on protected tags when credentials are configured
-    - if: '$CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED == "true" && $TEST_PYPI_TOKEN'
+    - if: "$CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED == \"true\" && $TEST_PYPI_TOKEN"
       when: on_success
       allow_failure: false
 
     # Temporary manual smoke test on this branch
-    - if: '$CI_COMMIT_BRANCH == "test-pypi" && $TEST_PYPI_TOKEN'
+    - if: "$CI_COMMIT_BRANCH == \"test-pypi\" && $TEST_PYPI_TOKEN"
       when: manual
       allow_failure: true
 
@@ -322,7 +373,8 @@ publish_zenodo:
       PY
       fi
   rules:
-    - if: '$CI_COMMIT_TAG && $CI_COMMIT_TAG =~ /^v?\d+\.\d+(\.\d+)?$/ && $CI_COMMIT_REF_PROTECTED == "true"'
+    - if: "$CI_COMMIT_TAG && $CI_COMMIT_TAG =~ /^v?\\d+\\.\\d+(\\.\\d+)?$/ &&
+        $CI_COMMIT_REF_PROTECTED == \"true\""
       when: on_success
       allow_failure: false
     - when: never
@@ -544,10 +596,11 @@ zenodo_upload_for_tag:
       PY
       fi
   rules:
-    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: "$CI_COMMIT_BRANCH == \"main\""
       when: manual
       allow_failure: true
-    - if: '$CI_COMMIT_BRANCH && ($ALLOW_ZENODO_TEST == "1" || $ALLOW_ZENODO_TEST == "true")'
+    - if: "$CI_COMMIT_BRANCH && ($ALLOW_ZENODO_TEST == \"1\" || $ALLOW_ZENODO_TEST ==
+        \"true\")"
       when: manual
       allow_failure: true
     - when: never
