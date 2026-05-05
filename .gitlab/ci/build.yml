@@ -254,6 +254,9 @@ build_windows_pixi_base:
     - if: '$CI_COMMIT_REF_PROTECTED == "true" && $FORCE_WINDOWS_IMAGE_BUILD == "1"'
       when: manual
       allow_failure: true
+    - if: '$CI_COMMIT_REF_PROTECTED != "true" && $ALLOW_UNPROTECTED_WINDOWS_IMAGE_BUILD == "1" && $FORCE_WINDOWS_IMAGE_BUILD == "1"'
+      when: manual
+      allow_failure: true
     - when: never
   tags:
     - windows
@@ -329,6 +332,9 @@ build_windows_pixi_envs:
     - if: '$CI_COMMIT_REF_PROTECTED == "true" && $FORCE_WINDOWS_IMAGE_BUILD == "1"'
       when: manual
       allow_failure: true
+    - if: '$CI_COMMIT_REF_PROTECTED != "true" && $ALLOW_UNPROTECTED_WINDOWS_IMAGE_BUILD == "1" && $FORCE_WINDOWS_IMAGE_BUILD == "1"'
+      when: manual
+      allow_failure: true
     - when: never
   tags:
     - windows
@@ -380,6 +386,9 @@ prune_windows_docker_images:
     - if: '$CI_COMMIT_REF_PROTECTED == "true" && $FORCE_WINDOWS_IMAGE_BUILD == "1"'
       when: on_success
       allow_failure: true
+    - if: '$CI_COMMIT_REF_PROTECTED != "true" && $ALLOW_UNPROTECTED_WINDOWS_IMAGE_BUILD == "1" && $FORCE_WINDOWS_IMAGE_BUILD == "1"'
+      when: on_success
+      allow_failure: true
     - when: never
 
 # ===== Documentation builds =====
@@ -388,7 +397,7 @@ prune_windows_docker_images:
 build_docs:
   stage: build
   extends: .default_python_job
-  image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv-docs:latest
+  image: ${PYFUGA_CI_IMAGE_PREFIX}/ci/python-${PYTHON_DEFAULT_VERSION}-uv-docs:latest
   script:
     - VENV_DIR=".venv-${CI_JOB_ID}"
     - uv venv "${VENV_DIR}"
@@ -427,7 +436,7 @@ build_docs:
 build_pages:
   stage: build
   extends: .default_python_job
-  image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv-docs:latest
+  image: ${PYFUGA_CI_IMAGE_PREFIX}/ci/python-${PYTHON_DEFAULT_VERSION}-uv-docs:latest
   variables:
     # Docs build does not require Git LFS objects; skip smudge to speed up checkout.
     GIT_LFS_SKIP_SMUDGE: "1"

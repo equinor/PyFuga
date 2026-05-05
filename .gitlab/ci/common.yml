@@ -31,7 +31,7 @@ workflow:
     - when: always
 
 # ===== Set default Python version =====
-image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv:latest
+image: ${PYFUGA_CI_IMAGE_PREFIX}/ci/python-${PYTHON_DEFAULT_VERSION}-uv:latest
 
 # ===== Reusable hidden jobs =====
 # ----- Shared rules -----

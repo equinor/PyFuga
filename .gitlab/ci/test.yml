@@ -5,7 +5,7 @@
 # ----- Test PyFuga (quick, every push) -----
 test_linux_default:
   stage: test
-  image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv-tests:latest
+  image: ${PYFUGA_CI_IMAGE_PREFIX}/ci/python-${PYTHON_DEFAULT_VERSION}-uv-tests:latest
   extends:
     - .default_python_job
     - .pytest_coverage
@@ -39,7 +39,7 @@ test_windows_default:
     - .windows_test_job
     - .rules_on_code_changes
   image:
-    name: ${CI_REGISTRY_IMAGE}/ci/windows-pixi-py${PYTHON_DEFAULT_VERSION_TAG}-ci:${ENV_TAG}
+    name: ${PYFUGA_CI_IMAGE_PREFIX}/ci/windows-pixi-py${PYTHON_DEFAULT_VERSION_TAG}-ci:${ENV_TAG}
     pull_policy: always
   needs:
     - job: prepare_windows_env_tag
@@ -149,7 +149,7 @@ test_windows_matrix:
   # Use a single resource group so matrix entries execute serially.
   resource_group: windows-test-matrix
   image:
-    name: ${CI_REGISTRY_IMAGE}/ci/windows-pixi-${PIXI_ENV}:${ENV_TAG}
+    name: ${PYFUGA_CI_IMAGE_PREFIX}/ci/windows-pixi-${PIXI_ENV}:${ENV_TAG}
     pull_policy: always
   needs:
     - job: prepare_windows_env_tag
@@ -258,7 +258,7 @@ test_windows_matrix:
 # ----- Test PyFuga (full matrix, only when required) -----
 test_linux_matrix:
   stage: test
-  image: ${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_VERSION}-uv-tests:latest
+  image: ${PYFUGA_CI_IMAGE_PREFIX}/ci/python-${PYTHON_VERSION}-uv-tests:latest
   parallel:
     matrix:
       - PYTHON_VERSION: [ "3.10", "3.11", "3.12", "3.13", "3.14" ]
