@@ -40,7 +40,7 @@ from numba.core.decorators import njit  # type: ignore[import-untyped]
 
 debugging = sys.gettrace() is not None
 numba_jit = False  # and not debugging
-jit_modules = set()
+jit_modules: set[str] = set()
 preludium_equivalent = False
 
 P = ParamSpec("P")
