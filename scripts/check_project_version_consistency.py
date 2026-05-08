@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Fail if tracked release metadata disagrees with pyproject.toml [project].version.
+"""Fail if tracked release metadata is inconsistent across release files.
 
 Checked files (extend this script when adding new pinned locations):
   - CHANGELOG.md (first ## [x] heading, PEP 440 vs pyproject)
-  - conda-recipe/meta.yaml (package version + sdist name in source url)
+  - conda-recipe/recipe.yaml (tracks latest published PyPI package version + sdist url pattern)
   - docs/conf.py (must load version from pyproject.toml, no hard-coded semver)
   - pixi.lock (path dependency pyfuga canonical version)
 
@@ -13,9 +13,12 @@ Conda requirements/deps vs pyproject are validated separately by scripts/sync_co
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
+from urllib.error import URLError
+from urllib.request import urlopen
 
 import tomllib
 from packaging.version import Version
@@ -29,41 +32,73 @@ def _pyproject_version() -> str:
     return str(data["project"]["version"])
 
 
+def _project_name() -> str:
+    data = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
+    return str(data["project"]["name"])
+
+
 def _canonical_version(v: str) -> str:
     return str(Version(v))
 
 
+def _latest_pypi_version(package_name: str, timeout: float = 20.0) -> str:
+    api_url = f"https://pypi.org/pypi/{package_name}/json"
+    try:
+        with urlopen(api_url, timeout=timeout) as response:
+            payload = json.load(response)
+    except URLError as error:
+        raise RuntimeError(f"failed to fetch {api_url}: {error}") from error
+    latest = str(payload["info"]["version"]).strip()
+    if not latest:
+        raise RuntimeError(f"PyPI metadata for {package_name!r} had empty info.version")
+    return latest
+
+
 def _recipe_package_version(text: str) -> str:
+    context_match = re.search(
+        r"^context:\n(?:^  .*\n)*?^  version:\s*(?P<value>.+)$",
+        text,
+        flags=re.MULTILINE,
+    )
+    if context_match:
+        return context_match.group("value").strip()
+
     m = re.search(
         r"^package:\n(?:^  .*\n)*?^  version:\s*(?P<value>.+)$",
         text,
         flags=re.MULTILINE,
     )
     if not m:
-        raise ValueError("could not parse package.version from conda-recipe/meta.yaml")
+        raise ValueError("could not parse package.version from conda-recipe/recipe.yaml")
     return m.group("value").strip()
 
 
-def check_conda_recipe(expected: str) -> list[str]:
-    path = ROOT / "conda-recipe" / "meta.yaml"
+def check_conda_recipe(package_name: str) -> list[str]:
+    path = ROOT / "conda-recipe" / "recipe.yaml"
     text = path.read_text(encoding="utf-8")
     rel = path.relative_to(ROOT)
+    try:
+        expected = _latest_pypi_version(package_name)
+    except RuntimeError as exc:
+        return [f"{rel}: {exc}"]
     try:
         found = _recipe_package_version(text)
     except ValueError as exc:
         return [f"{rel}: {exc}"]
     if found != expected:
-        return [f"{rel}: package version is {found!r}; pyproject.toml has {expected!r}"]
+        return [f"{rel}: package version is {found!r}; latest PyPI version is {expected!r}"]
 
     canon = _canonical_version(expected)
     m = re.search(r"pyfuga-([^/]+)\.tar\.gz", text)
     if not m:
         return [f"{rel}: source url must contain pyfuga-<version>.tar.gz"]
     url_ver = m.group(1)
+    if url_ver == "${{ version }}":
+        return []
     if url_ver != canon:
         return [
             f"{rel}: sdist name uses {url_ver!r} in url; expected canonical {canon!r} "
-            f"(run: pixi run sync-conda-recipe after python -m build --sdist)"
+            f"(run: pixi run sync-conda-recipe)"
         ]
     return []
 
@@ -119,9 +154,10 @@ def main() -> int:
     parser.parse_args()
 
     expected = _pyproject_version()
+    package_name = _project_name()
     errors: list[str] = []
     for check in (
-        check_conda_recipe(expected),
+        check_conda_recipe(package_name),
         check_changelog(expected),
         check_docs_conf(),
         check_pixi_lock(expected),
@@ -130,14 +166,14 @@ def main() -> int:
 
     if errors:
         print(
-            "Project version consistency check failed (pyproject.toml [project].version is source of truth).",
+            "Project version consistency check failed (pyproject is source of truth, recipe tracks latest PyPI).",
             file=sys.stderr,
         )
         for line in errors:
             print(f"  {line}", file=sys.stderr)
         return 1
 
-    print(f"OK: all checked locations match pyproject.toml version {expected!r}.")
+    print(f"OK: metadata checks passed (pyproject version {expected!r}; recipe tracks latest PyPI).")
     return 0
 
 

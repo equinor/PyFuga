@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import difflib
 import hashlib
+import json
 import re
 from pathlib import Path
 from urllib.error import URLError
@@ -13,7 +14,7 @@ from packaging.version import Version
 
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = ROOT / "pyproject.toml"
-RECIPE = ROOT / "conda-recipe" / "meta.yaml"
+RECIPE = ROOT / "conda-recipe" / "recipe.yaml"
 
 
 def sha256_file(path: Path) -> str:
@@ -33,6 +34,8 @@ def replace_line(text: str, pattern: str, replacement: str) -> str:
 
 def canonical_dep(dep: str) -> str:
     dep = dep.strip()
+    dep = dep.replace("${{", "{{")
+    dep = dep.replace("}}.*", "}}")
     dep = re.sub(r"\s+", "", dep)
     match = re.match(r"^([A-Za-z0-9_.-]+)(.*)$", dep)
     if not match:
@@ -47,40 +50,52 @@ def parse_recipe_run_requirements(recipe_text: str) -> list[str]:
 def parse_recipe_requirements(recipe_text: str, section: str) -> list[str]:
     requirements_match = re.search(r"^requirements:\n(?P<body>(?:^  .*\n?)*)", recipe_text, flags=re.MULTILINE)
     if not requirements_match:
-        raise RuntimeError("Could not parse requirements section from conda-recipe/meta.yaml")
+        raise RuntimeError("Could not parse requirements section from conda-recipe/recipe.yaml")
 
     requirements_body = requirements_match.group("body")
     section_match = re.search(rf"^  {section}:\n(?P<body>(?:^    - .*\n?)*)", requirements_body, flags=re.MULTILINE)
     if not section_match:
-        raise RuntimeError(f"Could not parse requirements.{section} from conda-recipe/meta.yaml")
+        raise RuntimeError(f"Could not parse requirements.{section} from conda-recipe/recipe.yaml")
 
     run_lines = [line.strip() for line in section_match.group("body").splitlines() if line.strip()]
     run_deps = [line[len("- ") :].strip() for line in run_lines if line.startswith("-")]
 
     if not run_deps:
-        raise RuntimeError(f"Could not parse requirements.{section} from conda-recipe/meta.yaml")
+        raise RuntimeError(f"Could not parse requirements.{section} from conda-recipe/recipe.yaml")
 
     return run_deps
 
 
 def parse_test_imports(recipe_text: str) -> list[str]:
+    tests_match = re.search(
+        r"^tests:\n(?P<body>(?:^  .*\n?|^    .*\n?|^      .*\n?)*)", recipe_text, flags=re.MULTILINE
+    )
+    if tests_match:
+        imports_match = re.search(
+            r"^\s*imports:\n(?P<body>(?:^\s*-\s.*\n?)*)", tests_match.group("body"), flags=re.MULTILINE
+        )
+        if imports_match:
+            imports = [line.strip()[len("- ") :] for line in imports_match.group("body").splitlines() if line.strip()]
+            if imports:
+                return imports
+
     test_match = re.search(r"^test:\n(?P<body>(?:^  .*\n?)*)", recipe_text, flags=re.MULTILINE)
     if not test_match:
-        raise RuntimeError("Could not parse test section from conda-recipe/meta.yaml")
+        raise RuntimeError("Could not parse tests/test section from conda-recipe/recipe.yaml")
     imports_match = re.search(r"^  imports:\n(?P<body>(?:^    - .*\n?)*)", test_match.group("body"), flags=re.MULTILINE)
     if not imports_match:
-        raise RuntimeError("Could not parse test.imports from conda-recipe/meta.yaml")
+        raise RuntimeError("Could not parse test.imports from conda-recipe/recipe.yaml")
 
     imports = [line.strip()[len("- ") :] for line in imports_match.group("body").splitlines() if line.strip()]
     if not imports:
-        raise RuntimeError("Could not parse test.imports from conda-recipe/meta.yaml")
+        raise RuntimeError("Could not parse test.imports from conda-recipe/recipe.yaml")
     return imports
 
 
 def get_scalar(recipe_text: str, pattern: str, label: str) -> str:
     match = re.search(pattern, recipe_text, flags=re.MULTILINE)
     if not match:
-        raise RuntimeError(f"Could not parse {label} from conda-recipe/meta.yaml")
+        raise RuntimeError(f"Could not parse {label} from conda-recipe/recipe.yaml")
     return match.group("value").strip()
 
 
@@ -105,12 +120,12 @@ def expected_run_requirements(pyproject_data: dict) -> list[str]:
             dependencies.append(dep.replace("matplotlib", "matplotlib-base", 1))
         else:
             dependencies.append(dep)
-    return ["python >={{ python_min }}", *dependencies]
+    return ["python >=${{ python_min }}", *dependencies]
 
 
 def expected_host_requirements(pyproject_data: dict) -> list[str]:
     build_system_requires = pyproject_data["build-system"]["requires"]
-    return ["python {{ python_min }}", "pip", *build_system_requires]
+    return ["python ${{ python_min }}.*", "pip", *build_system_requires]
 
 
 def compare_dependency_sets(expected: list[str], actual: list[str]) -> tuple[list[str], list[str]]:
@@ -139,23 +154,55 @@ def verify_remote_source_checksum(url: str, expected_sha256: str, timeout: float
     return True, ""
 
 
-def render_synced_recipe(recipe_text: str, name: str, version: str, source_url: str, checksum: str) -> str:
+def fetch_pypi_sdist_metadata(package_name: str, timeout: float = 20.0) -> tuple[str, str, str]:
+    api_url = f"https://pypi.org/pypi/{package_name}/json"
+    try:
+        with urlopen(api_url, timeout=timeout) as response:
+            payload = json.load(response)
+    except URLError as error:
+        raise RuntimeError(f"Failed to load PyPI metadata from {api_url}: {error}") from error
+
+    latest_version = str(payload["info"]["version"]).strip()
+    if not latest_version:
+        raise RuntimeError(f"PyPI metadata for {package_name!r} did not include info.version")
+
+    latest_canonical = str(Version(latest_version))
+    releases = payload.get("releases", {})
+    artifacts = releases.get(latest_canonical)
+    if not artifacts:
+        raise RuntimeError(f"No release files found on PyPI for {package_name}=={latest_canonical}")
+
+    sdist_artifact = next((item for item in artifacts if item.get("packagetype") == "sdist"), None)
+    if not sdist_artifact:
+        raise RuntimeError(f"No sdist artifact found on PyPI for {package_name}=={latest_canonical}")
+
+    sha256 = str((sdist_artifact.get("digests") or {}).get("sha256", "")).strip()
+    if not sha256:
+        raise RuntimeError(f"Missing sha256 digest for PyPI sdist {package_name}=={latest_canonical}")
+
+    source_url = str(sdist_artifact.get("url", "")).strip()
+    if not source_url:
+        raise RuntimeError(f"Missing source URL for PyPI sdist {package_name}=={latest_canonical}")
+
+    return latest_version, latest_canonical, sha256
+
+
+def render_synced_recipe(recipe_text: str, name: str, version: str, checksum: str) -> str:
     updated = recipe_text
     updated = replace_line(updated, r"^  name:\s*.*$", f"  name: {name}")
-    updated = replace_line(updated, r"^  version:\s*.*$", f"  version: {version}")
-    updated = replace_line(updated, r"^  url:\s*.*$", f"  url: {source_url}")
-    updated = replace_line(updated, r"^  sha256:\s*.*$", f'  sha256: "{checksum}"')
+    updated = replace_line(updated, r"(^context:\n(?:^  .*\n)*?^  version:\s*).*$", rf"\g<1>{version}")
+    updated = replace_line(updated, r"^  sha256:\s*.*$", f"  sha256: {checksum}")
     return updated
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Sync conda-recipe/meta.yaml package version and source checksum with pyproject + built sdist."
+        description="Sync conda-recipe/recipe.yaml version/checksum with latest published PyPI release."
     )
     parser.add_argument(
         "--check",
         action="store_true",
-        help="Do not modify files; fail if conda-recipe/meta.yaml is out of sync.",
+        help="Do not modify files; fail if conda-recipe/recipe.yaml is out of sync.",
     )
     parser.add_argument(
         "--check-remote-source",
@@ -166,20 +213,10 @@ def main() -> int:
 
     data = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     name = data["project"]["name"]
-    version = data["project"]["version"]
-    # setuptools/pypi use PEP 440 canonical names for sdist files and PyPI URLs (e.g. 0.2.1-dev -> 0.2.1.dev0)
-    sdist_version = str(Version(version))
-
-    sdist = ROOT / "dist" / f"{name}-{sdist_version}.tar.gz"
-    if not sdist.exists():
-        build_cmd = f"pixi run bash -lc 'cd /tmp && python -m build --sdist {ROOT}'"
-        raise FileNotFoundError(f"Missing sdist: {sdist}. Build it first with: {build_cmd}")
-
-    checksum = sha256_file(sdist)
-    source_url = f"https://pypi.org/packages/source/{name[0]}/{name}/{name}-{sdist_version}.tar.gz"
+    version, canonical_version, checksum = fetch_pypi_sdist_metadata(name)
 
     recipe = RECIPE.read_text(encoding="utf-8")
-    synced_recipe = render_synced_recipe(recipe, name, version, source_url, checksum)
+    synced_recipe = render_synced_recipe(recipe, name, version, checksum)
 
     expected_run = expected_run_requirements(data)
     expected_host = expected_host_requirements(data)
@@ -189,7 +226,7 @@ def main() -> int:
     missing_run_deps, extra_run_deps = compare_dependency_sets(expected_run, actual_run)
 
     if missing_host_deps or extra_host_deps:
-        print("conda-recipe/meta.yaml requirements.host is out of sync with pyproject.toml/build-system")
+        print("conda-recipe/recipe.yaml requirements.host is out of sync with pyproject.toml/build-system")
         if missing_host_deps:
             print("Missing in recipe host requirements:")
             for dep in missing_host_deps:
@@ -201,7 +238,7 @@ def main() -> int:
         return 1
 
     if missing_run_deps or extra_run_deps:
-        print("conda-recipe/meta.yaml requirements.run is out of sync with pyproject.toml")
+        print("conda-recipe/recipe.yaml requirements.run is out of sync with pyproject.toml")
         if missing_run_deps:
             print("Missing in recipe run requirements:")
             for dep in missing_run_deps:
@@ -221,7 +258,7 @@ def main() -> int:
         recipe_for_validation, r"^package:\n(?:^  .*\n)*?^  name:\s*(?P<value>.+)$", "package.name"
     )
     recipe_version = get_scalar(
-        recipe_for_validation, r"^package:\n(?:^  .*\n)*?^  version:\s*(?P<value>.+)$", "package.version"
+        recipe_for_validation, r"^context:\n(?:^  .*\n)*?^  version:\s*(?P<value>.+)$", "context.version"
     )
     recipe_source_url = get_scalar(
         recipe_for_validation, r"^source:\n(?:^  .*\n)*?^  url:\s*(?P<value>.+)$", "source.url"
@@ -249,9 +286,14 @@ def main() -> int:
         errors.append(f"package.name mismatch: recipe={recipe_name!r}, pyproject={name!r}")
     if recipe_version != version:
         errors.append(f"package.version mismatch: recipe={recipe_version!r}, pyproject={version!r}")
-    if recipe_source_url != source_url:
-        errors.append(f"source.url mismatch: recipe={recipe_source_url!r}, expected={source_url!r}")
-    if recipe_sha256 != checksum and not args.check:
+    expected_source_url_template = f"https://pypi.org/packages/source/{name[0]}/{name}/{name}-${{{{ version }}}}.tar.gz"
+    expected_source_url_canonical = (
+        f"https://pypi.org/packages/source/{name[0]}/{name}/{name}-{canonical_version}.tar.gz"
+    )
+    if recipe_source_url not in {expected_source_url_template, expected_source_url_canonical}:
+        expected_urls = [expected_source_url_template, expected_source_url_canonical]
+        errors.append("source.url mismatch: " f"recipe={recipe_source_url!r}, expected one of {expected_urls!r}")
+    if recipe_sha256 != checksum:
         errors.append(f"source.sha256 mismatch: recipe={recipe_sha256!r}, expected={checksum!r}")
 
     if noarch != "python":
@@ -297,34 +339,28 @@ def main() -> int:
         return 1
 
     if args.check:
-        expected_recipe_for_check = replace_line(
-            synced_recipe,
-            r"^  sha256:\s*.*$",
-            f'  sha256: "{recipe_sha256}"',
-        )
-
-        if recipe != expected_recipe_for_check:
+        if recipe != synced_recipe:
             diff = "\n".join(
                 difflib.unified_diff(
                     recipe.splitlines(),
-                    expected_recipe_for_check.splitlines(),
-                    fromfile="meta.yaml (current)",
-                    tofile="meta.yaml (expected)",
+                    synced_recipe.splitlines(),
+                    fromfile="recipe.yaml (current)",
+                    tofile="recipe.yaml (expected)",
                     lineterm="",
                 )
             )
-            print("conda-recipe/meta.yaml is out of sync.")
+            print("conda-recipe/recipe.yaml is out of sync.")
             print("Run: pixi run sync-conda-recipe")
             if diff:
                 print(diff)
             return 1
-        print("conda-recipe/meta.yaml is in sync")
+        print("conda-recipe/recipe.yaml is in sync")
         return 0
 
     RECIPE.write_text(synced_recipe, encoding="utf-8")
     print(f"Updated {RECIPE}")
     print(f"  version: {version}")
-    print(f"  source:  {source_url}")
+    print(f"  source:  {expected_source_url_canonical}")
     print(f"  sha256:  {checksum}")
     return 0
 
