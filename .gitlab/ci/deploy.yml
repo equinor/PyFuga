@@ -20,7 +20,7 @@ pages:
     expire_in: 1 week
   rules:
     # Only build and deploy docs for main branch and tags (releases)
-    - if: "$CI_COMMIT_BRANCH == \"main\" || $CI_COMMIT_TAG"
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG'
       when: on_success
       allow_failure: false
 
@@ -44,8 +44,9 @@ publish_pypi:
     - python -m twine upload -u "$TWINE_USERNAME" -p "$TWINE_PASSWORD" dist/*
   rules:
     # Publish only for protected tags when credentials are configured
-    - if: "$CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED == \"true\" && $TWINE_USERNAME
-        && $TWINE_PASSWORD"
+    - if:
+        '$CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED == "true" && $TWINE_USERNAME
+        && $TWINE_PASSWORD'
       when: on_success
       allow_failure: false
 
@@ -70,7 +71,7 @@ publish_gitlab_pypi:
       gitlab-ci-token -p "$CI_JOB_TOKEN" dist/*
   rules:
     # Manual private test publish on this branch
-    - if: "$CI_COMMIT_BRANCH == \"test-pypi\""
+    - if: '$CI_COMMIT_BRANCH == "test-pypi"'
       when: manual
       allow_failure: true
 
@@ -97,7 +98,7 @@ verify_gitlab_pypi:
     - |
       python -c 'import importlib.metadata, pyfuga, tomllib; from packaging.version import Version; expected=tomllib.load(open("pyproject.toml", "rb"))["project"]["version"]; metadata_version=importlib.metadata.version("pyfuga"); attr_version=pyfuga.__version__; print(f"Installed pyfuga metadata={metadata_version}, attr={attr_version}"); assert Version(metadata_version) == Version(expected), f"Metadata version mismatch: expected {expected}, got {metadata_version}"; assert Version(attr_version) == Version(expected), f"pyfuga.__version__ mismatch: expected {expected}, got {attr_version}"'
   rules:
-    - if: "$CI_COMMIT_BRANCH == \"test-pypi\""
+    - if: '$CI_COMMIT_BRANCH == "test-pypi"'
       when: manual
       allow_failure: true
     - when: never
@@ -134,7 +135,7 @@ build_conda:
     paths:
       - conda_channel/noarch/pyfuga*
   rules:
-    - if: "$CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED == \"true\""
+    - if: '$CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED == "true"'
       when: on_success
       allow_failure: false
     - when: never
@@ -170,8 +171,9 @@ build_conda_smoke:
     paths:
       - conda_channel/noarch/pyfuga*
   rules:
-    - if: "$CI_COMMIT_BRANCH && ($ALLOW_CONDA_TEST == \"1\" || $ALLOW_CONDA_TEST ==
-        \"true\")"
+    - if:
+        '$CI_COMMIT_BRANCH && ($ALLOW_CONDA_TEST == "1" || $ALLOW_CONDA_TEST ==
+        "true")'
       when: manual
       allow_failure: true
     - when: never
@@ -198,180 +200,20 @@ deploy_conda:
         echo "Deployed ${BASENAME}"
       done
   rules:
-    - if: "$CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED == \"true\""
+    - if: '$CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED == "true"'
       when: on_success
       allow_failure: false
     - when: never
   tags:
     - conda_channel
 
-# ----- Publish PyFuga to TestPyPI (protected tags only) -----
-publish_testpypi:
-  stage: deploy
-  extends: .default_python_job
-  needs:
-    - job: build_release_artifacts
-      artifacts: true
-  script:
-    - test -n "$TEST_PYPI_TOKEN" || (echo "TEST_PYPI_TOKEN is not set"; exit 1)
-    - VENV_DIR=".venv-${CI_JOB_ID}"
-    - uv venv "${VENV_DIR}"
-    - . "${VENV_DIR}/bin/activate"
-    - uv pip install twine
-    - python -m twine upload --skip-existing --repository-url
-      https://test.pypi.org/legacy/ -u "__token__" -p "$TEST_PYPI_TOKEN" dist/*
-  rules:
-    # Publish on protected tags when credentials are configured
-    - if: "$CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED == \"true\" && $TEST_PYPI_TOKEN"
-      when: on_success
-      allow_failure: false
-
-    # Temporary manual smoke test on this branch
-    - if: "$CI_COMMIT_BRANCH == \"test-pypi\" && $TEST_PYPI_TOKEN"
-      when: manual
-      allow_failure: true
-
-    # Otherwise never run
-    - when: never
-
 # ----- Publish PyFuga source to Zenodo on protected version tags -----
 publish_zenodo:
   stage: deploy
   extends: .default_python_job
   script:
-    - |
-      # Token precedence:
-      # Explicit sandbox/production token for the selected target.
-      if [ "${ZENODO_SANDBOX:-false}" = "true" ]; then
-        ZENODO_TOKEN="${ZENODO_SANDBOX_TOKEN}"
-      else
-        ZENODO_TOKEN="${ZENODO_PRODUCTION_TOKEN}"
-      fi
-      export ZENODO_TOKEN
-      if [ -z "$ZENODO_TOKEN" ]; then
-        echo "No Zenodo token configured for selected target."
-        echo "Set ZENODO_SANDBOX_TOKEN or ZENODO_PRODUCTION_TOKEN."
-        exit 1
-      fi
-    - |
-      # Select the correct Zenodo record ID for sandbox/production.
-      # Prefer the new variables (ZENODO_*_RECORD). Fall back to legacy ZENODO_RECORD/zenodo_record.
-      if [ "${ZENODO_SANDBOX:-false}" = "true" ]; then
-        ZENODO_RECORD_SELECTED="${ZENODO_SANDBOX_RECORD:-${ZENODO_RECORD:-${zenodo_record}}}"
-      else
-        ZENODO_RECORD_SELECTED="${ZENODO_PRODUCTION_RECORD:-${ZENODO_RECORD:-${zenodo_record}}}"
-      fi
-      export ZENODO_RECORD_SELECTED
-    - TAG_VERSION="${CI_COMMIT_TAG#v}"
-    - ARCHIVE_NAME="PyFuga-v${TAG_VERSION}.zip"
-    - ZENODO_VENV_DIR=".venv-zenodo-${CI_JOB_ID}"
-    - uv venv "${ZENODO_VENV_DIR}"
-    - . "${ZENODO_VENV_DIR}/bin/activate"
-    - |
-      # Create a zip snapshot of the exact Git tag commit.
-      git archive --format zip --output "${ARCHIVE_NAME}" "${CI_COMMIT_TAG}"
-    - |
-      # Ensure consistent Zenodo archive contents even for older tags that don't have
-      # a `.gitattributes` file with `export-ignore` rules.
-      ARCHIVE_NAME="${ARCHIVE_NAME}" python - <<'PY'
-      import fnmatch
-      import os
-      import zipfile
-      from pathlib import Path
-      import shutil
-
-      archive = Path(os.environ["ARCHIVE_NAME"])
-      tmp = archive.with_suffix(".tmp.zip")
-
-      # Allowlist: include only what is needed to build/run/test + docs + license.
-      allow_globs = [
-        "pyfuga/**",
-        "tests/**",
-        "docs/**",
-        "pyproject.toml",
-        "environment.yml",
-        "pixi.lock",
-        ".coveragerc",
-        "README.md",
-        "LICENSE",
-        "CHANGELOG.md",
-        "CONTRIBUTING.md",
-        "CITATION.cff",
-        "scripts/dev.py",
-      ]
-
-      def allowed(name: str) -> bool:
-        name = name.lstrip("./")
-        return any(fnmatch.fnmatch(name, g) for g in allow_globs)
-
-      with zipfile.ZipFile(archive, "r") as zin, zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED) as zout:
-        for info in zin.infolist():
-          if not allowed(info.filename):
-            continue
-          data = zin.read(info.filename)
-          zout.writestr(info, data)
-
-      shutil.move(tmp, archive)
-      PY
-    - uv pip install gitlab2zenodo
-    - |
-      # Generate release-specific metadata from the tag.
-      # Use the commit date (YYYY-MM-DD). `^{commit}` ensures annotated tags resolve to the commit.
-      PUB_DATE="$(git show -s --format=%cs "${CI_COMMIT_TAG}^{commit}")"
-      ZENODO_METADATA_FILE=".zenodo.generated.json"
-      PUB_DATE="${PUB_DATE}" TAG_VERSION="${TAG_VERSION}" ZENODO_METADATA_FILE="${ZENODO_METADATA_FILE}" python - <<'PY'
-      import json, os
-
-      src = ".zenodo.json"
-      out = os.environ["ZENODO_METADATA_FILE"]
-      version = os.environ["TAG_VERSION"]
-      pub_date = os.environ["PUB_DATE"].splitlines()[0].strip()
-
-      with open(src, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-      metadata = data.setdefault("metadata", {})
-      metadata["version"] = version
-      metadata["publication_date"] = pub_date
-      with open(out, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-        f.write("\n")
-      PY
-      SANDBOX_ARGS=""
-      if [ "${ZENODO_SANDBOX:-false}" = "true" ]; then
-        SANDBOX_ARGS="-s"
-      fi
-
-      PUBLISH_ARGS=""
-      # Default to "draft" (no auto-publish).
-      if [ "${ZENODO_AUTO_PUBLISH:-false}" = "true" ]; then
-        PUBLISH_ARGS="-p"
-      fi
-
-      if [ -n "${ZENODO_RECORD_SELECTED}" ]; then
-        g2z-send -i "${ZENODO_RECORD_SELECTED}" -t "${ZENODO_TOKEN}" ${SANDBOX_ARGS} ${PUBLISH_ARGS} -m "${ZENODO_METADATA_FILE}" "${ARCHIVE_NAME}"
-      else
-        # First run creates a new Zenodo record; capture the produced deposition id/DOI from logs,
-        # then set ZENODO_RECORD for future tags to create new versions instead of new records.
-        g2z-send -t "${ZENODO_TOKEN}" ${SANDBOX_ARGS} ${PUBLISH_ARGS} -m "${ZENODO_METADATA_FILE}" "${ARCHIVE_NAME}"
-      fi
-    - |
-      # Verify what Zenodo stored (draft).
-      if [ -n "${ZENODO_RECORD_SELECTED}" ]; then
-        python - <<'PY'
-      import json, os, subprocess, sys
-      record = os.environ["ZENODO_RECORD_SELECTED"]
-      token = os.environ["ZENODO_TOKEN"]
-      sandbox = os.environ.get("ZENODO_SANDBOX", "false") == "true"
-      cmd = ["g2z-get-meta", "-i", record, "-t", token, "-d"]
-      if sandbox:
-        cmd.insert(3, "-s")
-      out = subprocess.check_output(cmd, text=True)
-      data = json.loads(out)
-      md = data.get("metadata", {})
-      print("Zenodo draft metadata.publication_date =", md.get("publication_date"))
-      PY
-      fi
+    - bash ci/scripts/create_uv_venv.sh ".venv-zenodo-${CI_JOB_ID}" gitlab2zenodo
+    - python ci/scripts/zenodo_upload.py --mode release
   rules:
     - if: "$CI_COMMIT_TAG && $CI_COMMIT_TAG =~ /^v?\\d+\\.\\d+(\\.\\d+)?$/ &&
         $CI_COMMIT_REF_PROTECTED == \"true\""
@@ -387,220 +229,15 @@ zenodo_upload_for_tag:
   extends: .default_python_job
   needs: []
   script:
-    - |
-      # Safety: don't allow production uploads from unprotected refs.
-      if [ "${CI_COMMIT_REF_PROTECTED:-false}" != "true" ] && [ "${ZENODO_USE_SANDBOX:-true}" != "true" ]; then
-        echo "Ref is not protected; refusing production Zenodo upload."
-        echo "Set ZENODO_USE_SANDBOX=true, or run from a protected ref."
-        exit 1
-      fi
-    - |
-      if [ "${ZENODO_USE_SANDBOX:-true}" = "true" ]; then
-        ZENODO_TOKEN="${ZENODO_SANDBOX_TOKEN}"
-      else
-        ZENODO_TOKEN="${ZENODO_PRODUCTION_TOKEN}"
-      fi
-      export ZENODO_TOKEN
-      if [ -z "$ZENODO_TOKEN" ]; then
-        echo "No Zenodo token configured for selected target."
-        echo "Set ZENODO_SANDBOX_TOKEN or ZENODO_PRODUCTION_TOKEN."
-        exit 1
-      fi
-    - |
-      # Select the correct Zenodo record ID for sandbox/production.
-      # Prefer the new variables (ZENODO_*_RECORD). Fall back to legacy ZENODO_RECORD/zenodo_record.
-      if [ "${ZENODO_USE_SANDBOX:-true}" = "true" ]; then
-        ZENODO_RECORD_SELECTED="${ZENODO_SANDBOX_RECORD:-${ZENODO_RECORD:-${zenodo_record}}}"
-      else
-        ZENODO_RECORD_SELECTED="${ZENODO_PRODUCTION_RECORD:-${ZENODO_RECORD:-${zenodo_record}}}"
-      fi
-      export ZENODO_RECORD_SELECTED
-    - |
-      TARGET_TAG="${ZENODO_TARGET_TAG:-$CI_COMMIT_TAG}"
-      if [ -z "$TARGET_TAG" ]; then
-        echo "ZENODO_TARGET_TAG is not set (example: v0.1.0)"
-        exit 1
-      fi
-    - TAG_VERSION="${TARGET_TAG#v}"
-    - ARCHIVE_NAME="PyFuga-v${TAG_VERSION}.zip"
-    - ZENODO_VENV_DIR=".venv-zenodo-${CI_JOB_ID}"
-    - uv venv "${ZENODO_VENV_DIR}"
-    - . "${ZENODO_VENV_DIR}/bin/activate"
-    - |
-      # Ensure tag exists in this clone.
-      git fetch --tags || true
-      git archive --format zip --output "${ARCHIVE_NAME}" "${TARGET_TAG}"
-    - |
-      # Ensure consistent Zenodo archive contents even for older tags that don't have
-      # a `.gitattributes` file with `export-ignore` rules.
-      ARCHIVE_NAME="${ARCHIVE_NAME}" python - <<'PY'
-      import fnmatch
-      import os
-      import zipfile
-      from pathlib import Path
-      import shutil
-
-      archive = Path(os.environ["ARCHIVE_NAME"])
-      tmp = archive.with_suffix(".tmp.zip")
-
-      # Allowlist: include only what is needed to build/run/test + docs + license.
-      allow_globs = [
-        "pyfuga/**",
-        "tests/**",
-        "docs/**",
-        "pyproject.toml",
-        "environment.yml",
-        "pixi.lock",
-        ".coveragerc",
-        "README.md",
-        "LICENSE",
-        "CHANGELOG.md",
-        "CONTRIBUTING.md",
-        "CITATION.cff",
-        "scripts/dev.py",
-      ]
-
-      def allowed(name: str) -> bool:
-        name = name.lstrip("./")
-        return any(fnmatch.fnmatch(name, g) for g in allow_globs)
-
-      with zipfile.ZipFile(archive, "r") as zin, zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED) as zout:
-        for info in zin.infolist():
-          if not allowed(info.filename):
-            continue
-          data = zin.read(info.filename)
-          zout.writestr(info, data)
-
-      shutil.move(tmp, archive)
-      PY
-    - uv pip install gitlab2zenodo
-    - |
-      # Generate release-specific metadata from the tag.
-      # Use the commit date (YYYY-MM-DD). `^{commit}` ensures annotated tags resolve to the commit.
-      PUB_DATE="$(git show -s --format=%cs "${TARGET_TAG}^{commit}")"
-      ZENODO_METADATA_FILE=".zenodo.generated.json"
-      PUB_DATE="${PUB_DATE}" TAG_VERSION="${TAG_VERSION}" ZENODO_METADATA_FILE="${ZENODO_METADATA_FILE}" python - <<'PY'
-      import json, os
-
-      src = ".zenodo.json"
-      out = os.environ["ZENODO_METADATA_FILE"]
-      version = os.environ["TAG_VERSION"]
-      pub_date = os.environ["PUB_DATE"].splitlines()[0].strip()
-
-      with open(src, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-      metadata = data.setdefault("metadata", {})
-      metadata["version"] = version
-      metadata["publication_date"] = pub_date
-      with open(out, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-        f.write("\n")
-      PY
-      SANDBOX_ARGS=""
-      if [ "${ZENODO_USE_SANDBOX:-true}" = "true" ]; then
-        SANDBOX_ARGS="-s"
-      fi
-
-      PUBLISH_ARGS=""
-      # Keep manual path safe by default (create draft only).
-      if [ "${ZENODO_AUTO_PUBLISH:-false}" = "true" ]; then
-        PUBLISH_ARGS="-p"
-      fi
-
-      SEND_OUTPUT=""
-      SEND_EXIT=0
-      if [ -n "${ZENODO_RECORD_SELECTED}" ]; then
-        echo "Attempting upload to configured Zenodo record: ${ZENODO_RECORD_SELECTED}"
-        set +e
-        SEND_OUTPUT="$(g2z-send -i "${ZENODO_RECORD_SELECTED}" -t "${ZENODO_TOKEN}" ${SANDBOX_ARGS} ${PUBLISH_ARGS} -m "${ZENODO_METADATA_FILE}" "${ARCHIVE_NAME}" 2>&1)"
-        SEND_EXIT=$?
-        set -e
-        printf '%s\n' "$SEND_OUTPUT"
-
-        if [ "$SEND_EXIT" -ne 0 ]; then
-          # Sandbox test ergonomics: if the configured record is missing/deleted, create a fresh sandbox record.
-          if [ "${ZENODO_USE_SANDBOX:-true}" = "true" ] && { [[ "$SEND_OUTPUT" == *"status: 404"* && "$SEND_OUTPUT" == *"persistent identifier does not exist"* ]] || [[ "$SEND_OUTPUT" == *"status: 410"* && "$SEND_OUTPUT" == *"Record deleted"* ]]; }; then
-            echo "Configured sandbox record '${ZENODO_RECORD_SELECTED}' no longer exists; creating a new sandbox record."
-            ZENODO_RECORD_SELECTED=""
-            export ZENODO_RECORD_SELECTED
-            set +e
-            SEND_OUTPUT="$(g2z-send -t "${ZENODO_TOKEN}" ${SANDBOX_ARGS} ${PUBLISH_ARGS} -m "${ZENODO_METADATA_FILE}" "${ARCHIVE_NAME}" 2>&1)"
-            SEND_EXIT=$?
-            set -e
-            printf '%s\n' "$SEND_OUTPUT"
-            if [ "$SEND_EXIT" -ne 0 ]; then
-              exit "$SEND_EXIT"
-            fi
-          else
-            exit "$SEND_EXIT"
-          fi
-        fi
-      else
-        set +e
-        SEND_OUTPUT="$(g2z-send -t "${ZENODO_TOKEN}" ${SANDBOX_ARGS} ${PUBLISH_ARGS} -m "${ZENODO_METADATA_FILE}" "${ARCHIVE_NAME}" 2>&1)"
-        SEND_EXIT=$?
-        set -e
-        printf '%s\n' "$SEND_OUTPUT"
-        if [ "$SEND_EXIT" -ne 0 ]; then
-          exit "$SEND_EXIT"
-        fi
-      fi
-
-      # Verify against the actual upload target ID (new version drafts can differ from the configured record ID).
-      ZENODO_VERIFY_RECORD="$(SEND_OUTPUT="${SEND_OUTPUT}" python - <<'PY'
-      import os, re
-      out = os.environ.get("SEND_OUTPUT", "")
-      matches = re.findall(r"record '(\d+)'", out)
-      print(matches[-1] if matches else "")
-      PY
-      )"
-      if [ -z "${ZENODO_VERIFY_RECORD}" ]; then
-        ZENODO_VERIFY_RECORD="${ZENODO_RECORD_SELECTED}"
-      fi
-      export ZENODO_VERIFY_RECORD
-    - |
-      # Verify what Zenodo stored (draft).
-      if [ -n "${ZENODO_VERIFY_RECORD}" ]; then
-        python - <<'PY'
-      import json
-      import os
-      import subprocess
-      record = os.environ["ZENODO_VERIFY_RECORD"]
-      token = os.environ["ZENODO_TOKEN"]
-      sandbox = os.environ.get("ZENODO_USE_SANDBOX", "true") == "true"
-
-      base_cmd = ["g2z-get-meta", "-i", record, "-t", token]
-      if sandbox:
-        base_cmd.insert(3, "-s")
-
-      # Prefer draft metadata for unpublished deposits, but do not fail if draft
-      # is unavailable (for example when the deposit is already published).
-      cmd = [*base_cmd, "-d"]
-      try:
-        out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT)
-        source = "draft"
-      except subprocess.CalledProcessError as exc:
-        error_output = exc.output or ""
-        if "status: 404" not in error_output:
-          raise
-        out = subprocess.check_output(base_cmd, text=True)
-        source = "record"
-
-      data = json.loads(out)
-      md = data.get("metadata", {})
-      print(
-        f"Verified Zenodo {source} metadata for record {record} publication_date =",
-        md.get("publication_date"),
-      )
-      PY
-      fi
+    - bash ci/scripts/create_uv_venv.sh ".venv-zenodo-${CI_JOB_ID}" gitlab2zenodo
+    - python ci/scripts/zenodo_upload.py --mode manual
   rules:
-    - if: "$CI_COMMIT_BRANCH == \"main\""
+    - if: '$CI_COMMIT_BRANCH == "main"'
       when: manual
       allow_failure: true
-    - if: "$CI_COMMIT_BRANCH && ($ALLOW_ZENODO_TEST == \"1\" || $ALLOW_ZENODO_TEST ==
-        \"true\")"
+    - if:
+        '$CI_COMMIT_BRANCH && ($ALLOW_ZENODO_TEST == "1" || $ALLOW_ZENODO_TEST ==
+        "true")'
       when: manual
       allow_failure: true
     - when: never

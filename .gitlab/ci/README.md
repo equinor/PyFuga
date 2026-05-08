@@ -23,3 +23,13 @@
 - [`build.yml`](build.yml) — image builds and related build stage jobs.
 - [`test.yml`](test.yml) — pytest and lint jobs.
 - [`deploy.yml`](deploy.yml) — deploy stage.
+
+## CI structure notes
+
+- Shared rule templates live in `common.yml` (for example `.rules_on_code_changes` and `.rules_python_matrix_on_changes_or_schedule`) and are the preferred source for trigger semantics.
+- `build.yml` uses YAML anchors for repeated image-build inputs (Kaniko registry auth and Windows image-change path sets) to keep repeated job blocks consistent.
+
+## Planned script extraction points
+
+- Windows pytest job logic in `test.yml` (`test_windows_default` and `test_windows_matrix`) is intentionally targeted for extraction to `ci/scripts/` in a follow-up pass.
+- Zenodo publish/upload logic in `deploy.yml` (`publish_zenodo` and `zenodo_upload_for_tag`) is also targeted for extraction to shared helpers under `ci/scripts/`.

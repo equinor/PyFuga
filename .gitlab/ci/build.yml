@@ -2,6 +2,33 @@
 
 # ===== Image builds =====
 
+# ----- Shared YAML anchors to reduce boilerplate -----
+.kaniko_registry_auth_cmd: &kaniko_registry_auth_cmd |
+  mkdir -p /kaniko/.docker
+  cat > /kaniko/.docker/config.json <<EOF
+  {
+    "auths": {
+      "${CI_REGISTRY}": {
+        "username": "${CI_REGISTRY_USER}",
+        "password": "${CI_REGISTRY_PASSWORD}"
+      }
+    }
+  }
+  EOF
+
+.windows_pixi_base_changes: &windows_pixi_base_changes
+  - ci/Dockerfile.windows-pixi-base
+  - ci/Dockerfile.windows-pixi-ci-env
+  - pixi.lock
+  - .gitlab/ci/build.yml
+
+.windows_pixi_env_changes: &windows_pixi_env_changes
+  - ci/Dockerfile.windows-pixi-base
+  - ci/Dockerfile.windows-pixi-ci-env
+  - .gitlab/ci/build.yml
+  - pyproject.toml
+  - pixi.lock
+
 # ----- Build CI base image (default Python version only) -----
 build_linux_base_image:
   stage: build
@@ -14,18 +41,7 @@ build_linux_base_image:
     CI_IMAGE_REPO: "${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv"
   script:
     # Authenticate to the GitLab registry using the built-in CI variables
-    - mkdir -p /kaniko/.docker
-    - |
-      cat > /kaniko/.docker/config.json <<EOF
-      {
-        "auths": {
-          "${CI_REGISTRY}": {
-            "username": "${CI_REGISTRY_USER}",
-            "password": "${CI_REGISTRY_PASSWORD}"
-          }
-        }
-      }
-      EOF
+    - *kaniko_registry_auth_cmd
 
     # Build and push base image (only :latest to limit registry tag churn)
     - |
@@ -78,18 +94,7 @@ build_linux_test_images:
     CI_IMAGE_REPO: "${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_VERSION}-uv-tests"
     CONSTRAINT_FILE: "constraints/py${PYTHON_VERSION_TAG}.txt"
   script:
-    - mkdir -p /kaniko/.docker
-    - |
-      cat > /kaniko/.docker/config.json <<EOF
-      {
-        "auths": {
-          "${CI_REGISTRY}": {
-            "username": "${CI_REGISTRY_USER}",
-            "password": "${CI_REGISTRY_PASSWORD}"
-          }
-        }
-      }
-      EOF
+    - *kaniko_registry_auth_cmd
     - |
       DEST_LATEST="${CI_IMAGE_REPO}:latest"
 
@@ -130,18 +135,7 @@ build_linux_docs_image:
     CI_IMAGE_REPO_DOCS: "${CI_REGISTRY_IMAGE}/ci/python-${PYTHON_DEFAULT_VERSION}-uv-docs"
   script:
     # Authenticate to the GitLab registry using the built-in CI variables
-    - mkdir -p /kaniko/.docker
-    - |
-      cat > /kaniko/.docker/config.json <<EOF
-      {
-        "auths": {
-          "${CI_REGISTRY}": {
-            "username": "${CI_REGISTRY_USER}",
-            "password": "${CI_REGISTRY_PASSWORD}"
-          }
-        }
-      }
-      EOF
+    - *kaniko_registry_auth_cmd
 
     # Build and push docs image (only :latest to limit registry tag churn)
     - |
@@ -245,10 +239,7 @@ build_windows_pixi_base:
   rules:
     - if: '$CI_COMMIT_REF_PROTECTED == "true"'
       changes:
-        - ci/Dockerfile.windows-pixi-base
-        - ci/Dockerfile.windows-pixi-ci-env
-        - pixi.lock
-        - .gitlab/ci/build.yml
+        *windows_pixi_base_changes
       when: on_success
       allow_failure: false
     - if: '$CI_COMMIT_REF_PROTECTED == "true" && $FORCE_WINDOWS_IMAGE_BUILD == "1"'
@@ -322,11 +313,7 @@ build_windows_pixi_envs:
   rules:
     - if: '$CI_COMMIT_REF_PROTECTED == "true"'
       changes:
-        - ci/Dockerfile.windows-pixi-base
-        - ci/Dockerfile.windows-pixi-ci-env
-        - .gitlab/ci/build.yml
-        - pyproject.toml
-        - pixi.lock
+        *windows_pixi_env_changes
       when: on_success
       allow_failure: false
     - if: '$CI_COMMIT_REF_PROTECTED == "true" && $FORCE_WINDOWS_IMAGE_BUILD == "1"'
@@ -376,11 +363,7 @@ prune_windows_docker_images:
   rules:
     - if: '$CI_COMMIT_REF_PROTECTED == "true"'
       changes:
-        - ci/Dockerfile.windows-pixi-base
-        - ci/Dockerfile.windows-pixi-ci-env
-        - .gitlab/ci/build.yml
-        - pyproject.toml
-        - pixi.lock
+        *windows_pixi_env_changes
       when: on_success
       allow_failure: false
     - if: '$CI_COMMIT_REF_PROTECTED == "true" && $FORCE_WINDOWS_IMAGE_BUILD == "1"'

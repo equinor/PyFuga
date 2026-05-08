@@ -35,17 +35,22 @@ image: ${PYFUGA_CI_IMAGE_PREFIX}/ci/python-${PYTHON_DEFAULT_VERSION}-uv:latest
 
 # ===== Reusable hidden jobs =====
 # ----- Shared rules -----
+.code_change_paths: &code_change_paths
+  - pyfuga/**/*
+  - tests/**/*
+  - constraints/**/*
+  - ".gitlab/ci/**/*"
+  - pixi.lock
+  - pyproject.toml
+  - .coveragerc
+  - .gitlab-ci.yml
+
 .rules_on_code_changes:
   rules:
-    - changes:
-        - pyfuga/**/*
-        - tests/**/*
-        - constraints/**/*
-        - ".gitlab/ci/**/*"
-        - pixi.lock
-        - pyproject.toml
-        - .coveragerc
-        - .gitlab-ci.yml
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: on_success
+      allow_failure: false
+    - changes: *code_change_paths
       when: on_success
       allow_failure: false
     - when: manual
@@ -63,15 +68,7 @@ image: ${PYFUGA_CI_IMAGE_PREFIX}/ci/python-${PYTHON_DEFAULT_VERSION}-uv:latest
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
       when: on_success
       allow_failure: false
-    - changes:
-        - pyfuga/**/*
-        - tests/**/*
-        - constraints/**/*
-        - ".gitlab/ci/**/*"
-        - pixi.lock
-        - pyproject.toml
-        - .coveragerc
-        - .gitlab-ci.yml
+    - changes: *code_change_paths
       when: on_success
       allow_failure: false
     - when: manual
