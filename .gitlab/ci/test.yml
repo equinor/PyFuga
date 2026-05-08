@@ -35,6 +35,7 @@ test_windows_default:
   extends:
     - .windows_test_job
     - .rules_on_code_changes
+  resource_group: windows-test
   image:
     name: ${PYFUGA_CI_IMAGE_PREFIX}/ci/windows-pixi-py${PYTHON_DEFAULT_VERSION_TAG}-ci:${ENV_TAG}
     pull_policy: always
