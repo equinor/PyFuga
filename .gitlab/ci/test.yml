@@ -139,12 +139,14 @@ test_windows_default:
 # Windows test matrix.
 # Built against project-owned Windows Pixi images published by build_windows_pixi_envs.
 # Keep this list aligned with the Pixi environments defined in pyproject.toml.
+# Weekly scheduled pipelines should run this full matrix automatically, while
+# push pipelines keep change-based triggering with manual fallback.
 
-# ----- Test PyFuga on Windows (full matrix, manual) -----
+# ----- Test PyFuga on Windows (full matrix, change-based + scheduled) -----
 test_windows_matrix:
   extends:
     - .windows_test_job
-    - .rules_python_matrix_default_excluded
+    - .rules_python_matrix_on_changes_or_schedule
   # Shared Windows runners can become unstable when all matrix jobs run concurrently.
   # Use a single resource group so matrix entries execute serially.
   resource_group: windows-test-matrix
@@ -256,6 +258,8 @@ test_windows_matrix:
       Write-Host ("pytest (env={0}, xdist={1}) took {2:N1}s" -f $env:PIXI_ENV, $UseXdist, $Stopwatch.Elapsed.TotalSeconds)
 
 # ----- Test PyFuga (full matrix, only when required) -----
+# Weekly scheduled pipelines should run this full matrix automatically, while
+# push pipelines keep change-based triggering with manual fallback.
 test_linux_matrix:
   stage: test
   image: ${PYFUGA_CI_IMAGE_PREFIX}/ci/python-${PYTHON_VERSION}-uv-tests:latest
@@ -266,7 +270,7 @@ test_linux_matrix:
     - .default_python_job
     - .pytest_coverage
     - .pytest_notebook_html_artifacts
-    - .rules_python_matrix_default_excluded
+    - .rules_python_matrix_on_changes_or_schedule
   variables:
     # Linux pytest reads Git LFS test fixtures (tests/test_files/**).
     GIT_LFS_SKIP_SMUDGE: "0"
