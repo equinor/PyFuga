@@ -270,7 +270,9 @@ build_windows_pixi_envs:
     - $DockerConfigDir = Join-Path $env:CI_PROJECT_DIR ".docker-tmp"
     - New-Item -ItemType Directory -Force -Path $DockerConfigDir | Out-Null
     - $env:DOCKER_CONFIG = $DockerConfigDir
-    - $BaseImage = "$env:CI_REGISTRY_IMAGE/ci/windows-pixi-base:$env:ENV_TAG"
+    - $BaseRepo = "$env:CI_REGISTRY_IMAGE/ci/windows-pixi-base"
+    - $BaseImage = "${BaseRepo}:$env:ENV_TAG"
+    - $BaseLatest = "${BaseRepo}:latest"
     - $EnvRepo = "$env:CI_REGISTRY_IMAGE/ci/windows-pixi-$env:PIXI_ENV"
     - $DestTag = "${EnvRepo}:$env:ENV_TAG"
     - $DestLatest = "${EnvRepo}:latest"
@@ -285,7 +287,20 @@ build_windows_pixi_envs:
       } else {
         Write-Host "Using cache image: $DestLatest"
       }
-    - docker build --pull `
+    - |
+      docker pull $BaseImage
+      if ($LASTEXITCODE -ne 0) {
+        Write-Host "Content tag not in registry ($BaseImage); falling back to $BaseLatest"
+        docker pull $BaseLatest
+        if ($LASTEXITCODE -ne 0) {
+          Write-Error "Neither $BaseImage nor $BaseLatest found. Run build_windows_pixi_base first."
+          exit 1
+        }
+        docker tag $BaseLatest $BaseImage
+      } else {
+        Write-Host "Using base image: $BaseImage"
+      }
+    - docker build `
       --cache-from $DestLatest `
       --build-arg BASE_IMAGE=$BaseImage `
       --build-arg PIXI_ENV=$env:PIXI_ENV `
