@@ -58,7 +58,7 @@ lint = [
   "black[jupyter]>=26.1.0",
   "mypy>=1.19.1",
   "packaging>=24",
-  "scipy-stubs>=1.10",
+  "scipy-stubs>=1.10,<1.18",
   "types-tqdm>=4.0",
 ]
 
