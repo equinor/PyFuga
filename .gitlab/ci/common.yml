@@ -33,6 +33,17 @@ workflow:
 # ===== Set default Python version =====
 image: ${PYFUGA_CI_IMAGE_PREFIX}/ci/python-${PYTHON_DEFAULT_VERSION}-uv:latest
 
+# ===== Default runner tags =====
+# Applies to any job that doesn't declare its own tags (directly or via
+# extends), so a job can never end up untagged and stuck by accident.
+# Jobs needing a different runner (Windows, conda_channel, ...) override
+# this with their own tags: block.
+default:
+  tags:
+    - docker
+    - ubuntu
+    - linux
+
 # ===== Reusable hidden jobs =====
 # ----- Shared rules -----
 .code_change_paths: &code_change_paths
