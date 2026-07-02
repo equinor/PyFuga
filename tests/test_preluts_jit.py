@@ -1,4 +1,3 @@
-import time
 import warnings
 
 import numpy as np
@@ -244,11 +243,16 @@ def test_make_preluts_jit_matches_reference():
     # small runtime differences here.
 
 
-def test_compile():
-    # second compile should be fast
-    t = time.time()
+def test_compile(monkeypatch):
+    # A repeated compile with the same jit setting must be a no-op: it should not
+    # reload any modules. (Previously asserted via wall-clock time, which was flaky
+    # on loaded CI runners.)
+    utils.compile(True)  # ensure state is jit=True
+
+    reloaded: list[object] = []
+    monkeypatch.setattr(utils.importlib, "reload", lambda mod: reloaded.append(mod))
     utils.compile(True)
-    assert time.time() - t < 0.01
+    assert reloaded == []
 
 
 def test_make_preluts_jit_parallel():

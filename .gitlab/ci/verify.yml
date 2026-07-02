@@ -26,6 +26,13 @@ security_secret_scan:
     name: zricethezav/gitleaks:v8.24.2
     entrypoint: [ "" ]
   extends: .rules_always_auto
+  # No tags are inherited here (unlike jobs that extend .default_python_job),
+  # so pin the same Linux runner tags explicitly. Otherwise this becomes an
+  # untagged job that only a "run untagged jobs" runner can pick up.
+  tags:
+    - docker
+    - ubuntu
+    - linux
   cache: []
   variables:
     # Secret scanning only needs repository contents and history, not LFS payloads.

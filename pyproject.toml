@@ -254,6 +254,15 @@ module = "pyfuga.flut"
 ignore_errors = false
 disable_error_code = ["no-untyped-call"]
 
+# utils imports numba's njit. Newer numba ships type information, which makes the
+# import "typed" (so the `# type: ignore[import-untyped]` reads as unused) and makes
+# the dynamic njit(...) call fail overload resolution; older numba is untyped and
+# needs the ignore. Relax both codes here so linting passes across numba versions.
+[[tool.mypy.overrides]]
+module = "pyfuga.utils"
+ignore_errors = false
+disable_error_code = ["call-overload", "unused-ignore"]
+
 [[tool.mypy.overrides]]
 module = "pyfuga.preludium_eq_routines"
 ignore_errors = false
