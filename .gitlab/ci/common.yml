@@ -151,6 +151,16 @@ default:
   extends: .pytest_coverage
   stage: test
   image: registry.windenergy.dtu.dk/dockerimages/windows-pixi:ltsc2019
+  # Shared Windows runners occasionally fail in the prepare phase when the
+  # Docker daemon on the host is momentarily unreachable (system failure).
+  # Auto-retry only on infrastructure failures so genuine test failures still
+  # fail fast.
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - unknown_failure
   variables:
     GIT_STRATEGY: clone
     # Windows CI needs Git LFS to fetch large test fixtures.
