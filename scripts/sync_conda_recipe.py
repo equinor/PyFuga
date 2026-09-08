@@ -5,11 +5,15 @@ import difflib
 import hashlib
 import json
 import re
+import sys
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
 
-import tomllib
+if sys.version_info >= (3, 11):
+    import tomllib
+else:  # Python 3.10 (oldest supported) has no stdlib tomllib.
+    import tomli as tomllib
 from packaging.version import Version
 
 ROOT = Path(__file__).resolve().parents[1]

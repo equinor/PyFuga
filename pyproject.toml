@@ -111,8 +111,10 @@ check-fmt = "pixi run -e py312 black --check . && pixi run -e py312 ruff check .
 fmt = "pixi run -e py312 black . && pixi run -e py312 ruff check . --fix"
 
 # Static typing (strict; see [tool.mypy] — only pyfuga.typing is fully enforced until follow-up MRs)
-# Run in the pinned py312 environment by default for consistent local/editor behavior.
-mypy = "pixi run -e py312 python -m mypy pyfuga"
+# Run in the pinned py310 environment: it matches [tool.mypy] python_version and the CI
+# lint job, so local runs reproduce CI exactly. Newer environments resolve a newer xarray
+# whose `Dataset.sel` typing differs, and would report errors CI does not see.
+mypy = "pixi run -e py310 python -m mypy pyfuga"
 
 # Testing
 test = "pixi run -e py312 pytest --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc --import-mode=importlib"

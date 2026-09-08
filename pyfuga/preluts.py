@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -229,7 +229,11 @@ class PreLUTs(ComplexXRDataset):  # type: ignore[no-untyped-call]
 class CompactPreLUTs(PreLUTs):  # type: ignore[no-untyped-call]
     __slots__: list[str] = []
 
-    def sel(
+    # `Dataset.sel` is annotated `-> Self`, but selecting a single (kz0, beta) node
+    # collapses the compact layout into a plain PreLUTs, so the return type is
+    # deliberately widened. Callers rely on CompactPreLUTs being a drop-in for
+    # PreLUTs (see pyfuga/flut.py), so the method cannot be renamed.
+    def sel(  # type: ignore[override]
         self,
         indexers: Any = None,
         method: Any = None,
@@ -245,7 +249,4 @@ class CompactPreLUTs(PreLUTs):  # type: ignore[no-untyped-call]
             attrs={k: v for k, v in self.attrs.items() if k not in ["kz0_lst", "beta_lst"]},
         )
         ds = ds.assign_coords(i=ds.i, beta=beta, kz0=kz0)
-        return cast(
-            PreLUTs,
-            PreLUTs.sel(ds, indexers=indexers, method=method, tolerance=tolerance, drop=drop, **indexers_kwargs),
-        )
+        return PreLUTs.sel(ds, indexers=indexers, method=method, tolerance=tolerance, drop=drop, **indexers_kwargs)
