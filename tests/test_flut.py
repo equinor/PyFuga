@@ -14,6 +14,11 @@ from pyfuga.utils import compile, get_beta_lst, normalise_n_cpu_workers
 from .helpers import expose_new_names
 from .test_files import tfp
 
+# NOTE: These tests pin LUT *values* against reference files. If a change here is expected
+# (e.g. a physics/numerics fix that alters LUT output), bump ``LUT_FORMAT_VERSION`` in
+# ``pyfuga/constants.py`` as well, so stale on-disk caches are rejected and regenerated.
+# Structural changes (new/renamed variables) are additionally guarded by tests/test_lut_schema.py.
+
 
 @pytest.mark.parametrize("zeta0", [0, -1, 1])
 def test_make_hubheight_luts(zeta0):

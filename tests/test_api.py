@@ -147,6 +147,92 @@ def test_get_luts_orchestration_and_caching(tmp_path: Path):
     xr.testing.assert_identical(luts, luts2)
 
 
+def _rewrite_attrs(path: Path, mutate) -> None:
+    """Load a cached LUT, apply ``mutate(attrs)`` and write it back to the same path."""
+    ds = xr.load_dataset(path)
+    mutate(ds.attrs)
+    ds.to_netcdf(path)
+
+
+@pytest.mark.local
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        pytest.param(lambda a: [a.pop(k, None) for k in ("lut_format_version", "lut_schema_fingerprint")], id="legacy"),
+        pytest.param(lambda a: a.__setitem__("lut_format_version", -1), id="wrong-version"),
+        pytest.param(lambda a: a.__setitem__("lut_schema_fingerprint", "deadbeef0000"), id="bad-fingerprint"),
+    ],
+)
+def test_get_luts_regenerates_incompatible_cache(tmp_path: Path, mutate) -> None:
+    """A final LUT cache with missing/incompatible version metadata is rejected and regenerated."""
+    out_dir = tmp_path / "luts"
+    params = {
+        "folder": out_dir,
+        "zeta0": 0,
+        "nkz0": 2,
+        "nbeta": 8,
+        "diameter": 80,
+        "zhub": 70,
+        "z0": 1e-5,
+        "zi": 400,
+        "zlow": 70,
+        "zhigh": 70,
+        "lut_vars": ["UL"],
+        "nx": 256,
+        "ny": 64,
+        "dx": 20.0,
+        "dy": 5.0,
+    }
+    get_luts(**params, jit=True, n_cpu=1)
+    luts_path = get_luts_path(**params)
+
+    # Corrupt only the final LUT cache; the valid fLUTs/preLUTs caches make regeneration cheap.
+    _rewrite_attrs(luts_path, mutate)
+
+    with pytest.warns(UserWarning, match="incompatible cached LUT"):
+        luts = get_luts(**params, jit=True, n_cpu=1)
+
+    from pyfuga.constants import LUT_FORMAT_VERSION
+    from pyfuga.utils import cache_is_current
+
+    # The file on disk was rewritten with valid, self-consistent metadata.
+    assert luts.attrs["lut_format_version"] == LUT_FORMAT_VERSION
+    reloaded = xr.load_dataset(luts_path)
+    assert cache_is_current(reloaded), "incompatible cache was not regenerated with valid metadata"
+    assert reloaded.attrs["pyfuga_version"] == pyfuga.__version__
+
+
+@pytest.mark.local
+def test_get_luts_stamps_version_metadata(tmp_path: Path) -> None:
+    """Every freshly generated cache tier carries the three version attributes."""
+    out_dir = tmp_path / "luts"
+    params = {
+        "folder": out_dir,
+        "zeta0": 0,
+        "nkz0": 2,
+        "nbeta": 8,
+        "diameter": 80,
+        "zhub": 70,
+        "z0": 1e-5,
+        "zi": 400,
+        "zlow": 70,
+        "zhigh": 70,
+        "lut_vars": ["UL"],
+        "nx": 256,
+        "ny": 64,
+        "dx": 20.0,
+        "dy": 5.0,
+    }
+    from pyfuga.constants import LUT_FORMAT_VERSION
+
+    get_luts(**params, jit=True, n_cpu=1)
+    for nc in out_dir.glob("*.nc"):
+        attrs = xr.open_dataset(nc).attrs
+        assert attrs.get("lut_format_version") == LUT_FORMAT_VERSION, nc.name
+        assert "lut_schema_fingerprint" in attrs, nc.name
+        assert attrs.get("pyfuga_version") == pyfuga.__version__, nc.name
+
+
 def test_validate_n_cpu_rejects_non_positive() -> None:
     validate_n_cpu(None)
     with pytest.raises(ValueError, match="None or >= 1"):
@@ -373,6 +459,10 @@ def test_get_fluts_forwards_stage_specific_n_cpu(monkeypatch: pytest.MonkeyPatch
     calls: dict[str, int] = {}
 
     class FakeFluts:
+        # Minimal xarray-like surface touched by utils.stamp_lut_metadata().
+        attrs: dict[str, object] = {}
+        variables: dict[str, object] = {}
+
         def save(self, filename: object) -> None:
             Path(filename).touch()
 

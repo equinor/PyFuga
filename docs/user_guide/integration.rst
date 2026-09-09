@@ -66,6 +66,28 @@ The output folder may contain:
 These files provide a persistent record of the generated configuration and
 allow efficient caching of expensive intermediate steps.
 
+Cache validation and versioning
+-------------------------------
+
+Cached LUTs are looked up by filename. To avoid silently loading an
+incompatible cache (for example one produced by an older, legacy PyFuga whose
+on-disk layout differs), every generated file records version metadata as
+NetCDF global attributes:
+
+- ``lut_format_version`` — the on-disk LUT compatibility version.
+- ``lut_schema_fingerprint`` — a short hash of the file's structure (variable
+  and dimension names), used to detect structural drift automatically.
+- ``pyfuga_version`` — the PyFuga version that produced the file (provenance
+  only; not used for validation).
+
+When a cached file is found, PyFuga checks this metadata. If it is missing
+(a legacy cache) or incompatible, PyFuga emits a ``UserWarning`` and
+**regenerates** the file instead of loading it. Up-to-date caches are reused
+silently as before.
+
+Adding these attributes is backward-compatible for downstream consumers such as
+PyWake, which ignore unknown global attributes.
+
 Legacy workflows
 ----------------
 

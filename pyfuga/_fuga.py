@@ -130,8 +130,9 @@ def get_luts(
     luts_path = get_luts_path(folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh, lut_vars, nx, ny, dx, dy)
     if luts_path.exists():
         luts = xr.load_dataset(luts_path)
-        luts.attrs["name"] = luts_path.stem
-        return luts
+        if utils.load_lut_if_current(luts, luts_path):
+            luts.attrs["name"] = luts_path.stem
+            return luts
 
     fluts = get_fluts(
         folder,
@@ -150,6 +151,7 @@ def get_luts(
         n_cpu_stage={"preluts": resolved_n_cpu["preluts"]},
     )
     luts = Trafalgar(fluts, nx, ny, dx, dy).make_luts(interpolation_order=3, n_cpu=resolved_n_cpu["trafalgar"])
+    utils.stamp_lut_metadata(luts)
     luts.to_netcdf(luts_path)
     luts.attrs["name"] = luts_path.stem
     return luts
@@ -177,7 +179,9 @@ def get_fluts(
 
     fluts_path = get_fluts_path(folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh, lut_vars)
     if fluts_path.exists():
-        return ComplexXRDataset.from_netcdf(fluts_path)
+        fluts = ComplexXRDataset.from_netcdf(fluts_path)
+        if utils.load_lut_if_current(fluts, fluts_path):
+            return fluts
 
     utils.compile(jit)
     preluts = get_preluts(folder, zeta0, nkz0, nbeta, jit, resolved_n_cpu["preluts"], None)
@@ -190,6 +194,7 @@ def get_fluts(
     else:
         fluts = flut_generator.make_lut(z0, low_level_out, high_level_out, lut_vars, n_cpu=resolved_n_cpu["fluts"])
 
+    utils.stamp_lut_metadata(fluts)
     fluts.save(fluts_path)
     return fluts
 
@@ -209,7 +214,9 @@ def get_preluts(
 
     preluts_path = get_preluts_path(folder, zeta0, nkz0, nbeta)
     if preluts_path.exists():
-        return PreLUTs.from_netcdf(preluts_path)
+        preluts = PreLUTs.from_netcdf(preluts_path)
+        if utils.load_lut_if_current(preluts, preluts_path):
+            return preluts
 
     utils.compile(jit)
     preluts = PreLUTs.make_preluts(
@@ -224,6 +231,7 @@ def get_preluts(
     )
     preluts.attrs["nkz0"] = nkz0
     preluts.attrs["nbeta"] = nbeta
+    utils.stamp_lut_metadata(preluts)
     preluts.save(preluts_path)
     return preluts
 

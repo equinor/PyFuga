@@ -25,6 +25,17 @@ Y_NORM_THRESHOLD: int = 100  # Max value of Ynorm before a sublevel is made
 FIRST_Z_OUTPUT: float = 1.0  # First height level in output
 DS: float = 0.05  # Vertical grid spacing in log-height coordinate s = ln(z/z0)
 
+# On-disk LUT cache compatibility version. Cached LUTs (preLUTs/fLUTs/LUTs) whose
+# stored ``lut_format_version`` differs from this value - or which predate versioning
+# entirely (legacy PyFuga caches) - are rejected and regenerated instead of loaded.
+#
+# Bump this for SEMANTIC/NUMERICAL changes to LUT output that keep the same on-disk
+# structure (e.g. a physics bug-fix that changes values). STRUCTURAL changes (added,
+# removed or renamed variables/dimensions) are additionally caught automatically by the
+# ``lut_schema_fingerprint`` attribute and by the schema guard test in
+# ``tests/test_lut_schema.py``, which fails and reminds you to bump this too.
+LUT_FORMAT_VERSION: int = 1
+
 # Other constants
 UVW_LT: list[str] = ["UL", "UT", "VL", "VT", "WL", "WT", "PL", "PT"]
 

@@ -13,11 +13,14 @@ Also manages the global Preludium compatibility flag used for testing
 alternative formulations of atmospheric code.
 """
 
+import hashlib
 import importlib
+import importlib.metadata
 import multiprocessing as mp
 import os
 import sys
 import time
+import warnings
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from typing import Any, ParamSpec, TypedDict, TypeVar, overload
@@ -233,6 +236,72 @@ def read_complex(*args: Any, **kwargs: Any) -> xr.Dataset:
     ds_new.attrs.update(ds.attrs)
     ds_typed: xr.Dataset = ds_new
     return ds_typed
+
+
+def lut_schema_fingerprint(ds: xr.Dataset) -> str:
+    """Return a short, stable hash of a dataset's *structure* (not its values).
+
+    The fingerprint covers the sorted set of variable/coordinate names and their
+    dimensions. Values and dtypes are deliberately excluded so that the fingerprint
+    round-trips cleanly through the complex->ReIm split and NetCDF (de)serialisation:
+    it is computed on the in-memory dataset at write time and recomputed on the
+    reconstructed dataset at read time, and the two must match for an unchanged schema.
+
+    A structural change (added, removed or renamed variable/dimension) flips the
+    fingerprint, which lets stale caches be rejected even if someone forgot to bump
+    :data:`pyfuga.constants.LUT_FORMAT_VERSION`.
+    """
+    sig = repr(sorted((str(name), tuple(map(str, var.dims))) for name, var in ds.variables.items()))
+    return hashlib.sha256(sig.encode()).hexdigest()[:12]
+
+
+def _pyfuga_version() -> str:
+    """Installed pyfuga version, read lazily to avoid a circular import with ``__init__``."""
+    try:
+        return importlib.metadata.version("pyfuga")
+    except importlib.metadata.PackageNotFoundError:
+        return "0+unknown"
+
+
+def stamp_lut_metadata(ds: xr.Dataset) -> xr.Dataset:
+    """Stamp cache-validation metadata onto ``ds`` in place and return it.
+
+    Adds ``lut_format_version`` (compatibility key), ``lut_schema_fingerprint``
+    (structural safety net) and ``pyfuga_version`` (provenance only).
+    """
+    from pyfuga.constants import LUT_FORMAT_VERSION
+
+    ds.attrs["lut_format_version"] = LUT_FORMAT_VERSION
+    ds.attrs["lut_schema_fingerprint"] = lut_schema_fingerprint(ds)
+    ds.attrs["pyfuga_version"] = _pyfuga_version()
+    return ds
+
+
+def cache_is_current(ds: xr.Dataset) -> bool:
+    """True if a loaded cached LUT carries compatible version metadata.
+
+    Rejects legacy caches (which lack the attributes entirely), caches from an
+    incompatible :data:`LUT_FORMAT_VERSION`, and caches whose stored structural
+    fingerprint no longer matches their actual structure.
+    """
+    from pyfuga.constants import LUT_FORMAT_VERSION
+
+    if ds.attrs.get("lut_format_version") != LUT_FORMAT_VERSION:
+        return False
+    return ds.attrs.get("lut_schema_fingerprint") == lut_schema_fingerprint(ds)
+
+
+def load_lut_if_current(ds: xr.Dataset, path: Any) -> bool:
+    """Warn (and return ``False``) when a cached LUT is incompatible and must be regenerated."""
+    if cache_is_current(ds):
+        return True
+    warnings.warn(
+        f"Ignoring incompatible cached LUT '{getattr(path, 'name', path)}' "
+        f"(missing or mismatched version metadata); regenerating.",
+        UserWarning,
+        stacklevel=2,
+    )
+    return False
 
 
 class ComplexXRDataset(xr.Dataset):  # type: ignore[no-untyped-call]
