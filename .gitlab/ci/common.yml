@@ -15,6 +15,9 @@ variables:
   RATTLER_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pixi"
   # Pull-only image prefix for CI runtime images. Override in staging if needed.
   PYFUGA_CI_IMAGE_PREFIX: "${CI_REGISTRY_IMAGE}"
+  # Tag of the Linux test images used by test jobs. Schedules build and use their own tag
+  # so a dependency drift break never reaches the :latest image used by push pipelines.
+  LINUX_TEST_IMAGE_TAG: "latest"
 
 cache:
   key: "uv-${CI_PROJECT_ID}-${CI_JOB_NAME}"
@@ -28,6 +31,10 @@ workflow:
     # Don't use merge request pipelines
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       when: never
+    # Scheduled health checks rebuild the Linux test images into a separate tag
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      variables:
+        LINUX_TEST_IMAGE_TAG: "scheduled"
     - when: always
 
 # ===== Set default Python version =====
@@ -66,6 +73,11 @@ default:
       allow_failure: false
     - when: manual
       allow_failure: true
+
+.rules_never_on_schedule:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
 
 .rules_always_auto:
   rules:

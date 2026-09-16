@@ -58,6 +58,8 @@ build_linux_base_image:
         --destination "$DEST_LATEST"
 
   rules:
+    # Scheduled health checks don't use this image; `changes:` would otherwise always match
+    - !reference [.rules_never_on_schedule, rules]
     # Rebuild automatically when the Dockerfile changes
     - changes:
         - ci/Dockerfile
@@ -72,6 +74,8 @@ build_linux_base_image:
     - linux
 
 # ----- Build Linux test images with preinstalled test dependencies -----
+# Scheduled pipelines rebuild these into :scheduled (LINUX_TEST_IMAGE_TAG) on purpose,
+# so the weekly health check picks up new dependency releases without touching :latest.
 build_linux_test_images:
   stage: build
   image:
@@ -96,7 +100,7 @@ build_linux_test_images:
   script:
     - *kaniko_registry_auth_cmd
     - |
-      DEST_LATEST="${CI_IMAGE_REPO}:latest"
+      DEST="${CI_IMAGE_REPO}:${LINUX_TEST_IMAGE_TAG}"
 
       /kaniko/executor \
         --context "$CI_PROJECT_DIR" \
@@ -107,8 +111,11 @@ build_linux_test_images:
         --build-arg "PYTHON_VERSION=${PYTHON_VERSION}" \
         --build-arg "CONSTRAINT_FILE=${CONSTRAINT_FILE}" \
         --target "tests" \
-        --destination "$DEST_LATEST"
+        --destination "$DEST"
   rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: on_success
+      allow_failure: false
     - changes:
         - ci/Dockerfile
         - pyproject.toml
@@ -149,6 +156,8 @@ build_linux_docs_image:
         --destination "$DEST_LATEST"
 
   rules:
+    # Scheduled health checks don't use this image; `changes:` would otherwise always match
+    - !reference [.rules_never_on_schedule, rules]
     # Rebuild automatically when docs-image inputs change
     - changes:
         - ci/Dockerfile.docs
@@ -237,6 +246,8 @@ build_windows_pixi_base:
       }
     - Remove-Item -Recurse -Force $DockerConfigDir
   rules:
+    # Images are lockfile-pinned and content-tagged, so schedules would only rebuild identical images
+    - !reference [.rules_never_on_schedule, rules]
     - if: '$CI_COMMIT_REF_PROTECTED == "true"'
       changes:
         *windows_pixi_base_changes
@@ -326,6 +337,8 @@ build_windows_pixi_envs:
       }
     - Remove-Item -Recurse -Force $DockerConfigDir
   rules:
+    # Images are lockfile-pinned and content-tagged, so schedules would only rebuild identical images
+    - !reference [.rules_never_on_schedule, rules]
     - if: '$CI_COMMIT_REF_PROTECTED == "true"'
       changes:
         *windows_pixi_env_changes
@@ -376,6 +389,8 @@ prune_windows_docker_images:
       Write-Host "Removed $removed dangling image(s) under this project's registry path."
       docker system df
   rules:
+    # Images are lockfile-pinned and content-tagged, so schedules would only rebuild identical images
+    - !reference [.rules_never_on_schedule, rules]
     - if: '$CI_COMMIT_REF_PROTECTED == "true"'
       changes:
         *windows_pixi_env_changes
