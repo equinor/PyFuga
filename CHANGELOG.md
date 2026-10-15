@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.1-dev]
+
+Most recent development version.
+
 ## [0.4.0] - 2026-10-15
 
 Fourth public beta release focused on making the on-disk LUT cache safe across PyFuga versions, alongside CI, typing, and packaging maintenance.
