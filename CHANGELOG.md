@@ -2,9 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.3.1-dev]
+## [0.4.0] - 2026-10-15
 
-Most recent development version.
+Fourth public beta release focused on making the on-disk LUT cache safe across PyFuga versions, alongside CI, typing, and packaging maintenance.
+
+### Added
+
+  - Cache validation metadata on every generated preLUT, fLUT, and LUT file, stored as NetCDF global attributes:
+    - `lut_format_version`: on-disk LUT compatibility version (`pyfuga.constants.LUT_FORMAT_VERSION`, currently `1`).
+    - `lut_schema_fingerprint`: short hash of the file's structure (variable and dimension names) that detects structural changes automatically.
+    - `pyfuga_version`: the PyFuga version that produced the file (provenance only; not used for validation).
+  - "Cache validation and versioning" section in the integration user guide.
+
+### Changed
+
+  - **Breaking:** `get_preluts`, `get_fluts`, and `get_luts` now validate cached files before reusing them. A cache whose metadata is missing or does not match triggers a `UserWarning`, and the file is regenerated instead of loaded. **Every cache written by PyFuga 0.3.0 or earlier lacks this metadata. The first call after upgrading will therefore regenerate it, which can take a long time for large configurations.** Caches written by 0.4.0 are reused silently, as before. The new attributes do not affect downstream consumers such as PyWake, which ignore unknown global attributes.
+
+### Fixed
+
+  - Stale or incompatible cached LUTs, for example ones written by older PyFuga versions with a different on-disk layout, are no longer loaded without warning.
+  - Legend of the `nkz0_nbeta` plot in the documentation.
+  - Sphinx warnings and table parsing in the docs sources.
+
+### Internal
+
+  - Migrated the conda recipe from `conda-recipe/meta.yaml` to `conda-recipe/recipe.yaml`.
+  - Typing and lint fixes for newer numba, xarray, and scipy-stubs; lint now runs on Python 3.10 to match the mypy target.
+  - CI improvements: auto-retry and serialization of Windows test jobs, a more robust Zenodo metadata check (including draft records), and Linux test images rebuilt only on scheduled pipelines.
 
 ## [0.3.0] - 2026-04-28
 
