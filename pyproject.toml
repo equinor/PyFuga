@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyfuga"
-version = "0.4.1-dev"
+version = "0.4.1"
 description = "Linearised CFD wake model (PyFuga)"
 readme = "README.md"
 authors = [{ name = "PyFuga team", email = "lalc@dtu.dk" }]

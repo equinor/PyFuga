@@ -2,9 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.4.1-dev]
+## [0.4.1] - 2026-10-15
 
-Most recent development version.
+Patch release that publishes the 0.4.0 code to the conda channel and Zenodo. The package code is unchanged from 0.4.0.
+
+### Fixed
+
+  - Release pipeline jobs that stopped 0.4.0 from reaching the conda channel and Zenodo:
+    - `build_conda` now writes the conda recipe from PyPI during the release instead of checking the committed recipe, whose sdist checksum can only be known after the PyPI upload.
+    - `sync_conda_recipe.py --check-remote-source` now fills in `${{ version }}` in the recipe's source URL before downloading.
+    - `build_conda_smoke` now edits `conda-recipe/recipe.yaml` instead of the removed `meta.yaml`.
+    - The Zenodo upload jobs now keep their virtual environment active, so `g2z-send` is found.
 
 ## [0.4.0] - 2026-10-15
 
