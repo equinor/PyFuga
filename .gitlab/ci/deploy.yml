@@ -190,31 +190,6 @@ build_conda_smoke:
     - ubuntu
     - linux
 
-# ----- Deploy PyFuga conda package to internal channel -----
-deploy_conda:
-  stage: deploy
-  image: condaforge/miniforge3:latest
-  needs:
-    - job: build_conda
-      artifacts: true
-  script:
-    - |
-      for PKG in conda_channel/noarch/pyfuga*.tar.bz2 conda_channel/noarch/pyfuga*.conda; do
-        [ -f "$PKG" ] || continue
-        BASENAME=$(basename "$PKG")
-        cp -p "$PKG" /conda_channel_open/noarch/${BASENAME}.tmp
-        chown 1000:1000 /conda_channel_open/noarch/${BASENAME}.tmp
-        mv /conda_channel_open/noarch/${BASENAME}.tmp /conda_channel_open/noarch/${BASENAME}
-        echo "Deployed ${BASENAME}"
-      done
-  rules:
-    - if: '$CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED == "true"'
-      when: on_success
-      allow_failure: false
-    - when: never
-  tags:
-    - conda_channel
-
 # ----- Publish PyFuga source to Zenodo on protected version tags -----
 publish_zenodo:
   stage: deploy

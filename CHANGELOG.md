@@ -6,13 +6,17 @@ All notable changes to this project will be documented in this file.
 
 Most recent development version.
 
+### Internal
+
+  - Removed the `deploy_conda` CI job, which was meant to publish to an internal DTU conda channel but never had a runner. PyFuga is distributed on conda-forge.
+
 ## [0.4.1] - 2026-10-20
 
-Patch release that publishes the 0.4.0 code to the conda channel and Zenodo. The package code is unchanged from 0.4.0.
+Patch release that fixes the release pipeline jobs that failed for 0.4.0 and publishes the 0.4.0 code to Zenodo. The package code is unchanged from 0.4.0.
 
 ### Fixed
 
-  - Release pipeline jobs that stopped 0.4.0 from reaching the conda channel and Zenodo:
+  - Release pipeline jobs that failed for 0.4.0:
     - `build_conda` now writes the conda recipe from PyPI during the release instead of checking the committed recipe, whose sdist checksum can only be known after the PyPI upload.
     - `sync_conda_recipe.py --check-remote-source` now fills in `${{ version }}` in the recipe's source URL before downloading.
     - `build_conda_smoke` now edits `conda-recipe/recipe.yaml` instead of the removed `meta.yaml`.
