@@ -2,7 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.4.1] - 2026-10-15
+## [0.4.2-dev]
+
+Most recent development version.
+
+## [0.4.1] - 2026-10-20
 
 Patch release that publishes the 0.4.0 code to the conda channel and Zenodo. The package code is unchanged from 0.4.0.
 
