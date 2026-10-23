@@ -498,3 +498,100 @@ def test_get_fluts_forwards_stage_specific_n_cpu(monkeypatch: pytest.MonkeyPatch
         n_cpu_stage={"preluts": 2, "fluts": 3},
     )
     assert calls == {"preluts": 2, "fluts": 3}
+
+
+class _FakeLutFile:
+    # Minimal xarray-like surface touched by utils.stamp_lut_metadata() and save().
+    def __init__(self) -> None:
+        self.attrs: dict[str, object] = {}
+        self.variables: dict[str, object] = {}
+
+    def save(self, filename: object) -> None:
+        Path(filename).touch()
+
+
+_LUT_PARAMS: dict[str, Any] = {
+    "zeta0": 0,
+    "nkz0": 2,
+    "nbeta": 8,
+    "diameter": 80,
+    "zhub": 70,
+    "z0": 1e-5,
+    "zi": 400,
+    "zlow": 70,
+    "zhigh": 70,
+    "lut_vars": ["UL"],
+}
+
+
+@pytest.mark.parametrize(
+    "verbose_kwargs, expected", [({}, True), ({"verbose": True}, True), ({"verbose": False}, False)]
+)
+def test_get_luts_forwards_verbose(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, verbose_kwargs: dict[str, bool], expected: bool
+) -> None:
+    calls: dict[str, object] = {}
+
+    class FakeTrafalgar:
+        def __init__(self, *a: object, **k: object) -> None:
+            calls["trafalgar"] = k["verbose"]
+
+        def make_luts(self, **kwargs: object) -> xr.Dataset:
+            return xr.Dataset()
+
+    def fake_get_fluts(*args: object, **kwargs: object) -> object:
+        calls["fluts"] = kwargs["verbose"]
+        return object()
+
+    monkeypatch.setattr(_fuga, "Trafalgar", FakeTrafalgar)
+    monkeypatch.setattr(_fuga, "get_fluts", fake_get_fluts)
+
+    _fuga.get_luts(folder=tmp_path, **_LUT_PARAMS, nx=64, ny=32, **verbose_kwargs)
+    assert calls == {"fluts": expected, "trafalgar": expected}
+
+
+@pytest.mark.parametrize(
+    "verbose_kwargs, expected", [({}, True), ({"verbose": True}, True), ({"verbose": False}, False)]
+)
+def test_get_fluts_forwards_verbose(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, verbose_kwargs: dict[str, bool], expected: bool
+) -> None:
+    calls: dict[str, object] = {}
+
+    class FakeGenerator:
+        def __init__(self, *a: object, **k: object) -> None:
+            calls["fluts"] = k["verbose"]
+
+        def make_hubheight_luts(self, *args: object, **kwargs: object) -> _FakeLutFile:
+            return _FakeLutFile()
+
+    def fake_get_preluts(*args: object, **kwargs: object) -> object:
+        calls["preluts"] = kwargs["verbose"]
+        return object()
+
+    monkeypatch.setattr(_fuga, "get_preluts", fake_get_preluts)
+    monkeypatch.setattr(_fuga, "FourierLUTGenerator", FakeGenerator)
+    monkeypatch.setattr(_fuga, "get_level_range", lambda *a, **k: (9999, 9999))
+
+    _fuga.get_fluts(folder=tmp_path, **_LUT_PARAMS, **verbose_kwargs)
+    assert calls == {"preluts": expected, "fluts": expected}
+
+
+@pytest.mark.parametrize(
+    "verbose_kwargs, expected", [({}, True), ({"verbose": True}, True), ({"verbose": False}, False)]
+)
+def test_get_preluts_forwards_verbose(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, verbose_kwargs: dict[str, bool], expected: bool
+) -> None:
+    calls: dict[str, object] = {}
+
+    class FakePreLUTs:
+        @staticmethod
+        def make_preluts(**kwargs: object) -> _FakeLutFile:
+            calls["preluts"] = kwargs["verbose"]
+            return _FakeLutFile()
+
+    monkeypatch.setattr(_fuga, "PreLUTs", FakePreLUTs)
+
+    _fuga.get_preluts(folder=tmp_path, zeta0=0, nkz0=2, nbeta=8, **verbose_kwargs)
+    assert calls == {"preluts": expected}

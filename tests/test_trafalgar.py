@@ -64,6 +64,31 @@ def test_trafalgar_default_none_uses_all_cpus(var: str, monkeypatch: pytest.Monk
     assert workers_seen == [3]
 
 
+@pytest.mark.parametrize("verbose", [True, False])
+def test_trafalgar_progress_bars_follow_verbose(verbose: bool, capsys: pytest.CaptureFixture[str]) -> None:
+    fourier_lut = read_lut_file(
+        tfp + "D080.0000_zH070.0000_2_5/Z0=0.00001000Zi=00400Zeta0=0.00E+00/UL0314.lut",
+        prelut_folder=tfp + "preLUTs_Zeta0=0.00E+00_2_5",
+    )
+    Trafalgar(fourier_lut, nx=512, ny=128, verbose=verbose).make_luts(3, n_cpu=1)
+    err = capsys.readouterr().err
+    assert ("LUTS: adding meshes" in err) is verbose
+    assert ("Trafalgar:" in err) is verbose
+
+
+@pytest.mark.parametrize("verbose", [True, False])
+def test_trafalgar_parallel_shows_only_outer_progress_bar(verbose: bool, capfd: pytest.CaptureFixture[str]) -> None:
+    # capfd (not capsys) so stderr from spawned worker processes is captured too
+    fourier_lut = read_lut_file(
+        tfp + "D080.0000_zH070.0000_2_5/Z0=0.00001000Zi=00400Zeta0=0.00E+00/UL0314.lut",
+        prelut_folder=tfp + "preLUTs_Zeta0=0.00E+00_2_5",
+    )
+    Trafalgar(fourier_lut, nx=512, ny=128, verbose=verbose).make_luts(3, n_cpu=2)
+    err = capfd.readouterr().err
+    assert ("LUTS: adding meshes" in err) is verbose
+    assert "Trafalgar:" not in err
+
+
 @pytest.mark.parametrize("var", ["UL", "UT"])
 def test_trafalgar(var):
     fourier_lut = read_lut_file(

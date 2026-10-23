@@ -6,6 +6,15 @@ All notable changes to this project will be documented in this file.
 
 Most recent development version.
 
+### Added
+
+  - `verbose` parameter on `get_luts`, `get_fluts` and `get_preluts` (default `True`), passed through to every LUT stage (preLUTs, fLUTs and Trafalgar) to show or hide progress bars.
+
+### Fixed
+
+  - Trafalgar's "LUTS: adding meshes" progress bar was hidden with `verbose=True` and shown with `verbose=False`.
+  - With several Trafalgar workers, the per-tile progress bars from worker processes no longer interleave with the overall bar; only the overall bar is shown.
+
 ### Internal
 
   - Removed the `deploy_conda` CI job, which was meant to publish to an internal DTU conda channel but never had a runner. PyFuga is distributed on conda-forge.

@@ -226,6 +226,11 @@ Example:
 This runs stage 3 serially to reduce memory pressure while keeping earlier
 stages parallel.
 
+``verbose``
+^^^^^^^^^^^
+
+Show progress bars for stages that are generated (default ``True``). Stages loaded from the cache show no progress bar. With several Trafalgar workers, only the overall "LUTS: adding meshes" bar is shown. Set to ``False`` to hide progress bars, for example when embedding PyFuga in tools that report their own progress. This does not suppress warnings or the one-off ``JIT compiled in ...`` message.
+
 Practical parameter tradeoffs
 -----------------------------
 

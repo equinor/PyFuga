@@ -167,7 +167,8 @@ class Trafalgar:
                 self.sigmay,
                 self.x_lst,
                 self.y_lst,
-                self.verbose,
+                # Per-tile bars only when serial; worker bars would interleave with the outer one
+                self.verbose and workers == 1,
                 legacy,
             )
             for t in tiles
@@ -180,7 +181,7 @@ class Trafalgar:
                 tqdm(
                     map_func(make_luts_per_mesh, args),
                     total=len(tiles),
-                    disable=self.verbose,
+                    disable=(not self.verbose),
                     desc="LUTS: adding meshes",
                 )
             )
