@@ -4,15 +4,29 @@ import numpy as np
 import pytest
 from numpy.testing import assert_array_almost_equal, assert_array_equal
 
+import pyfuga.flut as flut_module
 from pyfuga.constants import UVW_LT
 from pyfuga.file_readers import read_lut_file
-from pyfuga.flut import FourierLUTGenerator, SolveLayersJob, _iter_solve_layer_jobs, solve_layer, solve_layers
-from pyfuga.preluts import PreLUTs
+from pyfuga.flut import (
+    FourierLUTGenerator,
+    SolveLayersJob,
+    _iter_solve_layer_jobs,
+    _select_prelut_arrays,
+    _sweep,
+    solve_layer,
+    solve_layers,
+)
+from pyfuga.preluts import CompactPreLUTs, PreLUTs
 from pyfuga.profiling import timeit
 from pyfuga.utils import compile, get_beta_lst, normalise_n_cpu_workers
 
 from .helpers import expose_new_names
 from .test_files import tfp
+
+# NOTE: These tests pin LUT *values* against reference files. If a change here is expected
+# (e.g. a physics/numerics fix that alters LUT output), bump ``LUT_FORMAT_VERSION`` in
+# ``pyfuga/constants.py`` as well, so stale on-disk caches are rejected and regenerated.
+# Structural changes (new/renamed variables) are additionally guarded by tests/test_lut_schema.py.
 
 
 @pytest.mark.parametrize("zeta0", [0, -1, 1])
@@ -187,7 +201,34 @@ def test_make_lut_serial_does_not_construct_pool(monkeypatch):
     assert called["pool"] == 0
 
 
+def test_make_lut_compiled_runs_in_process(monkeypatch):
+    def fake_pool(*args, **kwargs):
+        raise AssertionError("Pool should not be constructed when the kernels are compiled")
+
+    monkeypatch.setattr(mp.get_context("spawn"), "Pool", fake_pool)
+    monkeypatch.setattr(flut_module, "_up_sweep", flut_module._up_sweep_nb)
+
+    preluts = expose_new_names(PreLUTs.from_netcdf(tfp + "preLUTs_Zeta0=0.00E+00_1_2.nc"))
+    gen = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False)
+    gen.make_lut(z0=0.00001, low_level_out=314, high_level_out=314, luts=["UL"], n_cpu=2)
+
+
+def test_sweep_same_bits_for_strided_and_contiguous_y():
+    # In-process jobs get strided views of the preLUT table; worker processes get C-ordered pickled copies.
+    rng = np.random.default_rng(0)
+
+    def rand(*shape):
+        return rng.standard_normal(shape) + 1j * rng.standard_normal(shape)
+
+    n = 30
+    y, r_upper, r_lower, f_up, f_down = rand(n, 6, 6), rand(n, 6, 6), rand(n, 6, 6), rand(n, 3), rand(n, 3)
+    strided = np.ascontiguousarray(y.transpose(0, 2, 1)).transpose(0, 2, 1)
+    out = [_sweep(r_upper, r_lower, q, f_up, f_down, 3) for q in (y, strided)]
+    assert out[0].tobytes() == out[1].tobytes()
+
+
 def test_make_lut_parallel_uses_spawn_context(monkeypatch):
+    monkeypatch.setattr(flut_module, "_up_sweep", flut_module._up_sweep_np)  # NumPy fallback: worker processes
     real_get_context = mp.get_context
     seen = {"arg": None}
 
@@ -285,6 +326,22 @@ def test_iter_solve_layer_jobs_forcing_and_length():
     assert len(jobs) == len(beta_kz0)
     assert all(j.forcing == "T" for j in jobs)
     assert jobs[0].prelut is not None
+
+
+def test_compact_array_selection_matches_sel():
+    ds = CompactPreLUTs(
+        {"level": ("kz0_beta_i", [0, 1, 2, 0, 1]), "Y_lower": ("kz0_beta_i", np.arange(5))},
+        coords={"beta": ("kz0_beta_i", [1, 1, 1, 0, 0]), "kz0": ("kz0_beta_i", [2, 2, 2, 3, 3])},
+        attrs={"ds": 0.05},
+    )
+    for selected in (ds, ds.isel(kz0_beta_i=[0, 3, 1, 4, 2])):
+        selected = CompactPreLUTs(selected.data_vars, coords=selected.coords, attrs=selected.attrs)
+        pairs = [(0, 3), (1, 2)]
+        for pair, arrays in zip(pairs, _select_prelut_arrays(selected, pairs, ["level", "Y_lower"]), strict=True):
+            ref = selected.sel(beta=pair[0], kz0=pair[1])
+            for name in ["level", "Y_lower"]:
+                assert_array_equal(arrays[name], ref[name])
+            assert arrays.ds == ref.ds
 
 
 def test_make_lut_t_only_skips_longitudinal_solve():

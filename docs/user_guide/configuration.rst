@@ -187,9 +187,13 @@ recommended for production runs.
 ``n_cpu``
 ^^^^^^^^^
 
-Number of parallel worker processes used in each LUT pipeline stage (PreLUT
-generation, Fourier LUTs, and Trafalgar), when you call
-:func:`pyfuga.get_luts`.
+Number of parallel workers used in each LUT pipeline stage when you call
+:func:`pyfuga.get_luts`. Compiled PreLUT generation (``jit=True``) uses threads
+and otherwise processes. Fourier LUTs run in the calling process when their
+compiled kernels are available (each job then takes well under a millisecond,
+so the ``fluts`` worker count is not used) and otherwise use processes.
+Trafalgar uses threads to avoid copying large tile outputs between processes.
+Tile results are accumulated in their original order.
 
 For :func:`pyfuga.get_luts`, leaving ``n_cpu=None`` (default) enables stage-aware
 defaults:
@@ -225,6 +229,23 @@ Example:
 
 This runs stage 3 serially to reduce memory pressure while keeping earlier
 stages parallel.
+
+``verbose``
+^^^^^^^^^^^
+
+Show progress bars for stages that are generated (default ``True``). Stages loaded from the cache show no progress bar. With several Trafalgar workers, only the overall "LUTS: adding meshes" bar is shown. Set to ``False`` to hide progress bars, for example when embedding PyFuga in tools that report their own progress. This does not suppress warnings or the one-off ``JIT compiled in ...`` message.
+
+``cache_intermediate``
+^^^^^^^^^^^^^^^^^^^^^^
+
+By default, ``get_luts()`` saves only the final LUT. Intermediate preLUTs and
+fLUTs stay in memory, and preLUT wavenumbers beyond the existing rotor cutoff
+are not generated. This does not change the final LUT values.
+
+Set ``cache_intermediate=True`` to save the full preLUT grid and fLUTs for reuse
+across turbine configurations. Existing compatible caches are reused in either
+mode. Direct calls to ``get_preluts()`` and ``get_fluts()`` still save their
+outputs by default.
 
 Practical parameter tradeoffs
 -----------------------------

@@ -62,6 +62,21 @@ def test_compile_jit_does_not_keyerror():
     utils.compile(jit=True)
 
 
+def test_compile_recompiles_preluts_generator_submodules():
+    import sys
+
+    from pyfuga import utils
+
+    utils.compile(jit=False)
+    import pyfuga.preluts_generator.generator  # noqa: F401  (imported uncompiled)
+
+    utils.compile(jit=True)
+    integration = sys.modules["pyfuga.preluts_generator.integration"]
+    generator = sys.modules["pyfuga.preluts_generator.generator"]
+    assert hasattr(integration.integrate_all_stations, "py_func")
+    assert generator.integrate_all_stations is integration.integrate_all_stations
+
+
 @pytest.mark.local
 def test_get_luts_public_api_smoke(tmp_path: Path):
     out_dir = tmp_path / "luts"
@@ -128,7 +143,7 @@ def test_get_luts_orchestration_and_caching(tmp_path: Path):
         "dy": 5.0,
     }
 
-    luts = get_luts(**params, jit=True, n_cpu=1)
+    luts = get_luts(**params, jit=True, n_cpu=1, cache_intermediate=True)
 
     luts_path = get_luts_path(**params)
     assert luts_path.exists()
@@ -145,6 +160,92 @@ def test_get_luts_orchestration_and_caching(tmp_path: Path):
 
     assert before == after, "cache files were rewritten on second call"
     xr.testing.assert_identical(luts, luts2)
+
+
+def _rewrite_attrs(path: Path, mutate) -> None:
+    """Load a cached LUT, apply ``mutate(attrs)`` and write it back to the same path."""
+    ds = xr.load_dataset(path)
+    mutate(ds.attrs)
+    ds.to_netcdf(path)
+
+
+@pytest.mark.local
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        pytest.param(lambda a: [a.pop(k, None) for k in ("lut_format_version", "lut_schema_fingerprint")], id="legacy"),
+        pytest.param(lambda a: a.__setitem__("lut_format_version", -1), id="wrong-version"),
+        pytest.param(lambda a: a.__setitem__("lut_schema_fingerprint", "deadbeef0000"), id="bad-fingerprint"),
+    ],
+)
+def test_get_luts_regenerates_incompatible_cache(tmp_path: Path, mutate) -> None:
+    """A final LUT cache with missing/incompatible version metadata is rejected and regenerated."""
+    out_dir = tmp_path / "luts"
+    params = {
+        "folder": out_dir,
+        "zeta0": 0,
+        "nkz0": 2,
+        "nbeta": 8,
+        "diameter": 80,
+        "zhub": 70,
+        "z0": 1e-5,
+        "zi": 400,
+        "zlow": 70,
+        "zhigh": 70,
+        "lut_vars": ["UL"],
+        "nx": 256,
+        "ny": 64,
+        "dx": 20.0,
+        "dy": 5.0,
+    }
+    get_luts(**params, jit=True, n_cpu=1, cache_intermediate=True)
+    luts_path = get_luts_path(**params)
+
+    # Corrupt only the final LUT cache; the valid fLUTs/preLUTs caches make regeneration cheap.
+    _rewrite_attrs(luts_path, mutate)
+
+    with pytest.warns(UserWarning, match="incompatible cached LUT"):
+        luts = get_luts(**params, jit=True, n_cpu=1)
+
+    from pyfuga.constants import LUT_FORMAT_VERSION
+    from pyfuga.utils import cache_is_current
+
+    # The file on disk was rewritten with valid, self-consistent metadata.
+    assert luts.attrs["lut_format_version"] == LUT_FORMAT_VERSION
+    reloaded = xr.load_dataset(luts_path)
+    assert cache_is_current(reloaded), "incompatible cache was not regenerated with valid metadata"
+    assert reloaded.attrs["pyfuga_version"] == pyfuga.__version__
+
+
+@pytest.mark.local
+def test_get_luts_stamps_version_metadata(tmp_path: Path) -> None:
+    """Every freshly generated cache tier carries the three version attributes."""
+    out_dir = tmp_path / "luts"
+    params = {
+        "folder": out_dir,
+        "zeta0": 0,
+        "nkz0": 2,
+        "nbeta": 8,
+        "diameter": 80,
+        "zhub": 70,
+        "z0": 1e-5,
+        "zi": 400,
+        "zlow": 70,
+        "zhigh": 70,
+        "lut_vars": ["UL"],
+        "nx": 256,
+        "ny": 64,
+        "dx": 20.0,
+        "dy": 5.0,
+    }
+    from pyfuga.constants import LUT_FORMAT_VERSION
+
+    get_luts(**params, jit=True, n_cpu=1, cache_intermediate=True)
+    for nc in out_dir.glob("*.nc"):
+        attrs = xr.open_dataset(nc).attrs
+        assert attrs.get("lut_format_version") == LUT_FORMAT_VERSION, nc.name
+        assert "lut_schema_fingerprint" in attrs, nc.name
+        assert attrs.get("pyfuga_version") == pyfuga.__version__, nc.name
 
 
 def test_validate_n_cpu_rejects_non_positive() -> None:
@@ -373,6 +474,10 @@ def test_get_fluts_forwards_stage_specific_n_cpu(monkeypatch: pytest.MonkeyPatch
     calls: dict[str, int] = {}
 
     class FakeFluts:
+        # Minimal xarray-like surface touched by utils.stamp_lut_metadata().
+        attrs: dict[str, object] = {}
+        variables: dict[str, object] = {}
+
         def save(self, filename: object) -> None:
             Path(filename).touch()
 
@@ -408,3 +513,153 @@ def test_get_fluts_forwards_stage_specific_n_cpu(monkeypatch: pytest.MonkeyPatch
         n_cpu_stage={"preluts": 2, "fluts": 3},
     )
     assert calls == {"preluts": 2, "fluts": 3}
+
+
+class _FakeLutFile:
+    # Minimal xarray-like surface touched by utils.stamp_lut_metadata() and save().
+    def __init__(self) -> None:
+        self.attrs: dict[str, object] = {}
+        self.variables: dict[str, object] = {}
+
+    def save(self, filename: object) -> None:
+        Path(filename).touch()
+
+
+_LUT_PARAMS: dict[str, Any] = {
+    "zeta0": 0,
+    "nkz0": 2,
+    "nbeta": 8,
+    "diameter": 80,
+    "zhub": 70,
+    "z0": 1e-5,
+    "zi": 400,
+    "zlow": 70,
+    "zhigh": 70,
+    "lut_vars": ["UL"],
+}
+
+
+@pytest.mark.parametrize(
+    "verbose_kwargs, expected", [({}, True), ({"verbose": True}, True), ({"verbose": False}, False)]
+)
+def test_get_luts_forwards_verbose(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, verbose_kwargs: dict[str, bool], expected: bool
+) -> None:
+    calls: dict[str, object] = {}
+
+    class FakeTrafalgar:
+        def __init__(self, *a: object, **k: object) -> None:
+            calls["trafalgar"] = k["verbose"]
+
+        def make_luts(self, **kwargs: object) -> xr.Dataset:
+            return xr.Dataset()
+
+    def fake_get_fluts(*args: object, **kwargs: object) -> object:
+        calls["fluts"] = kwargs["verbose"]
+        return object()
+
+    monkeypatch.setattr(_fuga, "Trafalgar", FakeTrafalgar)
+    monkeypatch.setattr(_fuga, "get_fluts", fake_get_fluts)
+
+    _fuga.get_luts(folder=tmp_path, **_LUT_PARAMS, nx=64, ny=32, **verbose_kwargs)
+    assert calls == {"fluts": expected, "trafalgar": expected}
+
+
+@pytest.mark.parametrize(
+    "verbose_kwargs, expected", [({}, True), ({"verbose": True}, True), ({"verbose": False}, False)]
+)
+def test_get_fluts_forwards_verbose(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, verbose_kwargs: dict[str, bool], expected: bool
+) -> None:
+    calls: dict[str, object] = {}
+
+    class FakeGenerator:
+        def __init__(self, *a: object, **k: object) -> None:
+            calls["fluts"] = k["verbose"]
+
+        def make_hubheight_luts(self, *args: object, **kwargs: object) -> _FakeLutFile:
+            return _FakeLutFile()
+
+    def fake_get_preluts(*args: object, **kwargs: object) -> object:
+        calls["preluts"] = kwargs["verbose"]
+        return object()
+
+    monkeypatch.setattr(_fuga, "get_preluts", fake_get_preluts)
+    monkeypatch.setattr(_fuga, "FourierLUTGenerator", FakeGenerator)
+    monkeypatch.setattr(_fuga, "get_level_range", lambda *a, **k: (9999, 9999))
+
+    _fuga.get_fluts(folder=tmp_path, **_LUT_PARAMS, **verbose_kwargs)
+    assert calls == {"preluts": expected, "fluts": expected}
+
+
+@pytest.mark.parametrize(
+    "verbose_kwargs, expected", [({}, True), ({"verbose": True}, True), ({"verbose": False}, False)]
+)
+def test_get_preluts_forwards_verbose(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, verbose_kwargs: dict[str, bool], expected: bool
+) -> None:
+    calls: dict[str, object] = {}
+
+    class FakePreLUTs:
+        @staticmethod
+        def make_preluts(**kwargs: object) -> _FakeLutFile:
+            calls["preluts"] = kwargs["verbose"]
+            return _FakeLutFile()
+
+    monkeypatch.setattr(_fuga, "PreLUTs", FakePreLUTs)
+
+    _fuga.get_preluts(folder=tmp_path, zeta0=0, nkz0=2, nbeta=8, **verbose_kwargs)
+    assert calls == {"preluts": expected}
+
+
+@pytest.mark.parametrize(
+    "zeta0, heights, n_cpu",
+    [(zeta0, heights, 1) for zeta0 in [0, -1e-6, 1e-6] for heights in [(70, 70), (30, 110)]] + [(0, (70, 70), 2)],
+)
+def test_final_only_pipeline_matches_cached_pipeline(
+    tmp_path: Path, zeta0: float, heights: tuple[int, int], n_cpu: int
+) -> None:
+    params = {
+        **_LUT_PARAMS,
+        "zeta0": zeta0,
+        "nkz0": 1,
+        "nbeta": 4,
+        "zlow": heights[0],
+        "zhigh": heights[1],
+        "lut_vars": ["UL", "UT", "VL", "VT", "WL", "WT", "PL", "PT"],
+        "nx": 64,
+        "ny": 32,
+        "n_cpu": n_cpu,
+        "verbose": False,
+    }
+    cached = get_luts(folder=tmp_path / "cached", **params, cache_intermediate=True)
+    final = get_luts(folder=tmp_path / "final", **params)
+    xr.testing.assert_identical(cached, final)
+    files = list((tmp_path / "final").glob("*.nc"))
+    assert len(files) == 1
+    xr.testing.assert_identical(xr.load_dataset(files[0]).assign_attrs(name=final.attrs["name"]), final)
+    xr.testing.assert_identical(get_luts(folder=tmp_path / "final", **params), final)
+
+
+def test_final_only_reuses_existing_fourier_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    params = {**_LUT_PARAMS, "nkz0": 1, "nbeta": 4, "n_cpu": 1, "verbose": False}
+    _fuga.get_fluts(folder=tmp_path, **params)
+
+    def fail(*args, **kwargs):
+        raise AssertionError("Existing Fourier cache should avoid prelut generation")
+
+    monkeypatch.setattr(_fuga, "get_preluts", fail)
+    get_luts(folder=tmp_path, **params, nx=64, ny=32)
+
+
+def test_final_only_reuses_existing_prelut_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    params = {**_LUT_PARAMS, "nkz0": 1, "nbeta": 4, "n_cpu": 1, "verbose": False}
+    _fuga.get_preluts(folder=tmp_path, zeta0=0, nkz0=1, nbeta=4, n_cpu=1, verbose=False)
+
+    def fail(*args, **kwargs):
+        raise AssertionError("Existing prelut cache should avoid integration")
+
+    monkeypatch.setattr(_fuga, "_make_preluts", fail)
+    final = get_luts(folder=tmp_path, **params, nx=64, ny=32)
+    assert np.isfinite(final.UL.values).all()
+    assert len(list(tmp_path.glob("*.nc"))) == 2

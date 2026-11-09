@@ -18,7 +18,9 @@ repos:
     hooks:
       - id: mypy
         name: mypy (changed pyfuga files)
-        entry: pixi run python -m mypy
+        # py310 matches [tool.mypy] python_version and the CI lint job; newer
+        # environments resolve a newer xarray whose Dataset.sel typing differs.
+        entry: pixi run -e py310 python -m mypy
         language: system
         types: [python]
         files: ^pyfuga/.*\.py$

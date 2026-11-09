@@ -140,15 +140,18 @@ def verify_metadata(record: str, token: str, use_sandbox: bool) -> None:
     base_cmd = ["g2z-get-meta", "-i", record, "-t", token]
     if use_sandbox:
         base_cmd.insert(3, "-s")
-    cmd = [*base_cmd, "-d"]
-    try:
-        out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT)
-        source = "draft"
-    except subprocess.CalledProcessError as exc:
-        if "status: 404" not in (exc.output or ""):
-            raise
-        out = subprocess.check_output(base_cmd, text=True)
-        source = "record"
+    # g2z-get-meta writes the JSON metadata to stdout and INFO logging to stderr.
+    # Capture the two streams separately -- merging stderr into stdout (as an
+    # earlier version did) prepends "INFO:root:..." lines to the payload and
+    # breaks json.loads. Try the draft first, falling back to a published record.
+    draft = subprocess.run([*base_cmd, "-d"], text=True, capture_output=True)
+    if draft.returncode == 0:
+        out, source = draft.stdout, "draft"
+    elif "status: 404" in (draft.stdout + draft.stderr):
+        out, source = subprocess.check_output(base_cmd, text=True), "record"
+    else:
+        sys.stderr.write(draft.stderr)
+        raise subprocess.CalledProcessError(draft.returncode, draft.args, draft.stdout, draft.stderr)
     payload = json.loads(out)
     publication_date = payload.get("metadata", {}).get("publication_date")
     print(f"Verified Zenodo {source} metadata for record {record} publication_date = {publication_date}")

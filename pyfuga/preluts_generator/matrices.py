@@ -42,106 +42,71 @@ def compute_kstar_params(
     return K_star, dKstar_dz, K_star_cos, K_star_sin
 
 
+@jit
+def _fill_M_t(m: ComplexArray, u: float, K_star: float, dKstar_dz: float, K_star_cos: float, K_star_sin: float) -> None:
+    """Set the non-zero entries of ``create_M_t`` in the zeroed ``m`` (same values as a nested-list literal)."""
+    m[0, 1] = complex(-(K_star**2), K_star_cos * u) / KAPPA_SQUARED
+    m[0, 4] = complex(0, -K_star_cos / KAPPA)
+    m[0, 5] = complex(0, -2 * dKstar_dz * K_star_cos / KAPPA)  # TODO: misplaced factor of K*/KAPPA?
+    m[1, 0] = -1
+    m[1, 5] = complex(0, -K_star_cos)
+    m[2, 3] = complex(-(K_star**2), K_star_cos * u) / KAPPA_SQUARED
+    m[2, 4] = complex(0, -K_star_sin / KAPPA)
+    m[2, 5] = complex(0, -2 * dKstar_dz * K_star_sin / KAPPA)  # TODO: misplaced factor of K*/KAPPA?
+    m[3, 2] = -1
+    m[3, 5] = complex(0, -K_star_sin)
+    m[4, 1] = complex(-1, -dKstar_dz * K_star_cos) / KAPPA_SQUARED  # TODO: misplaced factor of K*/KAPPA?
+    m[4, 3] = complex(0, -dKstar_dz * K_star_sin / KAPPA_SQUARED)  # TODO: misplaced factor of K*/KAPPA?
+    m[4, 5] = complex(K_star**2, -K_star_cos * u) / (KAPPA)
+    m[5, 1] = complex(0, K_star_cos / KAPPA_SQUARED)
+    m[5, 3] = complex(0, K_star_sin / KAPPA_SQUARED)
+
+
+@jit
+def _fill_M_s(
+    m: ComplexArray,
+    u: float,
+    K_star: float,
+    dKstar_dz: float,
+    cosbeta: float,
+    sinbeta: float,
+    K_star_cos: float,
+    K_star_sin: float,
+) -> None:
+    """Set the non-zero entries of ``create_M_s`` in the zeroed ``m`` (same values as a nested-list literal)."""
+    m[0, 1] = complex(-1, cosbeta * u / K_star)
+    m[0, 4] = complex(0, -cosbeta)
+    m[0, 5] = complex(0, -2 * dKstar_dz * cosbeta)
+    m[1, 0] = -1
+    m[1, 1] = dKstar_dz / K_star
+    m[1, 5] = complex(0, -K_star_cos)
+    m[2, 3] = complex(-1, cosbeta * u / K_star)
+    m[2, 4] = complex(0, -sinbeta)
+    m[2, 5] = complex(0, -2 * dKstar_dz * sinbeta)
+    m[3, 2] = -1
+    m[3, 3] = dKstar_dz / K_star
+    m[3, 5] = complex(0, -K_star_sin)
+    m[4, 1] = complex(-1 / K_star**2, dKstar_dz / K_star * cosbeta)  # TODO: missing complex conjugation?
+    m[4, 3] = complex(0, -dKstar_dz / K_star * sinbeta)
+    m[4, 5] = complex(K_star, -cosbeta * u)
+    m[5, 1] = complex(0, cosbeta / K_star)
+    m[5, 3] = complex(0, sinbeta / K_star)
+
+
 @jit("complex128[:,:](double, double, double, double, double)")
 def create_M_t(u: float, K_star: float, dKstar_dz: float, K_star_cos: float, K_star_sin: float) -> ComplexArray:
-    """Create the 6x6 adjoint system matrix M = -A* in t-space."""
-    return np.array(
-        [
-            [
-                0,
-                complex(-(K_star**2), K_star_cos * u) / KAPPA_SQUARED,
-                0,
-                0,
-                complex(0, -K_star_cos / KAPPA),
-                complex(0, -2 * dKstar_dz * K_star_cos / KAPPA),  # TODO: misplaced factor of K*/KAPPA?
-            ],
-            [-1, 0, 0, 0, 0, complex(0, -K_star_cos)],
-            [
-                0,
-                0,
-                0,
-                complex(-(K_star**2), K_star_cos * u) / KAPPA_SQUARED,
-                complex(0, -K_star_sin / KAPPA),
-                complex(0, -2 * dKstar_dz * K_star_sin / KAPPA),  # TODO: misplaced factor of K*/KAPPA?
-            ],
-            [0, 0, -1, 0, 0, complex(0, -K_star_sin)],
-            [
-                0,
-                complex(-1, -dKstar_dz * K_star_cos) / KAPPA_SQUARED,  # TODO: misplaced factor of K*/KAPPA?
-                0,
-                complex(0, -dKstar_dz * K_star_sin / KAPPA_SQUARED),  # TODO: misplaced factor of K*/KAPPA?
-                0,
-                complex(K_star**2, -K_star_cos * u) / (KAPPA),
-            ],
-            [
-                0,
-                complex(0, K_star_cos / KAPPA_SQUARED),
-                0,
-                complex(0, K_star_sin / KAPPA_SQUARED),
-                0,
-                0,
-            ],
-        ]
-    )
+    m = np.zeros((6, 6), dtype=np.complex128)
+    _fill_M_t(m, u, K_star, dKstar_dz, K_star_cos, K_star_sin)
+    return m
 
 
 @jit("complex128[:,:](double, double, double, double, double, double, double)")
 def create_M_s(
     u: float, K_star: float, dKstar_dz: float, cosbeta: float, sinbeta: float, K_star_cos: float, K_star_sin: float
 ) -> ComplexArray:
-    """Create the 6x6 adjoint system matrix M = -A* in s-space."""
-    return np.array(
-        [
-            [
-                0,
-                complex(-1, cosbeta * u / K_star),
-                0,
-                0,
-                complex(0, -cosbeta),
-                complex(0, -2 * dKstar_dz * cosbeta),
-            ],
-            [
-                -1,
-                dKstar_dz / K_star,
-                0,
-                0,
-                0,
-                complex(0, -K_star_cos),
-            ],
-            [
-                0,
-                0,
-                0,
-                complex(-1, cosbeta * u / K_star),
-                complex(0, -sinbeta),
-                complex(0, -2 * dKstar_dz * sinbeta),
-            ],
-            [
-                0,
-                0,
-                -1,
-                dKstar_dz / K_star,
-                0,
-                complex(0, -K_star_sin),
-            ],
-            [
-                0,
-                complex(-1 / K_star**2, dKstar_dz / K_star * cosbeta),  # TODO: missing complex conjugation?
-                0,
-                complex(0, -dKstar_dz / K_star * sinbeta),
-                0,
-                complex(K_star, -cosbeta * u),
-            ],
-            [
-                0,
-                complex(0, cosbeta / K_star),
-                0,
-                complex(0, sinbeta / K_star),
-                0,
-                0,
-            ],
-        ]
-    )
+    m = np.zeros((6, 6), dtype=np.complex128)
+    _fill_M_s(m, u, K_star, dKstar_dz, cosbeta, sinbeta, K_star_cos, K_star_sin)
+    return m
 
 
 @jit("complex128[:,:](int32,double,double, double, double,double,double,double,double)")
@@ -180,3 +145,29 @@ def getM(
         return create_M_t(u, K_star, dKstar_dz, K_star_cos, K_star_sin)
     else:  # j == COORD_S:
         return create_M_s(u, K_star, dKstar_dz, cosbeta, sinbeta, K_star_cos, K_star_sin)
+
+
+@jit
+def getM_into(
+    m: ComplexArray,
+    j: int,
+    t: float,
+    kz: float,
+    kz0: float,
+    psi0: float,
+    zeta0: float,
+    cdivkL: float,
+    cosbeta: float,
+    sinbeta: float,
+) -> None:
+    """:func:`getM` written into ``m``, with ``kz`` (``= t_to_s(t, ...)`` for COORD_T, ``= t`` for COORD_S)
+    already computed. Same arithmetic, so the result is bitwise equal."""
+    u = t / KAPPA if j == COORD_T else u0(kz, kz0, get_psi(zeta0, kz, cdivkL), psi0)
+    K_star, dKstar_dz, K_star_cos, K_star_sin = compute_kstar_params(zeta0, kz, cdivkL, cosbeta, sinbeta)
+    for r in range(6):
+        for c in range(6):
+            m[r, c] = 0
+    if j == COORD_T:
+        _fill_M_t(m, u, K_star, dKstar_dz, K_star_cos, K_star_sin)
+    else:
+        _fill_M_s(m, u, K_star, dKstar_dz, cosbeta, sinbeta, K_star_cos, K_star_sin)

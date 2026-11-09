@@ -171,6 +171,28 @@ python scripts/dev.py fmt
 - Keep tests deterministic and platform-independent where possible.
 - Avoid large temporary files unless necessary.
 
+### Changing the LUT format
+
+If your change alters the LUTs written to disk, keep the cache-validation metadata in sync so
+that stale caches are rejected instead of silently loaded:
+
+- **Structural change** (adding, removing or renaming a LUT variable/dimension): the guard test
+  `tests/test_lut_schema.py` will fail. Bump `LUT_FORMAT_VERSION` in `pyfuga/constants.py` and
+  update the golden fingerprints in that test.
+- **Numerical/semantic change** (same structure, different values, e.g. a physics fix): bump
+  `LUT_FORMAT_VERSION` so existing caches are regenerated. The value-regression tests in
+  `tests/test_flut.py` will flag such changes.
+- **Newly exposed generator option** (a knob that changes LUT values but is currently hardcoded
+  in `pyfuga/_fuga.py` — e.g. `legacy`/tiling and `interpolation_order` in
+  `Trafalgar.make_luts`, `ds`/`kzmax` in `PreLUTs.make_preluts`, or the
+  `utils.preludium_equivalent` solver switch): cached LUTs are keyed by filename plus the
+  stamped metadata, and neither records these. (`accgoal` and `single_precision` are
+  exposed in `get_luts` and keyed by a file-name suffix when non-default.) Before making such an option user-settable,
+  add it to the metadata written by `utils.stamp_lut_metadata` and checked by
+  `utils.cache_is_current`, and bump `LUT_FORMAT_VERSION`. Otherwise two runs with different
+  settings share a cache entry and the second silently reuses the first. See issue
+  #63 for the planned generator-side support.
+
 ## 6. Updating documentation
 
 If your change affects:

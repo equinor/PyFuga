@@ -8,7 +8,11 @@ lint:
     - .rules_always_auto
   script:
     - VENV_DIR=".venv-${CI_JOB_ID}"
-    - uv venv "${VENV_DIR}"
+    # Match [tool.mypy] python_version = "3.10": type-check the oldest supported
+    # Python in an environment that can actually host it. On 3.12+ the resolver pulls
+    # numpy>=2.5 (Requires-Python >=3.12), whose stubs use PEP 695 `type` statements
+    # that mypy rejects when targeting 3.10, aborting the run before it checks anything.
+    - uv venv --python 3.10 "${VENV_DIR}"
     - . "${VENV_DIR}/bin/activate"
     - uv pip install ".[lint]"
     - python -m black --version
@@ -24,7 +28,7 @@ security_secret_scan:
   stage: verify
   image:
     name: zricethezav/gitleaks:v8.24.2
-    entrypoint: [ "" ]
+    entrypoint: [""]
   extends: .rules_always_auto
   cache: []
   variables:

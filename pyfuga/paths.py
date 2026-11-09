@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 
-from pyfuga.constants import DS
+from pyfuga.constants import ACCGOAL, DS
 
 PathLike = str | Path
 
@@ -34,11 +34,14 @@ def get_luts_path(
     ny: int,
     dx: float | None,
     dy: float | None,
+    *,
+    single_precision: bool = False,
+    accgoal: float = ACCGOAL,
 ) -> Path:
     fluts_id = get_fluts_path(
-        folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh, lut_vars
+        folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh, lut_vars, accgoal=accgoal
     ).stem.removeprefix("fLUTs_")
-    luts_id = fluts_id + f"_nx{nx}_ny{ny}_dx{dx}_dy{dy}"
+    luts_id = fluts_id + f"_nx{nx}_ny{ny}_dx{dx}_dy{dy}" + ("_sp" if single_precision else "")
     return Path(folder) / f"LUTs_{luts_id}.nc"
 
 
@@ -54,8 +57,10 @@ def get_fluts_path(
     zlow: float,
     zhigh: float,
     lut_vars: Sequence[str],
+    *,
+    accgoal: float = ACCGOAL,
 ) -> Path:
-    preluts_id = get_preluts_path(folder, zeta0, nkz0, nbeta).stem.removeprefix("preLUTs_")
+    preluts_id = get_preluts_path(folder, zeta0, nkz0, nbeta, accgoal=accgoal).stem.removeprefix("preLUTs_")
 
     L_vars = [v[0] for v in lut_vars if v[1] == "L"]
     T_vars = [v[0] for v in lut_vars if v[1] == "T"]
@@ -77,5 +82,6 @@ def get_fluts_path(
     return Path(folder) / f"fLUTs_{fluts_id}.nc"
 
 
-def get_preluts_path(folder: PathLike, zeta0: float, nkz0: int, nbeta: int) -> Path:
-    return Path(folder) / f"preLUTs_Zeta0={zeta0:3.2e}_{nkz0}_{nbeta}.nc"
+def get_preluts_path(folder: PathLike, zeta0: float, nkz0: int, nbeta: int, *, accgoal: float = ACCGOAL) -> Path:
+    acc_id = "" if accgoal == ACCGOAL else f"_acc{accgoal:g}"
+    return Path(folder) / f"preLUTs_Zeta0={zeta0:3.2e}_{nkz0}_{nbeta}{acc_id}.nc"

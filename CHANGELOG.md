@@ -2,9 +2,62 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.3.1-dev]
+## [0.4.2-dev]
 
 Most recent development version.
+
+### Added
+
+  - `verbose` parameter on `get_luts`, `get_fluts` and `get_preluts` (default `True`), passed through to every LUT stage (preLUTs, fLUTs and Trafalgar) to show or hide progress bars.
+
+### Fixed
+
+  - Trafalgar's "LUTS: adding meshes" progress bar was hidden with `verbose=True` and shown with `verbose=False`.
+  - With several Trafalgar workers, the per-tile progress bars from worker processes no longer interleave with the overall bar; only the overall bar is shown.
+
+### Internal
+
+  - Removed the `deploy_conda` CI job, which was meant to publish to an internal DTU conda channel but never had a runner. PyFuga is distributed on conda-forge.
+
+## [0.4.1] - 2026-10-20
+
+Patch release that fixes the release pipeline jobs that failed for 0.4.0 and publishes the 0.4.0 code to Zenodo. The package code is unchanged from 0.4.0.
+
+### Fixed
+
+  - Release pipeline jobs that failed for 0.4.0:
+    - `build_conda` now writes the conda recipe from PyPI during the release instead of checking the committed recipe, whose sdist checksum can only be known after the PyPI upload.
+    - `sync_conda_recipe.py --check-remote-source` now fills in `${{ version }}` in the recipe's source URL before downloading.
+    - `build_conda_smoke` now edits `conda-recipe/recipe.yaml` instead of the removed `meta.yaml`.
+    - The Zenodo upload jobs now keep their virtual environment active, so `g2z-send` is found.
+
+## [0.4.0] - 2026-10-15
+
+Fourth public beta release focused on making the on-disk LUT cache safe across PyFuga versions, alongside CI, typing, and packaging maintenance.
+
+### Added
+
+  - Cache validation metadata on every generated preLUT, fLUT, and LUT file, stored as NetCDF global attributes:
+    - `lut_format_version`: on-disk LUT compatibility version (`pyfuga.constants.LUT_FORMAT_VERSION`, currently `1`).
+    - `lut_schema_fingerprint`: short hash of the file's structure (variable and dimension names) that detects structural changes automatically.
+    - `pyfuga_version`: the PyFuga version that produced the file (provenance only; not used for validation).
+  - "Cache validation and versioning" section in the integration user guide.
+
+### Changed
+
+  - **Breaking:** `get_preluts`, `get_fluts`, and `get_luts` now validate cached files before reusing them. A cache whose metadata is missing or does not match triggers a `UserWarning`, and the file is regenerated instead of loaded. **Every cache written by PyFuga 0.3.0 or earlier lacks this metadata. The first call after upgrading will therefore regenerate it, which can take a long time for large configurations.** Caches written by 0.4.0 are reused silently, as before. The new attributes do not affect downstream consumers such as PyWake, which ignore unknown global attributes.
+
+### Fixed
+
+  - Stale or incompatible cached LUTs, for example ones written by older PyFuga versions with a different on-disk layout, are no longer loaded without warning.
+  - Legend of the `nkz0_nbeta` plot in the documentation.
+  - Sphinx warnings and table parsing in the docs sources.
+
+### Internal
+
+  - Migrated the conda recipe from `conda-recipe/meta.yaml` to `conda-recipe/recipe.yaml`.
+  - Typing and lint fixes for newer numba, xarray, and scipy-stubs; lint now runs on Python 3.10 to match the mypy target.
+  - CI improvements: auto-retry and serialization of Windows test jobs, a more robust Zenodo metadata check (including draft records), and Linux test images rebuilt only on scheduled pipelines.
 
 ## [0.3.0] - 2026-04-28
 

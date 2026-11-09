@@ -8,7 +8,7 @@ import xarray as xr
 from numpy.testing import assert_allclose
 
 from pyfuga.file_readers import read_lut_dat_file, read_lut_file
-from pyfuga.trafalgar import Trafalgar
+from pyfuga.trafalgar import Trafalgar, _interpolate_levels, _spline_operator
 
 from .test_files import tfp
 
@@ -25,13 +25,12 @@ def test_trafalgar_n_cpu_1_does_not_instantiate_pool(var: str, monkeypatch: pyte
 
     @contextmanager
     def spy_map(
-        workers: int, chunksize: int = 1
+        workers: int,
     ) -> Iterator[Callable[[Callable[..., object], Iterable[object]], Iterator[object]]]:
-        _ = chunksize
         workers_seen.append(workers)
         yield map
 
-    monkeypatch.setattr("pyfuga.trafalgar.multiprocessing_map", spy_map)
+    monkeypatch.setattr("pyfuga.trafalgar.threading_map", spy_map)
 
     fourier_lut = read_lut_file(
         tfp + f"D080.0000_zH070.0000_2_5/Z0=0.00001000Zi=00400Zeta0=0.00E+00/{var}0314.lut",
@@ -48,13 +47,12 @@ def test_trafalgar_default_none_uses_all_cpus(var: str, monkeypatch: pytest.Monk
 
     @contextmanager
     def spy_map(
-        workers: int, chunksize: int = 1
+        workers: int,
     ) -> Iterator[Callable[[Callable[..., object], Iterable[object]], Iterator[object]]]:
-        _ = chunksize
         workers_seen.append(workers)
         yield map
 
-    monkeypatch.setattr("pyfuga.trafalgar.multiprocessing_map", spy_map)
+    monkeypatch.setattr("pyfuga.trafalgar.threading_map", spy_map)
 
     fourier_lut = read_lut_file(
         tfp + f"D080.0000_zH070.0000_2_5/Z0=0.00001000Zi=00400Zeta0=0.00E+00/{var}0314.lut",
@@ -62,6 +60,30 @@ def test_trafalgar_default_none_uses_all_cpus(var: str, monkeypatch: pytest.Monk
     )
     Trafalgar(fourier_lut, nx=512, ny=128, verbose=False).make_luts(3)
     assert workers_seen == [3]
+
+
+@pytest.mark.parametrize("verbose", [True, False])
+def test_trafalgar_progress_bars_follow_verbose(verbose: bool, capsys: pytest.CaptureFixture[str]) -> None:
+    fourier_lut = read_lut_file(
+        tfp + "D080.0000_zH070.0000_2_5/Z0=0.00001000Zi=00400Zeta0=0.00E+00/UL0314.lut",
+        prelut_folder=tfp + "preLUTs_Zeta0=0.00E+00_2_5",
+    )
+    Trafalgar(fourier_lut, nx=512, ny=128, verbose=verbose).make_luts(3, n_cpu=1)
+    err = capsys.readouterr().err
+    assert ("LUTS: adding meshes" in err) is verbose
+    assert ("Trafalgar:" in err) is verbose
+
+
+@pytest.mark.parametrize("verbose", [True, False])
+def test_trafalgar_parallel_shows_only_outer_progress_bar(verbose: bool, capfd: pytest.CaptureFixture[str]) -> None:
+    fourier_lut = read_lut_file(
+        tfp + "D080.0000_zH070.0000_2_5/Z0=0.00001000Zi=00400Zeta0=0.00E+00/UL0314.lut",
+        prelut_folder=tfp + "preLUTs_Zeta0=0.00E+00_2_5",
+    )
+    Trafalgar(fourier_lut, nx=512, ny=128, verbose=verbose).make_luts(3, n_cpu=2)
+    err = capfd.readouterr().err
+    assert ("LUTS: adding meshes" in err) is verbose
+    assert "Trafalgar:" not in err
 
 
 @pytest.mark.parametrize("var", ["UL", "UT"])
@@ -94,6 +116,157 @@ def test_trafalgar_new_mode(var):
     assert var in fuga_luts
     assert fuga_luts[var].shape == (1, 512, 64)
     assert np.isfinite(fuga_luts[var].values).all()
+
+
+@pytest.mark.parametrize("var", ["UL", "UT"])
+@pytest.mark.parametrize("legacy", [False, True])
+def test_threaded_tiles_match_serial_without_mutating_input(var, legacy):
+    fourier_lut = (
+        read_lut_file(
+            tfp + f"D080.0000_zH070.0000_2_5/Z0=0.00001000Zi=00400Zeta0=0.00E+00/{var}0314.lut",
+            prelut_folder=tfp + "preLUTs_Zeta0=0.00E+00_2_5",
+        )
+        .isel(level=[0, 0, 0])
+        .assign_coords(level=[314, 315, 316])
+    )
+    original = fourier_lut.copy(deep=True)
+    generator = Trafalgar(fourier_lut, nx=64, ny=32, verbose=False)
+    serial = generator.make_luts(3, legacy=legacy, n_cpu=1)
+    threaded = generator.make_luts(3, legacy=legacy, n_cpu=2)
+    xr.testing.assert_identical(threaded, serial)
+    xr.testing.assert_identical(fourier_lut, original)
+
+
+@pytest.mark.parametrize("var", ["UL", "UT"])
+@pytest.mark.parametrize("legacy", [False, True])
+def test_single_precision_close_to_double(var, legacy):
+    fourier_lut = read_lut_file(
+        tfp + f"D080.0000_zH070.0000_2_5/Z0=0.00001000Zi=00400Zeta0=0.00E+00/{var}0314.lut",
+        prelut_folder=tfp + "preLUTs_Zeta0=0.00E+00_2_5",
+    )
+    generator = Trafalgar(fourier_lut, nx=512, ny=128, verbose=False)
+    double = generator.make_luts(3, legacy=legacy, n_cpu=1)[var].values
+    single = generator.make_luts(3, legacy=legacy, n_cpu=1, single_precision=True)[var].values
+    assert single.dtype == np.float64
+    assert not np.array_equal(single, double)
+    assert np.abs(single - double).max() < 1e-5 * np.abs(double).max()
+
+
+@pytest.mark.parametrize(("nlevel", "kind"), [(1, "complex"), (3, "complex"), (3, "real"), (3, "nonfinite")])
+def test_interpolate_levels_preserves_bits(nlevel, kind):
+    rng = np.random.default_rng(42)
+    x, y = np.linspace(0, 1, 6), np.linspace(-10, -2, 7)
+    px, py = np.meshgrid(np.linspace(-0.2, 1.2, 8), np.linspace(-11, -1, 9))
+    operator = _spline_operator(x, y, px, py, 3)
+    assert operator is not None
+    flut = rng.standard_normal((len(x), len(y), 2 * nlevel))
+    if kind != "real":
+        flut = flut + 1j * rng.standard_normal(flut.shape)
+    if kind == "nonfinite":
+        flut[0, 0, 0] = np.inf
+    flut = flut[:, :, ::2]
+    original = flut.copy()
+    flut.flags.writeable = False
+
+    w, cx, cy = operator.matrix(), operator.cx, operator.cy
+    with np.errstate(invalid="ignore"):
+        coef = np.einsum("ab,bcl,dc->adl", cx, flut, cy, optimize=True)
+        expected = w @ coef.reshape(-1, nlevel)
+        actual = _interpolate_levels(operator, flut)
+
+    np.testing.assert_array_equal(actual.view(np.uint64), expected.view(np.uint64))
+    np.testing.assert_array_equal(flut, original)
+
+
+def test_spline_operator_matches_scipy_design_matrix_bits():
+    from scipy.interpolate import BSpline, make_interp_spline
+
+    rng = np.random.default_rng(3)
+    x = np.sort(rng.uniform(-3, 3, 17))
+    t = make_interp_spline(x, np.eye(len(x)), k=3).t
+    q = np.concatenate([x, t, rng.uniform(x[0], x[-1], 500), np.nextafter(x, np.inf).clip(x[0], x[-1])])
+    operator = _spline_operator(x, x[:5], q, np.full_like(q, x[0]), 3)
+    assert operator is not None
+
+    expected = BSpline.design_matrix(q, t, 3)
+    np.testing.assert_array_equal(operator.bx.ravel().view(np.uint64), expected.data.view(np.uint64))
+    np.testing.assert_array_equal(operator.ox, expected.indices[::4])
+
+
+@pytest.mark.parametrize("single", [False, True])
+def test_interpolate_scaled_matches_unfused_bits(single):
+    from pyfuga.trafalgar import _interpolate_scaled
+
+    rng = np.random.default_rng(7)
+    x, y = np.linspace(0, 1, 6), np.linspace(-10, -2, 7)
+    px, py = np.meshgrid(np.linspace(-0.2, 1.2, 8), np.linspace(-11, -1, 9))
+    operator = _spline_operator(x, y, px, py, 3)
+    assert operator is not None
+    dtype = np.float32 if single else np.float64
+    if single:
+        operator = operator._replace(dtype=np.float32)
+    flut = rng.standard_normal((len(x), len(y), 3)) + 1j * rng.standard_normal((len(x), len(y), 3))
+    scale = (rng.standard_normal(px.shape) * np.exp(-rng.uniform(0, 30, px.shape))).astype(dtype)
+    scale[0, :3] = [0.0, -0.0, 1e-30]
+
+    expected = _interpolate_levels(operator, flut).reshape(*px.shape, -1) * scale[..., np.newaxis]
+    actual = _interpolate_scaled(operator, flut, scale)
+
+    assert actual is not None
+    assert actual.dtype == expected.dtype
+    np.testing.assert_array_equal(actual.view(dtype), np.ascontiguousarray(np.moveaxis(expected, -1, 0)).view(dtype))
+    flut[0, 0, 0] = np.inf
+    with np.errstate(invalid="ignore"):
+        assert _interpolate_scaled(operator, flut, scale) is None
+
+
+@pytest.mark.parametrize("order", [1, 3])
+@pytest.mark.parametrize("single", [False, True])
+def test_x_transform_fused_matches_unfused_bits(single, order):
+    from pyfuga.trafalgar import _fitfit_x, _interpolate_scaled, _spline_components, _x_transform_fused
+
+    rng = np.random.default_rng(3)
+    nx, ny, dx = 40, 45, 20.0  # ny not a multiple of the block width
+    x, y = np.linspace(0, 1, 6), np.linspace(-10, -2, 7)
+    px, py = np.meshgrid(np.linspace(-0.2, 1.2, ny), np.linspace(-11, -1, nx))
+    operator = _spline_operator(x, y, px, py, order)
+    assert operator is not None
+    dtype = np.float32 if single else np.float64
+    if single:
+        operator = operator._replace(dtype=np.float32)
+    fluts = [rng.standard_normal((len(x), len(y), 3)) + 1j * rng.standard_normal((len(x), len(y), 3)) for _ in "ab"]
+    scale = rng.standard_normal(px.shape).astype(dtype)
+    kx = np.linspace(1e-4, 1e-1, nx)
+
+    components = [_spline_components(operator, f) for f in fluts]
+    actual = _x_transform_fused(operator, components, scale, [1, -1], kx, nx, dx, 4)
+    for j, (flut, sign) in enumerate(zip(fluts, [1, -1], strict=True)):
+        scaled = _interpolate_scaled(operator, flut, scale)
+        assert scaled is not None
+        expected = np.stack([_fitfit_x(field, sign, kx, nx, dx, 4) for field in scaled])
+        np.testing.assert_array_equal(actual[3 * j : 3 * (j + 1)].view(dtype), expected.view(dtype))
+
+
+@pytest.mark.parametrize("sign", [1, -1])
+def test_blocked_fitfit_matches_unblocked_bits(sign):
+    from numpy import newaxis as na
+    from scipy import fft as sfft
+
+    from pyfuga.trafalgar import FITFIT, _fitfit_axis, doKvectorFIT_double
+
+    nx, ny = 300, 45  # not multiples of the block sizes
+    rng = np.random.default_rng(0)
+    field = rng.standard_normal((nx, ny)) + 1j * rng.standard_normal((nx, ny))
+    kx, ky = doKvectorFIT_double(nx, 20, NNN=4), doKvectorFIT_double(ny, 5, NNN=4)
+    phix, psix, hhatx = _fitfit_axis(nx, 20, 4, float(kx[0]), -nx / 4.0)
+    phiy, psiy, hhaty = _fitfit_axis(ny, 5, 4, float(ky[0]), 0.0)
+    tmpx = sfft.ifft(hhatx[:, na] * sfft.fft(phix[:, na] * field, n=2 * nx, axis=0), axis=0)[:nx]
+    field_x = 2.0 * (psix[:, na] * tmpx).real if sign == 1 else -2.0 * (psix[:, na] * tmpx).imag
+    tmpy = sfft.ifft(hhaty[na, :] * sfft.fft(phiy[na, :] * field_x, n=2 * ny, axis=1), axis=1)[:, :ny]
+    expected = 2.0 * (psiy[na, :] * tmpy).real if sign == 1 else 2.0 * (psiy[na, :] * tmpy).imag
+
+    actual = FITFIT(field, sign, kx, ky, nx, 20, ny, 5)
+    np.testing.assert_array_equal(actual.view(np.uint64), expected.view(np.uint64))
 
 
 def test_doKvector_tiles_edge_cases():

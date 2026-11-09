@@ -16,15 +16,22 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 import xarray as xr
 from tqdm import tqdm
 
+from pyfuga import utils
 from pyfuga.file_readers import read_pre_file, read_prelut_list
-from pyfuga.utils import ComplexXRDataset, multiprocessing_map, normalise_n_cpu_workers, read_complex
+from pyfuga.utils import (
+    ComplexXRDataset,
+    multiprocessing_map,
+    normalise_n_cpu_workers,
+    read_complex,
+    threading_map,
+)
 
 
 class PreLUT(ComplexXRDataset):  # type: ignore[no-untyped-call]
@@ -68,6 +75,16 @@ class PreLUT(ComplexXRDataset):  # type: ignore[no-untyped-call]
         rest = args[:-1]
         utils.compile(bool(jit))
         return PreLUT.make_prelut(*rest)
+
+    @staticmethod
+    def make_prelut_vars_args(args: tuple[Any, ...]) -> tuple[dict[str, Any], dict[str, Any]]:
+        """:meth:`make_prelut_args` returning plain ``(data_vars, attrs)`` (no xarray Dataset)."""
+        from pyfuga import utils
+
+        utils.compile(bool(args[-1]))  # before importing the generator: compile() reloads it
+        from pyfuga.preluts_generator import PreLUTGenerator
+
+        return PreLUTGenerator(*args[:-1]).make_prelut_vars()
 
 
 class PreLUTs(ComplexXRDataset):  # type: ignore[no-untyped-call]
@@ -141,9 +158,9 @@ class PreLUTs(ComplexXRDataset):  # type: ignore[no-untyped-call]
         workers = normalise_n_cpu_workers(n_cpu)
         args_lst = [(zeta0, kz0, beta, kzmax, ds, accgoal, jit) for beta in beta_lst for kz0 in kz0_lst]
 
-        iterator: Iterator[PreLUT]
+        iterator: Iterator[tuple[dict[str, Any], dict[str, Any]]]
         if workers == 1:
-            iterator = map(PreLUT.make_prelut_args, args_lst)
+            iterator = map(PreLUT.make_prelut_vars_args, args_lst)
             ds_lst = list(
                 tqdm(
                     iterator,
@@ -153,8 +170,12 @@ class PreLUTs(ComplexXRDataset):  # type: ignore[no-untyped-call]
                 )
             )
         else:
-            with multiprocessing_map(workers, chunksize=1) as map_func:
-                iterator = map_func(PreLUT.make_prelut_args, args_lst)
+            # Compiled preLUTs spend almost all their time in nogil code, so threads parallelise them without
+            # process start-up or copying results; the Python-only modes use processes.
+            threads = jit and not utils.preludium_equivalent
+            pool = threading_map(workers) if threads else multiprocessing_map(workers, chunksize=1)
+            with pool as map_func:
+                iterator = map_func(PreLUT.make_prelut_vars_args, args_lst)
                 ds_lst = list(
                     tqdm(
                         iterator,
@@ -164,46 +185,44 @@ class PreLUTs(ComplexXRDataset):  # type: ignore[no-untyped-call]
                     )
                 )
 
-        f = ds_lst[0]  # first
+        f_vars, f_attrs = ds_lst[0]  # first
         for k in ["ds", "kzmax", "zeta0"]:
-            assert all(f.attrs[k] == np.array([ds.attrs[k] for ds in ds_lst]))
+            assert all(f_attrs[k] == np.array([attrs[k] for _, attrs in ds_lst]))
 
         if compact:
-
-            data_dict: dict[str, list[npt.NDArray[Any]]] = {}
-
-            def collect(ds: PreLUT) -> None:
-                for raw_k, v in ds.items():
-                    k = str(raw_k)
-                    if k not in data_dict:
-                        data_dict[k] = []
-                    if len(v.dims) and v.dims[0] == "i":
-                        data_dict[k].append(v.values)
-                    else:
-                        data_dict[k].append(np.full(len(ds.i), v))
-
+            # Concatenated along "kz0_beta_i" in reverse order (as built historically); per-prelut scalars
+            # (beta, kz0) are repeated for each node.
+            data_dict: dict[str, list[npt.NDArray[Any]]] = {k: [] for k in f_vars}
             while len(ds_lst):
-                collect(ds_lst.pop())
+                data_vars, _ = ds_lst.pop()
+                n = len(data_vars["Y_lower"][1])
+                for k, v in data_vars.items():
+                    if isinstance(v, tuple) and v[0][:1] == ("i",):
+                        data_dict[k].append(v[1])
+                    else:
+                        data_dict[k].append(np.full(n, v))
 
             merged_vars: dict[str, tuple[tuple[str, ...], npt.NDArray[Any]]] = {}
             for k, v in data_dict.items():
-                dim_tail = tuple(str(d) for d in f[k].dims[1:])
+                dim_tail = tuple(f_vars[k][0][1:]) if isinstance(f_vars[k], tuple) else ()
                 merged_vars[k] = (("kz0_beta_i",) + dim_tail, np.concatenate(v, 0))
 
             return CompactPreLUTs(
                 merged_vars,
                 attrs={
-                    "ds": f.ds,
-                    "kzmax": f.kzmax,
-                    "zeta0": f.zeta0,
-                    "accgoal": f.accgoal,
+                    "ds": f_attrs["ds"],
+                    "kzmax": f_attrs["kzmax"],
+                    "zeta0": f_attrs["zeta0"],
+                    "accgoal": f_attrs["accgoal"],
                     "kz0_lst": kz0_lst,
                     "beta_lst": beta_lst,
                 },
             )
         else:
+            prelut_lst = [PreLUT(data_vars, attrs=attrs) for data_vars, attrs in ds_lst]
+            f = prelut_lst[0]
             preluts = xr.combine_by_coords(
-                [ds.assign_coords(i=ds.i, kz0=ds.kz0, beta=ds.beta).expand_dims(("kz0", "beta")) for ds in ds_lst]
+                [ds.assign_coords(i=ds.i, kz0=ds.kz0, beta=ds.beta).expand_dims(("kz0", "beta")) for ds in prelut_lst]
             )
 
             return PreLUTs(
@@ -229,7 +248,11 @@ class PreLUTs(ComplexXRDataset):  # type: ignore[no-untyped-call]
 class CompactPreLUTs(PreLUTs):  # type: ignore[no-untyped-call]
     __slots__: list[str] = []
 
-    def sel(
+    # `Dataset.sel` is annotated `-> Self`, but selecting a single (kz0, beta) node
+    # collapses the compact layout into a plain PreLUTs, so the return type is
+    # deliberately widened. Callers rely on CompactPreLUTs being a drop-in for
+    # PreLUTs (see pyfuga/flut.py), so the method cannot be renamed.
+    def sel(  # type: ignore[override]
         self,
         indexers: Any = None,
         method: Any = None,
@@ -245,7 +268,4 @@ class CompactPreLUTs(PreLUTs):  # type: ignore[no-untyped-call]
             attrs={k: v for k, v in self.attrs.items() if k not in ["kz0_lst", "beta_lst"]},
         )
         ds = ds.assign_coords(i=ds.i, beta=beta, kz0=kz0)
-        return cast(
-            PreLUTs,
-            PreLUTs.sel(ds, indexers=indexers, method=method, tolerance=tolerance, drop=drop, **indexers_kwargs),
-        )
+        return PreLUTs.sel(ds, indexers=indexers, method=method, tolerance=tolerance, drop=drop, **indexers_kwargs)

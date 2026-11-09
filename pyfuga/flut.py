@@ -25,10 +25,12 @@ solution stored in the preliminary LUTs.
 
 import warnings
 from collections.abc import Iterator
+from contextlib import nullcontext
 from typing import Any, Literal, NamedTuple, cast
 
 import numpy as np
 import numpy.typing as npt
+from numba import njit
 from numpy import linalg
 from numpy import newaxis as na
 from tqdm import tqdm  # pyright: ignore[reportMissingImports]
@@ -59,6 +61,56 @@ class SolveLayersJob(NamedTuple):
     high_level_out: int
 
 
+class _PreLUTArrays:
+    """Picklable subset of a single-node preLUT: plain arrays and ``ds`` only."""
+
+    __slots__ = ("ds", "arrays")
+
+    def __init__(self, ds: float, arrays: dict[str, Any]) -> None:
+        self.ds = ds
+        self.arrays = arrays
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        return (_PreLUTArrays, (self.ds, self.arrays))
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self.arrays[name]
+        except KeyError:
+            raise AttributeError(name) from None
+
+    __getitem__ = __getattr__
+
+
+def filter_kz0(kz0_lst: npt.NDArray[np.float64], z0: float, radius: float) -> npt.NDArray[np.float64]:
+    """Keep the spectral grid up to the rotor's existing wavelength cutoff."""
+    nkz0 = int(np.round(1 / np.diff(np.log10(kz0_lst))[0])) if len(kz0_lst) > 1 else 1
+    aux = z0 * np.pi * 8.0 / radius
+    kz0limit = 10.0 ** (np.ceil(np.log10(aux) * nkz0) / nkz0)
+    return cast(npt.NDArray[np.float64], kz0_lst[kz0_lst <= kz0limit])
+
+
+def _select_prelut_arrays(
+    preluts: PreLUTs, beta_kz0_lst: list[tuple[Any, Any]], names: list[str]
+) -> Iterator[_PreLUTArrays]:
+    """Select compact nodes by contiguous views rather than repeated full-table masks."""
+    if "kz0_beta_i" not in preluts.dims:
+        for beta, kz0 in beta_kz0_lst:
+            prelut = preluts.sel(beta=beta, kz0=kz0)
+            yield _PreLUTArrays(prelut.ds, {n: np.asarray(prelut[n]) for n in names})
+        return
+
+    beta, kz0 = preluts.beta.values, preluts.kz0.values
+    boundaries = np.r_[0, np.flatnonzero((beta[1:] != beta[:-1]) | (kz0[1:] != kz0[:-1])) + 1, len(beta)]
+    slices = {
+        (beta[start], kz0[start]): slice(start, end) for start, end in zip(boundaries[:-1], boundaries[1:], strict=True)
+    }
+    arrays = {n: np.asarray(preluts[n]) for n in names}
+    for b, k in beta_kz0_lst:
+        sl = slices[b, k] if len(slices) == len(boundaries) - 1 else (beta == b) & (kz0 == k)
+        yield _PreLUTArrays(preluts.ds, {n: a[sl] for n, a in arrays.items()})
+
+
 def _iter_solve_layer_jobs(
     preluts: PreLUTs,
     beta_kz0_lst: list[tuple[Any, Any]],
@@ -72,10 +124,14 @@ def _iter_solve_layer_jobs(
     maxlevel: int,
     low_level_out: int,
     high_level_out: int,
+    prelut_lst: list[Any] | None = None,
 ) -> Iterator[SolveLayersJob]:
-    for beta, kz0 in beta_kz0_lst:
+    axis = "x" if forcing == "L" else "y"
+    names = ["level", "Y_lower", "R_upper", "R_lower", f"db{axis}_const", f"db{axis}_lin"]
+    prelut_iter = _select_prelut_arrays(preluts, beta_kz0_lst, names) if prelut_lst is None else iter(prelut_lst)
+    for (beta, kz0), prelut in zip(beta_kz0_lst, prelut_iter, strict=True):
         yield SolveLayersJob(
-            prelut=preluts.sel(beta=beta, kz0=kz0),
+            prelut=_PreLUTArrays(prelut.ds, {n: np.asarray(prelut[n]) for n in names}),
             beta=beta,
             kz0=kz0,
             z0=z0,
@@ -221,10 +277,7 @@ class FourierLUTGenerator:
         kz0_lst = np.sort(np.unique(self.preluts.kz0.values))
 
         # Filter out wavenumbers that are too large (wavelengths smaller than R/4)
-        nkz0 = int(np.round(1 / np.diff(np.log10(kz0_lst))[0])) if len(kz0_lst) > 1 else 1
-        aux = z0 * np.pi * 8.0 / R
-        kz0limit = 10.0 ** (np.ceil(np.log10(aux) * nkz0) / nkz0)
-        kz0_lst = kz0_lst[kz0_lst <= kz0limit]  # keep only physically relevant wavenumbers
+        kz0_lst = filter_kz0(kz0_lst, z0, R)
 
         upperjf = int(np.floor(np.log((zh + R) / z0) / ds))  # top of rotor, excluding point at ceiling (zh+R).
         lowerjf = int(np.ceil(np.log((zh - R) / z0) / ds))  # bottom of rotor, excluding point at floor (zh-R).
@@ -264,7 +317,24 @@ class FourierLUTGenerator:
         xL: list[npt.NDArray[np.complex128]] = []  # longitudinal forcing
         xT: list[npt.NDArray[np.complex128]] = []  # transversal forcing
 
-        with multiprocessing_map(workers) as map_func:
+        do_l = any(lut[1] == "L" for lut in luts)
+        do_t = any(lut[1] == "T" for lut in luts)
+        prelut_lst = (
+            list(
+                _select_prelut_arrays(
+                    self.preluts,
+                    beta_kz0_lst,
+                    ["level", "Y_lower", "R_upper", "R_lower", "dbx_const", "dbx_lin", "dby_const", "dby_lin"],
+                )
+            )
+            if do_l and do_t
+            else None
+        )  # select once, share between forcings
+
+        # With the loops compiled a job takes well under a millisecond, so running them in-process beats both
+        # worker processes (start-up, copying preLUTs) and threads (contention for the GIL between short kernels).
+        pool = nullcontext(map) if _up_sweep is _up_sweep_nb else multiprocessing_map(workers)
+        with pool as map_func:
             if any(lut[1] == "L" for lut in luts):
                 jobs_l = _iter_solve_layer_jobs(
                     self.preluts,
@@ -279,6 +349,7 @@ class FourierLUTGenerator:
                     maxlevel,
                     low_level_out,
                     high_level_out,
+                    prelut_lst,
                 )
                 xL = list(
                     tqdm(
@@ -303,6 +374,7 @@ class FourierLUTGenerator:
                     maxlevel,
                     low_level_out,
                     high_level_out,
+                    prelut_lst,
                 )
                 xT = list(
                     tqdm(
@@ -313,9 +385,11 @@ class FourierLUTGenerator:
                     )
                 )
 
+        xL_array, xT_array = np.asarray(xL), np.asarray(xT)
+
         def get_var(s: str) -> npt.NDArray[np.complex128]:
             """Extract specific component and forcing direction from results."""
-            x = xL if s[1] == "L" else xT
+            x = xL_array if s[1] == "L" else xT_array
             i = _LUT_COMPONENT_INDEX[s[0]]
             # Extract: (n_beta, n_kz0, n_levels)
             return np.reshape(x, (len(beta_lst), len(kz0_lst)) + np.shape(x)[1:])[..., i]
@@ -364,7 +438,7 @@ def solve_layers(job: SolveLayersJob | tuple[Any, ...]) -> npt.NDArray[np.comple
     z = job.z0 * np.exp(ds * (jf_l + np.array([-1, 0, 1])[:, na]))  # height blow, at and above current layer
     k = job.kz0 / job.z0
 
-    max_table_level = job.prelut.level.max().item()
+    max_table_level = np.nanmax(job.prelut.level).item()
 
     # Memory optimisation: discard irrelevant prelut data
     if max_table_level < job.minlevel:
@@ -373,66 +447,27 @@ def solve_layers(job: SolveLayersJob | tuple[Any, ...]) -> npt.NDArray[np.comple
             dtype=np.complex128,
         )  # Discard if below min level
 
-    imin, imax = np.searchsorted(
-        job.prelut.level,
-        [job.minlevel, min(job.maxlevel, max_table_level)],
-    )
-    prelut = job.prelut.sel(i=slice(imin, imax))  # discard unused levels (outside min/max range)
+    level_all = np.asarray(job.prelut.level)
+    imin, imax = np.searchsorted(level_all, [job.minlevel, min(job.maxlevel, max_table_level)])
+    sl = slice(imin, imax + 1)  # discard unused levels (outside min/max range); i is the positional index
 
     zero_pad_levels = int(max(0, job.maxlevel - max_table_level))
 
-    ijf0_l, ijf1_l, ijf2_l = np.searchsorted(prelut.level, [jf_l - 1, jf_l, jf_l + 1])  # the three levels per layer
+    levels = level_all[sl].astype(int)
+    ijf0_l, ijf1_l, ijf2_l = np.searchsorted(levels, [jf_l - 1, jf_l, jf_l + 1])  # the three levels per layer
     # e.g. ijf0_l[0], ijf1_l[0], ijf2_l[0] makes up the first layer
 
-    Q = prelut.Y_lower.values
-    R_upper = prelut.R_upper.values
-    R_lower = prelut.R_lower.values
-    db_const = prelut[f"db{axis}_const"].values
-    db_lin = prelut[f"db{axis}_lin"].values
-    levels = prelut.level.values.astype(int)
+    Q = np.asarray(job.prelut.Y_lower)[sl]
+    R_upper = np.asarray(job.prelut.R_upper)[sl]
+    R_lower = np.asarray(job.prelut.R_lower)[sl]
+    db_const = np.asarray(job.prelut[f"db{axis}_const"])[sl]
+    db_lin = np.asarray(job.prelut[f"db{axis}_lin"])[sl]
 
     # Triangular/Chapeau function weights
     phi_const_low_lst = z[0] / (KAPPA * k * (z[1] - z[0]))  # constant part of Chapeau function for lowest part of layer
     phi_lin_low_lst = 1 / (KAPPA * (z[1] - z[0]) * k**2)  # prop. part of Chapeau function for lowest part of layer
     phi_const_high_lst = z[2] / (KAPPA * k * (z[1] - z[2]))  # const. -- for upper part of layer
     phi_lin_high_lst = 1 / (KAPPA * (z[1] - z[2]) * k**2)
-
-    # Solve for each layer - returns (n_levels, 6) for each layer
-    layer_blocks: list[npt.NDArray[np.complex128]] = [
-        cast(
-            npt.NDArray[np.complex128],
-            np.concatenate(
-                [
-                    solve_layer(
-                        R_upper,
-                        R_lower,
-                        Q,
-                        levels,
-                        db_const,
-                        db_lin,
-                        phi_const_low,
-                        phi_lin_low,
-                        phi_const_high,
-                        phi_lin_high,
-                        ijf0,
-                        ijf1,
-                        ijf2,
-                    ),
-                    np.zeros((zero_pad_levels, 6), dtype=np.complex128),
-                ]
-            ),
-        )
-        for ijf0, ijf1, ijf2, phi_const_low, phi_lin_low, phi_const_high, phi_lin_high in zip(
-            ijf0_l,
-            ijf1_l,
-            ijf2_l,
-            phi_const_low_lst,
-            phi_lin_low_lst,
-            phi_const_high_lst,
-            phi_lin_high_lst,
-            strict=True,
-        )
-    ]
 
     # Apply geometric weighting (Fourier transform of circular rotor)
     zf = job.z0 * np.exp(ds * np.arange(job.lowerjf, job.upperjf + 1))
@@ -447,16 +482,188 @@ def solve_layers(job: SolveLayersJob | tuple[Any, ...]) -> npt.NDArray[np.comple
     area_err_fac = (
         job.radius**2 * np.pi / np.sum(np.sqrt(job.radius**2 - (zf - job.zhub) ** 2) * zf * (np.exp(ds) - np.exp(-ds)))
     )
+    weights = fac[1:-1] * area_err_fac
+
+    # The solution is linear in the forcing, so the weighted sum over layers is done on the forcing
+    # and a single up/down sweep is performed.
+    n = len(Q)
+    f_up = np.zeros((n, 3), dtype=np.complex128)
+    f_down = np.zeros((n, 3), dtype=np.complex128)
+    _accumulate_forcing(
+        f_up,
+        f_down,
+        db_const,
+        db_lin,
+        ijf0_l,
+        ijf1_l,
+        ijf2_l,
+        weights,
+        phi_const_low_lst,
+        phi_lin_low_lst,
+        phi_const_high_lst,
+        phi_lin_high_lst,
+    )
+
+    full = _sweep(R_upper, R_lower, Q, f_up, f_down, int(ijf0_l.min()) if len(ijf0_l) else n)
+
+    # Only keep the levels corresponding to the original prelut levels, excluding substations.
+    new_level = np.concatenate((np.array([True]), levels[1:-1] > levels[:-2]))
+    out = np.einsum("jkl,jk->jl", Q, full)[1:][new_level]
+    out = np.concatenate([out, np.zeros((zero_pad_levels, 6), dtype=np.complex128)])
 
     # Extract output levels
     s = slice(job.low_level_out - job.minlevel - 1, job.high_level_out - job.minlevel)
-    stacked = np.array(layer_blocks)[:, s]  # dim: (from_level, to_level, uu'vv'wp)
+    return cast(npt.NDArray[np.complex128], out[s])
 
-    # Sum over layers with geometric weights
-    return cast(
-        npt.NDArray[np.complex128],
-        np.sum(fac[1:-1][:, na, na] * stacked, 0) * area_err_fac,
+
+def _sweep(R_upper, R_lower, Q, f_up, f_down, start):  # type: ignore[no-untyped-def]
+    """Up/down sweep for given forcing. Returns the 6-component state at every prelut level."""
+    n = len(Q)
+    ru = np.ascontiguousarray(np.swapaxes(R_upper[:, :3, :3], 1, 2))
+    rl = np.ascontiguousarray(np.swapaxes(R_lower[:, :, 3:], 1, 2))  # (n, 3, 6)
+    b = np.zeros((n, 3), dtype=np.complex128)
+    _up_sweep(ru, f_up, b, start)
+
+    y_tilde = np.concatenate(
+        (
+            np.conj(Q[-1, :3]),
+            np.array([[1, 0, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0], [0, 0, 0, 0, 1, 0]], dtype=np.complex128),
+        )
     )
+    x_ih = linalg.solve(y_tilde, np.concatenate((b[-1], np.zeros(3, dtype=np.complex128))))
+
+    c = np.einsum("jkl,jl->jk", rl[1:, :, :3], b[1:]) + f_down[:-1]  # forcing + lower part of state, for j-1
+    m = rl[1:, :, 3:]
+    u = np.zeros((n, 3), dtype=np.complex128)
+    # C order, as in a pickled copy: ``@`` rounds differently for the strided view of the preLUT table, which
+    # in-process jobs see.
+    u[-1] = np.conj(np.ascontiguousarray(Q[-1, 3:])) @ x_ih
+    _down_sweep(m, c, u)
+    return np.concatenate((b, u), axis=1)
+
+
+# The forcing accumulation and the sweeps are long loops of tiny 3-element operations: as NumPy they are dominated by
+# Python overhead, so they are compiled (releasing the GIL, so the jobs can run in threads). The kernels repeat
+# NumPy's arithmetic exactly (in-order complex dot products, complex-by-real products via a zero imaginary part).
+
+
+def _accumulate_forcing_np(  # type: ignore[no-untyped-def]
+    f_up, f_down, db_const, db_lin, ijf0_l, ijf1_l, ijf2_l, weights, pcl_l, pll_l, pch_l, plh_l
+) -> None:
+    for ijf0, ijf1, ijf2, w, pcl, pll, pch, plh in zip(
+        ijf0_l, ijf1_l, ijf2_l, weights, pcl_l, pll_l, pch_l, plh_l, strict=True
+    ):
+        lo, mid = slice(ijf0, ijf1), slice(ijf1, ijf2)
+        f_up[lo] += w * (-db_const[lo, :3] * pcl + db_lin[lo, :3] * pll)
+        f_up[mid] += w * (-db_const[mid, :3] * pch + db_lin[mid, :3] * plh)
+        f_down[lo] += w * (db_const[lo, 3:] * pcl - db_lin[lo, 3:] * pll)
+        f_down[mid] += w * (db_const[mid, 3:] * pch - db_lin[mid, 3:] * plh)
+
+
+def _up_sweep_np(ru, f_up, b, start) -> None:  # type: ignore[no-untyped-def]
+    for j in range(start, len(b) - 1):
+        b[j + 1] = ru[j] @ (b[j] + f_up[j])
+
+
+def _down_sweep_np(m, c, u) -> None:  # type: ignore[no-untyped-def]
+    for j in range(len(u) - 1, 0, -1):
+        u[j - 1] = m[j - 1] @ u[j] + c[j - 1]
+
+
+@njit(cache=True, nogil=True)
+def _times_real(a, r):  # type: ignore[no-untyped-def]  # pragma: no cover - compiled
+    """``a * r`` as NumPy computes it: ``r`` promoted to a complex number with zero imaginary part."""
+    return complex(a.real * r - a.imag * 0.0, a.real * 0.0 + a.imag * r)
+
+
+@njit(cache=True, nogil=True)
+def _forcing_rows(f, d_c, d_l, start, stop, col, sign, w, pc, pl):  # type: ignore[no-untyped-def]  # pragma: no cover
+    for i in range(start, stop):
+        for k in range(3):
+            if sign < 0:  # w * (-d_c * pc + d_l * pl)
+                v = _times_real(-d_c[i, col + k], pc) + _times_real(d_l[i, col + k], pl)
+            else:  # w * (d_c * pc - d_l * pl)
+                v = _times_real(d_c[i, col + k], pc) - _times_real(d_l[i, col + k], pl)
+            f[i, k] = f[i, k] + _times_real(v, w)
+
+
+@njit(cache=True, nogil=True)
+def _accumulate_forcing_nb(  # type: ignore[no-untyped-def]  # pragma: no cover - compiled
+    f_up, f_down, db_const, db_lin, ijf0_l, ijf1_l, ijf2_l, weights, pcl_l, pll_l, pch_l, plh_l
+) -> None:
+    for m in range(len(ijf0_l)):
+        w = weights[m]
+        _forcing_rows(f_up, db_const, db_lin, ijf0_l[m], ijf1_l[m], 0, -1, w, pcl_l[m], pll_l[m])
+        _forcing_rows(f_up, db_const, db_lin, ijf1_l[m], ijf2_l[m], 0, -1, w, pch_l[m], plh_l[m])
+        _forcing_rows(f_down, db_const, db_lin, ijf0_l[m], ijf1_l[m], 3, 1, w, pcl_l[m], pll_l[m])
+        _forcing_rows(f_down, db_const, db_lin, ijf1_l[m], ijf2_l[m], 3, 1, w, pch_l[m], plh_l[m])
+
+
+@njit(cache=True, nogil=True)
+def _up_sweep_nb(ru, f_up, b, start) -> None:  # type: ignore[no-untyped-def]  # pragma: no cover - compiled
+    v = np.empty(3, dtype=np.complex128)
+    for j in range(start, len(b) - 1):
+        for k in range(3):
+            v[k] = b[j, k] + f_up[j, k]
+        for i in range(3):
+            s = 0j
+            for k in range(3):
+                s += ru[j, i, k] * v[k]
+            b[j + 1, i] = s  # in-order sum, as NumPy's ``@`` for this size
+
+
+@njit(cache=True, nogil=True)
+def _down_sweep_nb(m, c, u) -> None:  # type: ignore[no-untyped-def]  # pragma: no cover - compiled
+    for j in range(len(u) - 1, 0, -1):
+        for i in range(3):
+            s = 0j
+            for k in range(3):
+                s += m[j - 1, i, k] * u[j, k]
+            u[j - 1, i] = s + c[j - 1, i]
+
+
+def _kernels_match_numpy() -> bool:
+    """True if the compiled kernels reproduce the NumPy code bit for bit on random data with many magnitudes and
+    signed zeros (``@`` may use a BLAS with a different operation order on other builds)."""
+    rng = np.random.default_rng(0)
+
+    def rand(*shape: int) -> npt.NDArray[np.complex128]:
+        a = (rng.standard_normal(shape) + 1j * rng.standard_normal(shape)) * 10.0 ** rng.uniform(-6, 6, shape)
+        mask = rng.random(shape)
+        a.real[mask < 0.1] = 0.0
+        a.imag[mask > 0.9] = -0.0
+        return np.asarray(a, dtype=np.complex128)
+
+    n = 40
+    for _ in range(20):
+        R, f, c = rand(n, 3, 6), rand(n, 3), rand(n - 1, 3)
+        ru = np.ascontiguousarray(R[:, :, :3])
+        b0, u0, f_up0, f_down0 = rand(n, 3), rand(n, 3), rand(n, 3), rand(n, 3)
+        b0[6:] = 0
+        u0[:-1] = 0
+        d_c, d_l = rand(n, 6), rand(n, 6)
+        ijf = np.sort(rng.integers(0, n, (3, 12)), axis=0)
+        w, pcl, pll, pch, plh = (rng.standard_normal(12) * 10.0 ** rng.uniform(-6, 6, 12) for _ in range(5))
+        outs = []
+        for up, down in ((_up_sweep_np, _down_sweep_np), (_up_sweep_nb, _down_sweep_nb)):
+            b, u = b0.copy(), u0.copy()
+            up(ru, f, b, 5)
+            down(R[1:, :, 3:], c, u)
+            outs.append(b.tobytes() + u.tobytes())
+        for acc in (_accumulate_forcing_np, _accumulate_forcing_nb):
+            f_up, f_down = f_up0.copy(), f_down0.copy()
+            acc(f_up, f_down, d_c, d_l, ijf[0], ijf[1], ijf[2], w, pcl, pll, pch, plh)
+            outs.append(f_up.tobytes() + f_down.tobytes())
+        if outs[0] != outs[1] or outs[2] != outs[3]:
+            return False
+    return True
+
+
+_accumulate_forcing, _up_sweep, _down_sweep = (
+    (_accumulate_forcing_nb, _up_sweep_nb, _down_sweep_nb)
+    if _kernels_match_numpy()
+    else (_accumulate_forcing_np, _up_sweep_np, _down_sweep_np)
+)
 
 
 @jit  # (f'complex128[:,:]({c3}{c3}{c3}{i1}{c2}{c2}{d}{d}{d}{d}{i}{i}{i})')

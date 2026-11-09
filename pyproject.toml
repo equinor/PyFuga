@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyfuga"
-version = "0.3.1-dev"
+version = "0.4.2-dev"
 description = "Linearised CFD wake model (PyFuga)"
 readme = "README.md"
 authors = [{ name = "PyFuga team", email = "lalc@dtu.dk" }]
@@ -58,7 +58,7 @@ lint = [
   "black[jupyter]>=26.1.0",
   "mypy>=1.19.1",
   "packaging>=24",
-  "scipy-stubs>=1.10",
+  "scipy-stubs>=1.10,<1.18",
   "types-tqdm>=4.0",
 ]
 
@@ -111,8 +111,10 @@ check-fmt = "pixi run -e py312 black --check . && pixi run -e py312 ruff check .
 fmt = "pixi run -e py312 black . && pixi run -e py312 ruff check . --fix"
 
 # Static typing (strict; see [tool.mypy] — only pyfuga.typing is fully enforced until follow-up MRs)
-# Run in the pinned py312 environment by default for consistent local/editor behavior.
-mypy = "pixi run -e py312 python -m mypy pyfuga"
+# Run in the pinned py310 environment: it matches [tool.mypy] python_version and the CI
+# lint job, so local runs reproduce CI exactly. Newer environments resolve a newer xarray
+# whose `Dataset.sel` typing differs, and would report errors CI does not see.
+mypy = "pixi run -e py310 python -m mypy pyfuga"
 
 # Testing
 test = "pixi run -e py312 pytest --cov-report term-missing:skip-covered --cov=pyfuga --cov-config .coveragerc --import-mode=importlib"
@@ -253,6 +255,15 @@ disable_error_code = ["no-untyped-call", "no-any-return", "untyped-decorator"]
 module = "pyfuga.flut"
 ignore_errors = false
 disable_error_code = ["no-untyped-call"]
+
+# utils imports numba's njit. Newer numba ships type information, which makes the
+# import "typed" (so the `# type: ignore[import-untyped]` reads as unused) and makes
+# the dynamic njit(...) call fail overload resolution; older numba is untyped and
+# needs the ignore. Relax both codes here so linting passes across numba versions.
+[[tool.mypy.overrides]]
+module = "pyfuga.utils"
+ignore_errors = false
+disable_error_code = ["call-overload", "unused-ignore"]
 
 [[tool.mypy.overrides]]
 module = "pyfuga.preludium_eq_routines"

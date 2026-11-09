@@ -227,8 +227,11 @@ cover an **L-shaped** region:
 
 The contributions from all tiles are summed in physical space, exploiting the linearity of
 the Fourier integral.  The function ``doKvector_tiles`` (``trafalgar.py``) constructs the
-tile list, and ``make_luts_per_mesh`` evaluates one tile.  Multiprocessing is supported
-so that tiles can be processed in parallel.
+tile list, and ``_x_transform_tile`` evaluates the :math:`x`-direction transform of one
+tile.  Because the :math:`y`-direction transform is linear and depends only on the tile's
+:math:`y`-axis, tiles sharing a :math:`y`-axis are summed first and transformed along
+:math:`y` once per group.  Tiles, and then (variable, level) pairs, are processed in
+parallel threads.
 
 Implementation Summary
 ----------------------
@@ -239,8 +242,9 @@ The main entry point is :class:`~pyfuga.trafalgar.Trafalgar`.  Its
 1. Reads the Fourier LUTs produced by :mod:`pyfuga.flut` (spectral wake solution for
    each flow variable, hub height level, and wavenumber).
 2. Builds the tile list via ``doKvector_tiles``.
-3. For each tile, evaluates the 2D FFIT via ``FITFIT`` (first along :math:`x`, then
-   along :math:`y`) and accumulates the result.
+3. For each tile, evaluates the FFIT along :math:`x` and sums the result into the group of
+   tiles sharing its :math:`y`-axis; each group is then transformed along :math:`y` and the
+   groups are summed (equivalent to applying ``FITFIT`` per tile and summing).
 4. Returns an :class:`xarray.Dataset` with coordinates
    ``(x, y, z)`` containing the physical-space wake fields
    ``UL``, ``VL``, ``WL``, ``PL`` (longitudinal forcing response) and
@@ -264,7 +268,7 @@ The main entry point is :class:`~pyfuga.trafalgar.Trafalgar`.  Its
    * - ``NNNs``
      - List of spectral density factors per tile level (larger = finer spectral sampling)
    * - ``n_cpu``
-     - Parallel processes for tile FFIT: ``1`` is serial, ``None`` uses all CPUs, or pass an integer ``>= 1``. In ``get_luts`` default settings, Trafalgar also uses all CPUs unless overridden.
+     - Parallel threads for tile FFIT: ``1`` is serial, ``None`` uses all CPUs, or pass an integer ``>= 1``. Work is bounded and tile results are accumulated in order. In ``get_luts`` default settings, Trafalgar also uses all CPUs unless overridden.
 
 .. seealso::
 

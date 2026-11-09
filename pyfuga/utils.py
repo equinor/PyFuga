@@ -13,13 +13,19 @@ Also manages the global Preludium compatibility flag used for testing
 alternative formulations of atmospheric code.
 """
 
+import hashlib
 import importlib
+import importlib.metadata
 import multiprocessing as mp
 import os
 import sys
 import time
+import warnings
+from collections import deque
 from collections.abc import Callable, Iterable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from itertools import islice
 from typing import Any, ParamSpec, TypedDict, TypeVar, overload
 
 import numpy as np
@@ -36,7 +42,10 @@ except ImportError:  # pragma: no cover - trivial no-op fallback
         return func
 
 
+from llvmlite import ir  # type: ignore[import-untyped]
+from numba import types
 from numba.core.decorators import njit  # type: ignore[import-untyped]
+from numba.extending import intrinsic
 
 debugging = sys.gettrace() is not None
 numba_jit = False  # and not debugging
@@ -55,12 +64,16 @@ def jit(signature: str, /, **kwargs: Any) -> Callable[[Callable[P, _R]], Callabl
 def jit(func: Callable[P, _R], /, **kwargs: Any) -> Callable[P, _R]: ...
 
 
+@overload
+def jit(**kwargs: Any) -> Callable[[Callable[P, _R]], Callable[P, _R]]: ...
+
+
 def jit(*args: Any, **kwargs: Any) -> Any:
     global jit_modules
     jit_modules.add(sys._getframe(1).f_globals["__name__"])
     if numba_jit:
         return njit(*args, cache=True, **kwargs)
-    if isinstance(args[0], str):
+    if not args or isinstance(args[0], str):
 
         def _identity(func: Callable[P, _R]) -> Callable[P, _R]:
             return func
@@ -76,9 +89,15 @@ def compile(jit: bool = True) -> None:
     if numba_jit != jit:
         numba_jit = jit
         t = time.time()
+        # Dependencies first: a reload rebinds names imported from modules reloaded before it
         for m in [
             "pyfuga.common",
             "pyfuga.flut",
+            "pyfuga.preluts_generator.transforms",
+            "pyfuga.preluts_generator.matrices",
+            "pyfuga.preluts_generator.nodes",
+            "pyfuga.preluts_generator.integration",
+            "pyfuga.preluts_generator.generator",
             "pyfuga.preluts_generator",
         ]:
             mod = sys.modules.get(m)
@@ -86,6 +105,22 @@ def compile(jit: bool = True) -> None:
                 importlib.reload(mod)
         if numba_jit:
             print(f"JIT compiled in {time.time() - t}s")
+
+
+def _fma_typer(typingctx: Any, a: Any, b: Any, c: Any) -> Any:  # pragma: no cover - compiled
+    """Fused ``a * b + c`` with a single rounding (LLVM ``fma``)."""
+    if not (isinstance(a, types.Float) and a == b == c):
+        return None
+
+    def codegen(context: Any, builder: Any, signature: Any, args: Any) -> Any:
+        ty = context.get_value_type(signature.return_type)
+        fn = builder.module.declare_intrinsic("llvm.fma", [ty], ir.FunctionType(ty, [ty, ty, ty]))
+        return builder.call(fn, args)
+
+    return a(a, b, c), codegen
+
+
+fma: Any = intrinsic(_fma_typer)
 
 
 def validate_n_cpu(n_cpu: int | None) -> None:
@@ -97,7 +132,7 @@ def validate_n_cpu(n_cpu: int | None) -> None:
 
 
 def normalise_n_cpu_workers(n_cpu: int | None) -> int:
-    """Map ``None`` to a process count (all CPUs) or pass through explicit ``int`` >= 1."""
+    """Map ``None`` to a worker count (all CPUs) or pass through explicit ``int`` >= 1."""
     validate_n_cpu(n_cpu)
     if n_cpu is None:
         return max(1, os.cpu_count() or 1)
@@ -120,6 +155,27 @@ def multiprocessing_map(
             return pool.imap(func, items, chunksize=chunksize)
 
         yield pool_map
+
+
+@contextmanager
+def threading_map(workers: int) -> Iterator[Callable[[Callable[..., Any], Iterable[Any]], Iterator[Any]]]:
+    """Yield an ordered thread map with bounded in-flight work and no array serialization."""
+    if workers == 1:
+        yield map
+        return
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+
+        def thread_map(func: Callable[..., Any], items: Iterable[Any]) -> Iterator[Any]:
+            iterator = iter(items)
+            pending = deque(pool.submit(func, item) for item in islice(iterator, workers))
+            while pending:
+                result = pending.popleft().result()
+                for item in islice(iterator, 1):
+                    pending.append(pool.submit(func, item))
+                yield result
+
+        yield thread_map
 
 
 class NCpuStageConfig(TypedDict, total=False):
@@ -233,6 +289,72 @@ def read_complex(*args: Any, **kwargs: Any) -> xr.Dataset:
     ds_new.attrs.update(ds.attrs)
     ds_typed: xr.Dataset = ds_new
     return ds_typed
+
+
+def lut_schema_fingerprint(ds: xr.Dataset) -> str:
+    """Return a short, stable hash of a dataset's *structure* (not its values).
+
+    The fingerprint covers the sorted set of variable/coordinate names and their
+    dimensions. Values and dtypes are deliberately excluded so that the fingerprint
+    round-trips cleanly through the complex->ReIm split and NetCDF (de)serialisation:
+    it is computed on the in-memory dataset at write time and recomputed on the
+    reconstructed dataset at read time, and the two must match for an unchanged schema.
+
+    A structural change (added, removed or renamed variable/dimension) flips the
+    fingerprint, which lets stale caches be rejected even if someone forgot to bump
+    :data:`pyfuga.constants.LUT_FORMAT_VERSION`.
+    """
+    sig = repr(sorted((str(name), tuple(map(str, var.dims))) for name, var in ds.variables.items()))
+    return hashlib.sha256(sig.encode()).hexdigest()[:12]
+
+
+def _pyfuga_version() -> str:
+    """Installed pyfuga version, read lazily to avoid a circular import with ``__init__``."""
+    try:
+        return importlib.metadata.version("pyfuga")
+    except importlib.metadata.PackageNotFoundError:
+        return "0+unknown"
+
+
+def stamp_lut_metadata(ds: xr.Dataset) -> xr.Dataset:
+    """Stamp cache-validation metadata onto ``ds`` in place and return it.
+
+    Adds ``lut_format_version`` (compatibility key), ``lut_schema_fingerprint``
+    (structural safety net) and ``pyfuga_version`` (provenance only).
+    """
+    from pyfuga.constants import LUT_FORMAT_VERSION
+
+    ds.attrs["lut_format_version"] = LUT_FORMAT_VERSION
+    ds.attrs["lut_schema_fingerprint"] = lut_schema_fingerprint(ds)
+    ds.attrs["pyfuga_version"] = _pyfuga_version()
+    return ds
+
+
+def cache_is_current(ds: xr.Dataset) -> bool:
+    """True if a loaded cached LUT carries compatible version metadata.
+
+    Rejects legacy caches (which lack the attributes entirely), caches from an
+    incompatible :data:`LUT_FORMAT_VERSION`, and caches whose stored structural
+    fingerprint no longer matches their actual structure.
+    """
+    from pyfuga.constants import LUT_FORMAT_VERSION
+
+    if ds.attrs.get("lut_format_version") != LUT_FORMAT_VERSION:
+        return False
+    return ds.attrs.get("lut_schema_fingerprint") == lut_schema_fingerprint(ds)
+
+
+def load_lut_if_current(ds: xr.Dataset, path: Any) -> bool:
+    """Warn (and return ``False``) when a cached LUT is incompatible and must be regenerated."""
+    if cache_is_current(ds):
+        return True
+    warnings.warn(
+        f"Ignoring incompatible cached LUT '{getattr(path, 'name', path)}' "
+        f"(missing or mismatched version metadata); regenerating.",
+        UserWarning,
+        stacklevel=2,
+    )
+    return False
 
 
 class ComplexXRDataset(xr.Dataset):  # type: ignore[no-untyped-call]

@@ -2,7 +2,8 @@
 
 ## CI images: which tags matter
 
-- **Linux** jobs use **`ci/python-*-uv`**, **`ci/python-*-uv-tests`**, and **`ci/python-*-uv-docs`** with the **`:latest`** tag (see `common.yml`, `test.yml`, and docs jobs in `build.yml`).
+- **Linux** jobs use **`ci/python-*-uv`**, **`ci/python-*-uv-tests`**, and **`ci/python-*-uv-docs`** with the **`:latest`** tag (see `common.yml`, `test.yml`, and docs jobs in `build.yml`). Test jobs take the tag from **`LINUX_TEST_IMAGE_TAG`**.
+- **Scheduled** pipelines (weekly health check) rebuild only the Linux test images, into **`:scheduled`**, and run the Linux tests against that tag. New dependency releases allowed by `constraints/` are picked up without changing the **`:latest`** images that push pipelines use. The base, docs, and Windows images are never rebuilt on schedules.
 - **Windows** jobs use **`ci/windows-pixi-*`** images with tag **`${ENV_TAG}`**, a short content-derived hash from `ci/Dockerfile.windows-pixi-base`, `ci/Dockerfile.windows-pixi-ci-env`, and `pixi.lock`. It is computed in **`prepare_windows_env_tag`** and passed to test jobs via dotenv artifacts. On **protected** refs the tag reflects those inputs; on **unprotected** refs it is **`latest`** so pipelines pull an existing registry image (see comments in `build.yml`).
 
 ## Registry storage vs runner disk

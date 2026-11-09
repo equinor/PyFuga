@@ -33,7 +33,8 @@ Why does PyFuga write files to disk if it already returns a dataset?
 The files serve two important purposes:
 
 - they provide a persistent record of generated data
-- they allow PyFuga to reuse expensive intermediate results in later runs
+- they allow PyFuga to reuse final LUTs in later runs, and intermediate results
+  when ``cache_intermediate=True``
 
 This makes repeated runs with the same configuration more efficient.
 

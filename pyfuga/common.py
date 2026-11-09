@@ -81,7 +81,16 @@ def get_new_h2(
     Y: npt.NDArray[np.complex128],
 ) -> float:
     """Get new step size based on error between integration estimates"""
-    err = np.max(complex_norm(Yerr, axis=0) / complex_norm(Y, axis=0))
+    # Column norms as in complex_norm (rows summed in order from zero), without temporaries
+    ratio = np.empty(Y.shape[1])
+    for c in range(Y.shape[1]):
+        num = 0.0
+        den = 0.0
+        for r in range(Y.shape[0]):
+            num += np.abs(Yerr[r, c]) ** 2
+            den += np.abs(Y[r, c]) ** 2
+        ratio[c] = np.sqrt(num) / np.sqrt(den)
+    err = np.max(ratio)
     return np.maximum(np.minimum(0.9 * h * (acc / err) ** (1 / 3), 4.0e-1), 1.0e-4)
 
     # return np.clip(0.9 * h * (acc / err)**(1 / 3), 1.0E-4, 4.0E-1)

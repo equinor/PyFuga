@@ -29,20 +29,28 @@ This module implements the Fast Fourier Integral Transform (FFIT) described in
 
 from __future__ import annotations
 
+import functools
 from collections.abc import Sequence
-from typing import Any, cast
+from typing import Any, NamedTuple, cast
 
 import numpy as np
 import xarray as xr
+from numba import njit
 from numpy import newaxis as na
 from numpy.typing import NDArray
-from scipy.interpolate import RectBivariateSpline
+from scipy import fft as sfft
+from scipy import sparse
+from scipy.interpolate import BSpline, RectBivariateSpline, make_interp_spline
 from tqdm import tqdm
 
 from pyfuga.constants import KAPPA
-from pyfuga.utils import multiprocessing_map, normalise_n_cpu_workers
+from pyfuga.utils import fma as _fma
+from pyfuga.utils import normalise_n_cpu_workers, threading_map
 
 M_PI = 3.141592653589793
+
+# +1 → take real part of FFIT output; -1 → take imaginary part.
+_SIGNS = {"UL": 1, "VL": -1, "WL": 1, "PL": 1, "UT": -1, "VT": 1, "WT": -1, "PT": -1}
 
 
 class Trafalgar:
@@ -108,6 +116,7 @@ class Trafalgar:
         NNNs: Sequence[int] = (2**16, 2**8, 2**2, 2**2),
         legacy: bool = False,
         n_cpu: int | None = None,
+        single_precision: bool = False,
     ) -> xr.Dataset:
         """
         Evaluate the 2D FFIT over all wavenumber tiles and return the wake LUTs.
@@ -126,11 +135,16 @@ class Trafalgar:
             sign applied to spectral data before interpolation, and
             DC component zeroed.
         n_cpu : int or None, optional
-            Number of parallel worker processes for evaluating FFIT over
+            Number of parallel worker threads for evaluating FFIT over
             wavenumber tiles. ``None`` (default) uses all available
-            CPUs (at least ``1``). Values greater than ``1`` use a process pool.
+            CPUs (at least ``1``). Values greater than ``1`` use a bounded thread pool.
             In :func:`pyfuga.get_luts`, default policy also resolves to all CPUs
             unless overridden via ``n_cpu``/``n_cpu_stage``.
+        single_precision : bool
+            If ``True``, interpolate and transform each tile in single precision
+            (``float32``/``complex64``) for speed; tiles are still accumulated and
+            returned as ``float64``. Results differ from the default by roughly
+            ``1e-7`` relative to the field maximum.
 
         Returns
         -------
@@ -165,40 +179,68 @@ class Trafalgar:
                 self.dy,
                 self.sigmax,
                 self.sigmay,
-                self.x_lst,
-                self.y_lst,
-                self.verbose,
+                # Per-tile bars only when serial; worker bars would interleave with the outer one
+                self.verbose and workers == 1,
                 legacy,
+                single_precision,
             )
             for t in tiles
         )
 
-        # Parallelism is per wavenumber tile (FFIT). Future work: optionally parallelise
-        # over vertical levels instead (e.g. for 3D LUTs) and choose strategy here.
-        with multiprocessing_map(workers) as map_func:
-            luts = list(
+        # The y-transform is linear and depends only on the tile's y-axis, so x-transformed tiles
+        # sharing a y-axis are summed (in tile order) and y-transformed once per group.
+        # Parallelism is per wavenumber tile for the x-transform and per (variable, level) for the
+        # y-transform; groups are added in a fixed order, so results do not depend on ``n_cpu``.
+        groups: dict[tuple[Any, float], dict[str, NDArray[np.floating]]] = {}
+        with threading_map(workers) as map_func:
+            for tile, fields_x in zip(
+                tiles,
                 tqdm(
-                    map_func(make_luts_per_mesh, args),
+                    map_func(_x_transform_tile, args),
                     total=len(tiles),
-                    disable=self.verbose,
+                    disable=(not self.verbose),
                     desc="LUTS: adding meshes",
+                ),
+                strict=True,
+            ):
+                group = groups.setdefault((tile[2], tile[3]), fields_x)
+                if group is not fields_x:
+                    for v, field_x in fields_x.items():
+                        group[v] += field_x
+
+            if not groups:  # pragma: no cover
+                raise ValueError("No wavenumber tiles were generated for the requested parameters")
+
+            lut_vars = list(next(iter(groups.values())))
+            n_level = len(self.fourier_luts.level)
+            y_axes = [(NNNy, doKvectorFIT_double(self.ny, self.dy, k0=k0y, NNN=NNNy)) for NNNy, k0y in groups]
+
+            def y_transform(item: tuple[str, int]) -> NDArray[np.float64]:
+                var, level = item
+                out = np.zeros((self.nx, self.ny))
+                for (NNNy, ky), group in zip(y_axes, groups.values(), strict=True):
+                    out += _fitfit_y(group[var][level], _SIGNS[var], ky, self.ny, self.dy, NNNy)
+                return out
+
+            items = [(v, i) for v in lut_vars for i in range(n_level)]
+            fields = list(
+                tqdm(
+                    map_func(y_transform, items),
+                    total=len(items),
+                    disable=(not self.verbose),
+                    desc="LUTS: y-transform",
                 )
             )
 
-        # Accumulate tile contributions (linearity of Fourier integral)
-        luts_accum: xr.Dataset | None = None
-        for lut in luts:
-            if luts_accum is None:
-                luts_accum = lut
-            else:
-                lut_vars = [v for v in lut.data_vars if lut[v].dims == ("z", "x", "y")]
-                with xr.set_options(keep_attrs=True):  # type: ignore[no-untyped-call]
-                    for v in lut_vars:
-                        luts_accum[v] = luts_accum[v] + lut[v]
-
-        if luts_accum is None:  # pragma: no cover
-            raise ValueError("No wavenumber tiles were generated for the requested parameters")
-        return luts_accum
+        luts_dict = {
+            v: (("z", "x", "y"), np.stack(fields[j * n_level : (j + 1) * n_level])) for j, v in enumerate(lut_vars)
+        }
+        fluts = self.fourier_luts
+        return xr.Dataset(
+            {**luts_dict, **{k: fluts[k] for k in ["diameter", "hubheight", "z0"]}},
+            coords={"x": self.x_lst, "y": self.y_lst, "z": np.atleast_1d(fluts.z)},
+            attrs=fluts.attrs,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -206,15 +248,270 @@ class Trafalgar:
 # ---------------------------------------------------------------------------
 
 
-def make_luts_per_mesh(args: tuple[Any, ...]) -> xr.Dataset:
+class _SplineOperator(NamedTuple):
+    """Factored B-spline evaluation operator (see :func:`_spline_operator`).
+
+    Row ``p`` of the design matrix ``W`` has the non-zeros ``bx[p, a] * by[p, b]`` at column
+    ``(ox[p] + a) * ny + oy[p] + b``, stored in the order ``a * (k + 1) + b``.
     """
-    Evaluate the FFIT for a single wavenumber tile and return wake fields.
+
+    bx: NDArray[np.float64]
+    ox: NDArray[np.int64]
+    by: NDArray[np.float64]
+    oy: NDArray[np.int64]
+    nx: int
+    ny: int
+    cx: NDArray[np.float64]
+    cy: NDArray[np.float64]
+    dtype: type[np.floating] = np.float64
+
+    def matrix(self) -> sparse.csr_matrix:
+        """The design matrix ``W`` as CSR with weights of ``dtype``."""
+        n, m = self.bx.shape
+        data = (self.bx.reshape(n, m, 1) * self.by.reshape(n, 1, m)).reshape(n, m * m)
+        ix = self.ox[:, na] + np.arange(m)
+        iy = self.oy[:, na] + np.arange(m)
+        cols = (ix.reshape(n, m, 1) * self.ny + iy.reshape(n, 1, m)).reshape(n, m * m)
+        indptr = np.arange(0, n * m * m + 1, m * m)
+        w = sparse.csr_matrix((data.ravel(), cols.ravel(), indptr), shape=(n, self.nx * self.ny))
+        return w.astype(self.dtype) if self.dtype != np.float64 else w
+
+
+@njit(cache=True, nogil=True)
+def _bspline_basis(
+    x: NDArray[np.float64], t: NDArray[np.float64], k: int, vals: NDArray[np.float64], offsets: NDArray[np.int64]
+) -> None:  # pragma: no cover - compiled
+    """Non-zero B-spline values at in-range ``x``, as SciPy's ``BSpline.design_matrix`` (FITPACK ``data_matrix``).
+
+    Same interval search and de Boor recursion as SciPy's C++, so the values match bit for bit.
+    """
+    nt = t.shape[0] - k - 1
+    h = np.empty(k + 1)
+    hh = np.empty(k + 1)
+    ind = k
+    for i in range(x.shape[0]):
+        xval = x[i]
+        ell = ind if k < ind < nt else k
+        while xval < t[ell] and ell != k:
+            ell -= 1
+        ell += 1
+        while xval >= t[ell] and ell != nt:
+            ell += 1
+        ind = ell - 1
+        offsets[i] = ind - k
+        h[0] = 1.0
+        for j in range(1, k + 1):
+            hh[:j] = h[:j]
+            h[0] = 0.0
+            for n in range(1, j + 1):
+                xb = t[ind + n]
+                xa = t[ind + n - j]
+                if xb == xa:
+                    h[n] = 0.0
+                    continue
+                w = hh[n - 1] / (xb - xa)
+                h[n - 1] += w * (xb - xval)
+                h[n] = w * (xval - xa)
+        vals[i, :] = h
+
+
+def _basis(q: NDArray[np.float64], t: NDArray[np.float64], k: int) -> tuple[NDArray[np.float64], NDArray[np.int64]]:
+    if not np.isfinite(q).all():
+        design = BSpline.design_matrix(q, t, k)  # raises like before
+        return design.data.reshape(-1, k + 1), design.indices[:: k + 1].astype(np.int64)
+    vals = np.empty((q.size, k + 1))
+    offsets = np.empty(q.size, dtype=np.int64)
+    _bspline_basis(
+        np.ascontiguousarray(q, dtype=np.float64), np.ascontiguousarray(t, dtype=np.float64), k, vals, offsets
+    )
+    return vals, offsets
+
+
+def _spline_operator(
+    x: NDArray[np.float64], y: NDArray[np.float64], px: NDArray[np.float64], py: NDArray[np.float64], order: int
+) -> _SplineOperator | None:
+    """Precompute a reusable evaluation operator for ``RectBivariateSpline(x, y, z, kx=order, ky=order).ev``.
+
+    The interpolating spline is linear in ``z``, so for fixed ``(x, y)`` and evaluation points the
+    result is ``W @ (Cx @ z @ Cy.T)`` with ``W`` a sparse B-spline design matrix, kept factored as the
+    per-axis basis values. Returns ``None`` for even orders, whose knot placement differs from FITPACK's.
+    """
+    if order % 2 == 0 or len(x) <= order or len(y) <= order:
+        return None
+    k = order
+    sx = make_interp_spline(x, np.eye(len(x)), k=k)
+    sy = make_interp_spline(y, np.eye(len(y)), k=k)
+    # FITPACK clamps evaluation points to the data range
+    qx = np.clip(px.ravel(), x[0], x[-1])
+    qy = np.clip(py.ravel(), y[0], y[-1])
+    bx, ox = _basis(qx, sx.t, k)
+    by, oy = _basis(qy, sy.t, k)
+    return _SplineOperator(bx, ox, by, oy, len(x), len(y), sx.c, sy.c)
+
+
+def _interpolate_levels(operator: _SplineOperator, flut: NDArray[np.complex128]) -> NDArray[np.complexfloating]:
+    """Evaluate the spline of every level of ``flut`` (shape ``(nx, ny, nlevel)``) at the operator's points.
+
+    The result is ``complex64`` when the operator's weights are ``float32``, otherwise ``complex128``.
+    """
+    w = operator.matrix()
+    coef = np.einsum("ab,bcl,dc->adl", operator.cx, flut, operator.cy, optimize=True)
+    coef = coef.reshape(-1, flut.shape[2])
+    if coef.dtype == np.complex128 and np.isfinite(coef).all():
+        # Real weights act independently on interleaved real/imaginary components.
+        components = np.ascontiguousarray(coef).view(np.float64).astype(w.dtype, copy=False)
+        out = w @ components
+        return cast("NDArray[np.complexfloating]", out.view(np.complex64 if out.dtype == np.float32 else np.complex128))
+    return cast("NDArray[np.complexfloating]", w @ coef)
+
+
+@njit(cache=True, nogil=True)
+def _eval_scaled_spline(
+    bx: NDArray[np.float64],
+    ox: NDArray[np.int64],
+    by: NDArray[np.float64],
+    oy: NDArray[np.int64],
+    ny: int,
+    components: NDArray[np.floating],
+    scale: NDArray[np.floating],
+    start: int,
+    out: NDArray[np.floating],
+) -> None:  # pragma: no cover - compiled
+    """Fused ``(W @ components)`` and complex scaling for the columns ``start:start + width`` of ``scale``;
+    ``out`` is the real view ``(nlevel, nrow, width, 2)``.
+
+    Each weight is formed as in :meth:`_SplineOperator.matrix` (float64 product, then cast to the
+    components' dtype). Each output is summed over the row's non-zeros in CSR order starting from zero,
+    and scaled as ``(re + i im) * (s + 0i)``, matching SciPy's sparse product followed by NumPy's
+    complex multiply bit for bit.
+    """
+    m = bx.shape[1]
+    zero = scale[0, 0] * 0
+    width = out.shape[2]
+    nq = components.shape[1]
+    # One row of accumulators, so each level is then stored as a contiguous run
+    rowacc = np.empty((width, nq), components.dtype)
+    ws = np.empty(m, components.dtype)
+    for r in range(out.shape[1]):
+        for c in range(width):
+            p = r * scale.shape[1] + start + c
+            acc = rowacc[c]
+            acc[:] = zero
+            for a in range(m):
+                for b in range(m):
+                    ws[b] = bx[p, a] * by[p, b]
+                base = (ox[p] + a) * ny + oy[p]
+                if m == 4:  # cubic: the four terms of a row in one pass, same summation order
+                    w0, w1, w2, w3 = ws[0], ws[1], ws[2], ws[3]
+                    r0, r1, r2, r3 = components[base], components[base + 1], components[base + 2], components[base + 3]
+                    for q in range(nq):
+                        acc[q] = (((acc[q] + w0 * r0[q]) + w1 * r1[q]) + w2 * r2[q]) + w3 * r3[q]
+                else:
+                    for b in range(m):
+                        w = ws[b]
+                        row = components[base + b]
+                        for q in range(nq):
+                            acc[q] += w * row[q]
+        for level in range(out.shape[0]):
+            for c in range(width):
+                s = scale[r, start + c]
+                re = rowacc[c, 2 * level]
+                im = rowacc[c, 2 * level + 1]
+                out[level, r, c, 0] = re * s - im * zero
+                out[level, r, c, 1] = re * zero + im * s
+
+
+def _spline_components(operator: _SplineOperator, flut: NDArray[np.complex128]) -> NDArray[np.floating] | None:
+    """Spline coefficients of every level of ``flut`` as interleaved real/imaginary columns of the operator's
+    dtype; ``None`` if they need the generic (non-finite) path."""
+    coef = np.einsum("ab,bcl,dc->adl", operator.cx, flut, operator.cy, optimize=True)
+    coef = coef.reshape(-1, flut.shape[2])
+    if coef.dtype != np.complex128 or not np.isfinite(coef).all():
+        return None
+    return np.ascontiguousarray(np.ascontiguousarray(coef).view(np.float64).astype(operator.dtype, copy=False))
+
+
+def _interpolate_scaled(
+    operator: _SplineOperator, flut: NDArray[np.complex128], scale: NDArray[np.floating]
+) -> NDArray[np.complexfloating] | None:
+    """Return ``_interpolate_levels(operator, flut)`` times ``scale`` (2D), level-major with ``scale``'s shape
+    prepended by the level count; ``None`` if the coefficients need the generic (non-finite) path."""
+    components = _spline_components(operator, flut)
+    if components is None:
+        return None
+    dtype = operator.dtype
+    out = np.empty((flut.shape[2], *scale.shape), dtype=np.complex64 if dtype == np.float32 else np.complex128)
+    _eval_scaled_spline(
+        operator.bx,
+        operator.ox,
+        operator.by,
+        operator.oy,
+        operator.ny,
+        components,
+        scale,
+        0,
+        out.view(dtype).reshape(*out.shape, 2),
+    )
+    return out
+
+
+def _x_transform_fused(
+    operator: _SplineOperator,
+    components: list[NDArray[np.floating]],
+    scale: NDArray[np.floating],
+    signs: list[int],
+    kx: NDArray[np.float64],
+    nx: int,
+    dx: float,
+    NNNx: float,
+    verbose: bool = False,
+) -> NDArray[np.floating]:
+    """Interpolate, scale and x-transform all fields of a tile one column block at a time.
+
+    ``components`` holds the spline coefficients of each variable (as :func:`_spline_components`) and
+    ``signs`` the sign of each variable. Returns ``(n_variables * n_levels, nx, ny)``, bitwise equal to
+    :func:`_interpolate_scaled` followed by :func:`_fitfit_x` per field, without materialising the
+    interpolated tile.
+    """
+    dtype = operator.dtype
+    single = dtype == np.float32
+    phix, psix, hhatx = _fitfit_axis(nx, dx, NNNx, float(kx[0]), -nx / 4.0, single)
+    n_level = components[0].shape[1] // 2
+    n_fields = len(components) * n_level
+    ny = scale.shape[1]
+    field_x = np.empty((n_fields, nx, ny), dtype=dtype)
+    for start in tqdm(range(0, ny, _FITFIT_BLOCK_X), desc="Trafalgar:", disable=(not verbose)):
+        width = min(_FITFIT_BLOCK_X, ny - start)
+        block = np.empty((n_level, nx, width), dtype=np.complex64 if single else np.complex128)
+        for v, comp in enumerate(components):
+            _eval_scaled_spline(
+                operator.bx,
+                operator.ox,
+                operator.by,
+                operator.oy,
+                operator.ny,
+                comp,
+                scale,
+                start,
+                block.view(dtype).reshape(*block.shape, 2),
+            )
+            for i in range(n_level):
+                j = v * n_level + i
+                _fitfit_x_block(block[i], 0, width, signs[v], phix, psix, hhatx, field_x[j, :, start : start + width])
+    return field_x
+
+
+def _x_transform_tile(args: tuple[Any, ...]) -> dict[str, NDArray[np.floating]]:
+    """
+    Evaluate the x-direction FFIT for a single wavenumber tile.
 
     A tile is defined by a rectangular region in :math:`(k_x, k_y)` space,
     parameterised by ``(NNNx, k0x, NNNy, k0y)``.  The spectral fields are
     interpolated from the Fourier LUTs onto the tile's :math:`k`-grid, weighted
     by the rotor Gaussian force spectrum (``force``) and the normalisation
-    factor (``fuzz``), and then transformed to physical space via ``FITFIT``.
+    factor (``fuzz``), and then transformed along :math:`x` via ``_fitfit_x``.
+    The y-direction transform is applied later, once per group of tiles sharing
+    a y-axis (see :meth:`Trafalgar.make_luts`).
 
     Parameters
     ----------
@@ -223,8 +520,9 @@ def make_luts_per_mesh(args: tuple[Any, ...]) -> xr.Dataset:
 
     Returns
     -------
-    xarray.Dataset
-        Physical-space fields for this tile, same structure as the final output.
+    dict of str to numpy.ndarray
+        Per variable, the x-transformed real fields with shape ``(n_levels, nx, ny)``
+        (``float32`` when ``single_precision``, else ``float64``).
     """
     (
         fluts,
@@ -239,17 +537,14 @@ def make_luts_per_mesh(args: tuple[Any, ...]) -> xr.Dataset:
         dy,
         sigmax,
         sigmay,
-        x_lst,
-        y_lst,
         verbose,
         legacy,
+        single_precision,
     ) = args
+    real_dtype = np.float32 if single_precision else np.float64
 
     beta_lst = fluts.beta.values
     kz0_lst = fluts.kz0.values
-
-    # sign_dict: +1 → take real part of FFIT output; -1 → take imaginary part.
-    sign_dict = {"UL": 1, "VL": -1, "WL": 1, "PL": 1, "UT": -1, "VT": 1, "WT": -1, "PT": -1}
 
     _, zhub, z0 = (fluts.diameter.item(), fluts.hubheight.item(), fluts.z0.item())
 
@@ -271,8 +566,23 @@ def make_luts_per_mesh(args: tuple[Any, ...]) -> xr.Dataset:
     angleTab = np.arctan2(ky[na], kx[:, na])
     kz0Tab = np.log(z0 * klen)
 
-    luts_dict = {}
-    for var, sign in tqdm(sign_dict.items(), desc="Trafalgar:", disable=(not verbose)):
+    operator = _spline_operator(beta_lst, np.log(kz0_lst), angleTab, kz0Tab, interpolation_order)
+    if operator is not None and single_precision:
+        operator = operator._replace(dtype=np.float32)
+    scale = (fuzz * force).astype(real_dtype)
+
+    fields_x = {}
+    tile_vars = [var for var in _SIGNS if var in fluts]
+    if operator is not None and not legacy:
+        maybe = [_spline_components(operator, fluts[var].values) for var in tile_vars]
+        components = [c for c in maybe if c is not None]
+        if len(components) == len(maybe):
+            n_level = len(fluts.level)
+            signs = [_SIGNS[var] for var in tile_vars]
+            stacked = _x_transform_fused(operator, components, scale, signs, kx, nx, dx, NNNx, verbose)
+            return {var: stacked[j * n_level : (j + 1) * n_level] for j, var in enumerate(tile_vars)}
+
+    for var, sign in tqdm(_SIGNS.items(), desc="Trafalgar:", disable=(not verbose)):
         if var not in fluts:
             continue
 
@@ -282,36 +592,41 @@ def make_luts_per_mesh(args: tuple[Any, ...]) -> xr.Dataset:
         if legacy:
             flut = flut * sign
 
-        luts = []
+        # Interpolation and the force/normalisation scaling, fused where possible
+        scaled = None if operator is None else _interpolate_scaled(operator, flut, scale)
+        if operator is not None and scaled is None:
+            fields = _interpolate_levels(operator, flut).reshape(*klen.shape, -1)
+
+        field_x = np.empty((len(fluts.level), nx, ny), dtype=real_dtype)
         for i in tqdm(range(len(fluts.level)), disable=(not verbose), leave=False):
-            re, im = flut[:, :, i].real, flut[:, :, i].imag
+            if scaled is not None:
+                field = scaled[i]
+            elif operator is not None:
+                field = fields[:, :, i]
+            else:
+                re, im = flut[:, :, i].real, flut[:, :, i].imag
+                field = RectBivariateSpline(
+                    beta_lst, np.log(kz0_lst), re, kx=interpolation_order, ky=interpolation_order
+                ).ev(angleTab, kz0Tab) + 1j * RectBivariateSpline(
+                    beta_lst, np.log(kz0_lst), im, kx=interpolation_order, ky=interpolation_order
+                ).ev(angleTab, kz0Tab)
 
-            # Bivariate spline interpolation of LUT onto (angleTab, kz0Tab)
-            field = RectBivariateSpline(
-                beta_lst, np.log(kz0_lst), re, kx=interpolation_order, ky=interpolation_order
-            ).ev(angleTab, kz0Tab) + 1j * RectBivariateSpline(
-                beta_lst, np.log(kz0_lst), im, kx=interpolation_order, ky=interpolation_order
-            ).ev(
-                angleTab, kz0Tab
-            )
-
-            # Apply force spectrum and normalisation
-            field *= fuzz * force
+            if scaled is None:
+                # Apply force spectrum and normalisation
+                field = field * scale
+                if single_precision:
+                    field = field.astype(np.complex64, copy=False)
 
             # Difference #3: legacy zeroes the DC component
             if legacy:
                 field[0, 0] = 0.0
 
-            # 2D FFIT: spectral → physical space
-            luts.append(FITFIT(field, sign, kx, ky, nx, dx, ny, dy, NNN=(NNNx, NNNy)).real)
+            # x-direction FFIT; the y-direction is applied per tile group
+            field_x[i] = _fitfit_x(field, sign, kx, nx, dx, NNNx)
 
-        luts_dict[var] = (("z", "x", "y"), luts)
+        fields_x[var] = field_x
 
-    return xr.Dataset(
-        {**luts_dict, **{k: fluts[k] for k in ["diameter", "hubheight", "z0"]}},
-        coords={"x": x_lst, "y": y_lst, "z": np.atleast_1d(fluts.z)},
-        attrs=fluts.attrs,
-    )
+    return fields_x
 
 
 # ---------------------------------------------------------------------------
@@ -457,6 +772,32 @@ def doKvector_tiles(
 # ---------------------------------------------------------------------------
 
 
+_FITFIT_BLOCK_X = 32  # columns per x-transform block
+_FITFIT_BLOCK_Y = 128  # rows per y-transform block
+
+
+@functools.lru_cache(maxsize=64)
+def _fitfit_axis(
+    n: int, delta: float, NNN: float, k0: float, i0: float, single: bool = False
+) -> tuple[NDArray[np.complexfloating], NDArray[np.complexfloating], NDArray[np.complexfloating]]:
+    """Phase factors and chirp kernel for one axis of :func:`FITFIT` (cached; depends only on the grid)."""
+    b = np.pi / (delta * n) / NNN
+    ab = delta * b
+    x0 = ab * i0 / b  # = delta * i0
+
+    i = np.arange(n)
+    phi = np.exp(1j * ((k0 + b * i) * x0 + ab / 2 * i**2))
+    psi = np.exp(1j * ab * (k0 * i / b + i**2 / 2))
+
+    i_ = np.arange(n + 1)
+    aux = np.exp(-1j * ab / 2.0 * i_ * i_)
+    hhat = sfft.ifft(np.r_[aux, aux[::-1][1:-1]])
+    out = tuple(arr.astype(np.complex64 if single else np.complex128) for arr in (phi, psi, hhat))
+    for arr in out:
+        arr.flags.writeable = False
+    return cast("tuple[NDArray[np.complexfloating], NDArray[np.complexfloating], NDArray[np.complexfloating]]", out)
+
+
 def FITFIT(
     field: NDArray[np.complexfloating],
     sign: int,
@@ -467,7 +808,7 @@ def FITFIT(
     ny: int,
     dy: float,
     NNN: tuple[int, int] = (4, 4),
-) -> NDArray[np.float64]:
+) -> NDArray[np.floating]:
     """
     Apply the 2D Fast Fourier Integral Transform to ``field``.
 
@@ -477,7 +818,8 @@ def FITFIT(
     Parameters
     ----------
     field : numpy.ndarray, shape (nx, ny)
-        Spectral field for one variable and one vertical level.
+        Spectral field for one variable and one vertical level. ``complex64`` input is
+        transformed in single precision and returns ``float32``.
     sign : int
         +1 → output is real part of FFIT; -1 → output is imaginary part.
     kx, ky : numpy.ndarray
@@ -495,45 +837,125 @@ def FITFIT(
         Physical-space field (real).
     """
     NNNx, NNNy = NNN
+    return _fitfit_y(_fitfit_x(field, sign, kx, nx, dx, NNNx), sign, ky, ny, dy, NNNy)
 
-    # Spectral spacings
-    bx = np.pi / (dx * nx) / NNNx
-    by = np.pi / (dy * ny) / NNNy
-    abx = dx * bx
-    aby = dy * by
 
-    # Starting positions in physical space
-    i0 = -nx / 4.0
-    x0 = abx * i0 / bx  # = dx * i0
-    y0 = 0.0
-    k0x = kx[0]
-    k0y = ky[0]
+def _is_single(dtype: np.dtype[Any]) -> bool:
+    """Single-precision input is transformed in single precision; anything else in double precision."""
+    return dtype in (np.complex64, np.float32)
 
-    i = np.arange(nx)
-    phix = np.exp(1j * ((k0x + bx * i) * x0 + abx / 2 * i**2))
-    psix = np.exp(1j * abx * (k0x * i / bx + i**2 / 2))
 
-    j = np.arange(ny)
-    phiy = np.exp(1j * ((k0y + by * j) * y0 + aby / 2 * j**2))
-    psiy = np.exp(1j * aby * (k0y * j / by + j**2 / 2))
+# ``roll(ifft(a)[::-1], 1) == fft(a) / N``, so the reversal and roll are folded into the transform
+# direction and the ``/ N`` cancels the ``* N`` that follows the second transform.
+# The 1D transforms are independent, so they are processed in blocks small enough to stay in cache.
 
-    # Kernel h̃ along x
-    i_ = np.arange(nx + 1)
-    auxx = np.exp(-1j * abx / 2.0 * i_ * i_)
-    hhatxList = np.fft.ifft(np.r_[auxx, auxx[::-1][1:-1]])
 
-    j_ = np.arange(ny + 1)
-    auxy = np.exp(-1j * aby / 2.0 * j_ * j_)
-    hhatyList = np.fft.ifft(np.r_[auxy, auxy[::-1][1:-1]])
+# NumPy's SIMD complex multiply ``a * b`` computes ``re = fma(ar, br, -(ai * bi))`` and
+# ``im = fma(ar, bi, ai * br)``; the kernels below repeat that so their results are bitwise identical.
 
-    # ---- Transform along x ----
-    ghatx = np.roll(np.fft.ifft(phix[:, na] * field, n=2 * nx, axis=0)[::-1], 1, axis=0)
-    tmpx = np.fft.ifft(hhatxList[:, na] * ghatx, axis=0) * 2 * nx
-    field = 2.0 * (psix[:, na] * tmpx[:nx]).real if sign == 1 else -2.0 * (psix[:, na] * tmpx[:nx]).imag
 
-    # ---- Transform along y ----
-    ghaty = np.roll(np.fft.ifft(phiy[na, :] * field, n=2 * ny, axis=1)[:, ::-1], 1, 1)
-    tmpy = np.fft.ifft(hhatyList[na, :] * ghaty, axis=1) * 2 * ny
-    field = 2.0 * (psiy[na, :] * tmpy[:, :ny]).real if sign == 1 else 2.0 * (psiy[na, :] * tmpy[:, :ny]).imag
+@njit(cache=True, nogil=True)
+def _chirp_pad_x(
+    phi: NDArray[np.complexfloating], field: NDArray[np.complexfloating], start: int, buf: NDArray[np.complexfloating]
+) -> None:  # pragma: no cover - compiled
+    """``buf = pad(phi[:, na] * field[:, start:start + w], 2n)`` along axis 0, as NumPy computes it."""
+    n = field.shape[0]
+    for i in range(n):
+        ar = phi[i].real
+        ai = phi[i].imag
+        for c in range(buf.shape[1]):
+            b = field[i, start + c]
+            buf[i, c] = complex(_fma(ar, b.real, -(ai * b.imag)), _fma(ar, b.imag, ai * b.real))
+    for i in range(n, buf.shape[0]):
+        for c in range(buf.shape[1]):
+            buf[i, c] = 0
 
-    return cast(NDArray[np.float64], field)
+
+@njit(cache=True, nogil=True)
+def _chirp_pad_y(
+    phi: NDArray[np.complexfloating], field: NDArray[np.floating], start: int, buf: NDArray[np.complexfloating]
+) -> None:  # pragma: no cover - compiled
+    """``buf = pad(phi[na, :] * field[start:start + h], 2n)`` along axis 1, as NumPy computes it (real ``field``
+    promoted to complex with a zero imaginary part)."""
+    n = field.shape[1]
+    zero = np.zeros(1, field.dtype)[0]
+    for r in range(buf.shape[0]):
+        for i in range(n):
+            ar = phi[i].real
+            ai = phi[i].imag
+            b = field[start + r, i]
+            buf[r, i] = complex(_fma(ar, b, -(ai * zero)), _fma(ar, zero, ai * b))
+        for i in range(n, buf.shape[1]):
+            buf[r, i] = 0
+
+
+@njit(cache=True, nogil=True)
+def _chirp_part(
+    psi: NDArray[np.complexfloating],
+    tmp: NDArray[np.complexfloating],
+    axis: int,
+    factor: NDArray[np.floating],
+    imag: bool,
+    out: NDArray[np.floating],
+) -> None:  # pragma: no cover - compiled
+    """``out = factor[0] * (psi * tmp[:n]).real`` (or ``.imag``) with ``psi`` along ``axis`` of ``out``, as NumPy
+    computes it; ``factor`` has ``out``'s dtype."""
+    f = factor[0]
+    for r in range(out.shape[0]):
+        for c in range(out.shape[1]):
+            a = psi[r] if axis == 0 else psi[c]
+            b = tmp[r, c]
+            if imag:
+                out[r, c] = f * _fma(a.real, b.imag, a.imag * b.real)
+            else:
+                out[r, c] = f * _fma(a.real, b.real, -(a.imag * b.imag))
+
+
+def _fitfit_x_block(
+    field: NDArray[np.complexfloating],
+    start: int,
+    width: int,
+    sign: int,
+    phix: NDArray[np.complexfloating],
+    psix: NDArray[np.complexfloating],
+    hhatx: NDArray[np.complexfloating],
+    out: NDArray[np.floating],
+) -> None:
+    """x-direction pass of :func:`FITFIT` for the columns ``start:start + width`` of ``field`` into ``out``."""
+    nx = field.shape[0]
+    buf = np.empty((2 * nx, width), dtype=phix.dtype)
+    _chirp_pad_x(phix, field, start, buf)
+    ghatx = sfft.fft(buf, axis=0, overwrite_x=True)
+    np.multiply(hhatx[:, na], ghatx, out=ghatx)
+    tmpx = sfft.ifft(ghatx, axis=0, overwrite_x=True)
+    _chirp_part(psix, tmpx, 0, np.array([2.0 if sign == 1 else -2.0], out.dtype), sign != 1, out)
+
+
+def _fitfit_x(
+    field: NDArray[np.complexfloating], sign: int, kx: NDArray[np.float64], nx: int, dx: float, NNNx: float
+) -> NDArray[np.floating]:
+    """x-direction pass of :func:`FITFIT`; returns the real intermediate field."""
+    single = _is_single(field.dtype)
+    phix, psix, hhatx = _fitfit_axis(nx, dx, NNNx, float(kx[0]), -nx / 4.0, single)
+    field_x = np.empty(field.shape, dtype=np.float32 if single else np.float64)
+    for start in range(0, field.shape[1], _FITFIT_BLOCK_X):
+        width = min(_FITFIT_BLOCK_X, field.shape[1] - start)
+        _fitfit_x_block(field, start, width, sign, phix, psix, hhatx, field_x[:, start : start + width])
+    return field_x
+
+
+def _fitfit_y(
+    field_x: NDArray[np.floating], sign: int, ky: NDArray[np.float64], ny: int, dy: float, NNNy: float
+) -> NDArray[np.floating]:
+    """y-direction pass of :func:`FITFIT`; linear in ``field_x``."""
+    phiy, psiy, hhaty = _fitfit_axis(ny, dy, NNNy, float(ky[0]), 0.0, _is_single(field_x.dtype))
+    field_y = np.empty(field_x.shape, dtype=field_x.dtype)
+    for start in range(0, field_x.shape[0], _FITFIT_BLOCK_Y):
+        height = min(_FITFIT_BLOCK_Y, field_x.shape[0] - start)
+        buf = np.empty((height, 2 * ny), dtype=phiy.dtype)
+        _chirp_pad_y(phiy, field_x, start, buf)
+        ghaty = sfft.fft(buf, axis=1, overwrite_x=True)
+        np.multiply(hhaty[na, :], ghaty, out=ghaty)
+        tmpy = sfft.ifft(ghaty, axis=1, overwrite_x=True)
+        _chirp_part(psiy, tmpy, 1, np.array([2.0], field_y.dtype), sign != 1, field_y[start : start + height])
+    return field_y

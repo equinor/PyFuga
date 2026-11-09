@@ -128,8 +128,8 @@ def read_lut_file(filename: PathLike, prelut_folder: PathLike) -> xr.Dataset:
     level = int(filename_path.name[-8:-4])
     z = casedata.zhub if level == 9999 else casedata.z0 * np.exp(casedata.ds * level)
 
-    lut = np.fromfile(filename, complex, -1).reshape((len(parameters.kz0_lst) + 1, len(parameters.beta_lst)))
-    lut = lut[1:].T
+    raw = np.fromfile(filename, complex, -1).reshape((len(parameters.kz0_lst) + 1, len(parameters.beta_lst)))
+    lut = raw[1:].T
     return xr.Dataset(
         {
             var: (("beta", "kz0", "level"), lut[:, :, na]),

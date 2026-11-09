@@ -5,7 +5,7 @@
 # ----- Test PyFuga (quick, every push) -----
 test_linux_default:
   stage: test
-  image: ${PYFUGA_CI_IMAGE_PREFIX}/ci/python-${PYTHON_DEFAULT_VERSION}-uv-tests:latest
+  image: ${PYFUGA_CI_IMAGE_PREFIX}/ci/python-${PYTHON_DEFAULT_VERSION}-uv-tests:${LINUX_TEST_IMAGE_TAG}
   extends:
     - .default_python_job
     - .pytest_coverage
@@ -93,7 +93,7 @@ test_windows_matrix:
 # ----- Test PyFuga (full matrix, change-based + scheduled) -----
 test_linux_matrix:
   stage: test
-  image: ${PYFUGA_CI_IMAGE_PREFIX}/ci/python-${PYTHON_VERSION}-uv-tests:latest
+  image: ${PYFUGA_CI_IMAGE_PREFIX}/ci/python-${PYTHON_VERSION}-uv-tests:${LINUX_TEST_IMAGE_TAG}
   parallel:
     matrix:
       - PYTHON_VERSION: ["3.10", "3.11", "3.12", "3.13", "3.14"]

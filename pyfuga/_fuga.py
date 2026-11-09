@@ -19,11 +19,13 @@ handling file caching and data I/O.
 
 from pathlib import Path
 
+import numpy as np
+import numpy.typing as npt
 import xarray as xr
 
 from pyfuga import utils
-from pyfuga.constants import DS, UVW_LT
-from pyfuga.flut import FourierLUTGenerator
+from pyfuga.constants import ACCGOAL, DS, UVW_LT
+from pyfuga.flut import FourierLUTGenerator, filter_kz0
 from pyfuga.paths import get_fluts_path, get_level_range, get_luts_path, get_preluts_path
 from pyfuga.preluts import PreLUTs
 from pyfuga.trafalgar import Trafalgar
@@ -49,6 +51,11 @@ def get_luts(
     jit: bool = True,
     n_cpu: int | None = None,
     n_cpu_stage: NCpuStageConfig | None = None,
+    verbose: bool = True,
+    *,
+    cache_intermediate: bool = False,
+    single_precision: bool = False,
+    accgoal: float = ACCGOAL,
 ) -> xr.Dataset:  # pragma: no cover
     """Generate physical-space wake look-up tables via the full PyFuga pipeline.
 
@@ -57,13 +64,13 @@ def get_luts(
         2. Fourier LUTs via pyfuga.flut
         3. Physical-space LUTs via pyfuga.trafalgar
 
-    Caches intermediate results (preLUTs and Fourier LUTs) as NetCDF files in
-    the specified folder, skipping recomputation if files exist.
+    Reuses compatible cached files and saves the final LUT. Intermediate files
+    are written only when ``cache_intermediate=True``.
 
     Parameters
     ----------
     folder : str or Path
-        Output folder for all generated files (preLUTs, Fourier LUTs, LUTs).
+        Output folder for the final LUT and optional intermediate caches.
     zeta0 : float
         Monin-Obukhov stability parameter (z0/L). Positive=stable, negative=unstable,
         zero=neutral.
@@ -109,6 +116,21 @@ def get_luts(
         the resolved default/global setting for that stage. Precedence is:
         defaults -> global ``n_cpu`` (if provided) -> ``n_cpu_stage`` keys.
         A stage value may be ``None`` meaning all CPUs for that stage only.
+    verbose : bool, optional
+        Show progress bars for stages that are generated. Default is True.
+    cache_intermediate : bool, optional
+        Save preLUTs and Fourier LUTs for reuse across configurations. Default
+        is False: keep intermediate results in memory and generate only the
+        preLUT wavenumbers needed by this turbine. Existing caches are still reused.
+    single_precision : bool, optional
+        Run the final physical-space transform in single precision for speed.
+        Default is False. The LUT is still stored as float64, under a separate
+        ``_sp`` file name; values differ from the default by roughly 1e-7
+        relative to the field maximum.
+    accgoal : float, optional
+        Accuracy goal of the adaptive preLUT integration. Default is 1e-4.
+        A looser goal (e.g. 1e-3) makes the preLUT stage faster at the cost of
+        accuracy. Non-default values are cached under separate ``_acc`` file names.
 
     Returns
     -------
@@ -127,11 +149,30 @@ def get_luts(
     dx = dx or diameter / 4
     dy = dy or diameter / 16
 
-    luts_path = get_luts_path(folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh, lut_vars, nx, ny, dx, dy)
+    luts_path = get_luts_path(
+        folder,
+        zeta0,
+        nkz0,
+        nbeta,
+        diameter,
+        zhub,
+        z0,
+        zi,
+        zlow,
+        zhigh,
+        lut_vars,
+        nx,
+        ny,
+        dx,
+        dy,
+        single_precision=single_precision,
+        accgoal=accgoal,
+    )
     if luts_path.exists():
         luts = xr.load_dataset(luts_path)
-        luts.attrs["name"] = luts_path.stem
-        return luts
+        if utils.load_lut_if_current(luts, luts_path):
+            luts.attrs["name"] = luts_path.stem
+            return luts
 
     fluts = get_fluts(
         folder,
@@ -148,8 +189,16 @@ def get_luts(
         jit,
         resolved_n_cpu["fluts"],
         n_cpu_stage={"preluts": resolved_n_cpu["preluts"]},
+        verbose=verbose,
+        cache_intermediate=cache_intermediate,
+        accgoal=accgoal,
     )
-    luts = Trafalgar(fluts, nx, ny, dx, dy).make_luts(interpolation_order=3, n_cpu=resolved_n_cpu["trafalgar"])
+    luts = Trafalgar(fluts, nx, ny, dx, dy, verbose=verbose).make_luts(
+        interpolation_order=3, n_cpu=resolved_n_cpu["trafalgar"], single_precision=single_precision
+    )
+    if single_precision:
+        luts.attrs["single_precision"] = 1
+    utils.stamp_lut_metadata(luts)
     luts.to_netcdf(luts_path)
     luts.attrs["name"] = luts_path.stem
     return luts
@@ -170,27 +219,64 @@ def get_fluts(
     jit: bool = True,
     n_cpu: int | None = None,
     n_cpu_stage: NCpuStageConfig | None = None,
+    verbose: bool = True,
+    *,
+    cache_intermediate: bool = True,
+    accgoal: float = ACCGOAL,
 ) -> ComplexXRDataset:  # pragma: no cover
+    """Reuse or generate Fourier LUTs; optionally persist intermediate results."""
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     resolved_n_cpu = utils.resolve_n_cpu_stage(n_cpu, n_cpu_stage)
 
-    fluts_path = get_fluts_path(folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh, lut_vars)
+    fluts_path = get_fluts_path(
+        folder, zeta0, nkz0, nbeta, diameter, zhub, z0, zi, zlow, zhigh, lut_vars, accgoal=accgoal
+    )
     if fluts_path.exists():
-        return ComplexXRDataset.from_netcdf(fluts_path)
+        fluts = ComplexXRDataset.from_netcdf(fluts_path)
+        if utils.load_lut_if_current(fluts, fluts_path):
+            return fluts
 
     utils.compile(jit)
-    preluts = get_preluts(folder, zeta0, nkz0, nbeta, jit, resolved_n_cpu["preluts"], None)
+    if cache_intermediate or get_preluts_path(folder, zeta0, nkz0, nbeta, accgoal=accgoal).exists():
+        preluts = get_preluts(
+            folder,
+            zeta0,
+            nkz0,
+            nbeta,
+            jit,
+            resolved_n_cpu["preluts"],
+            None,
+            verbose=verbose,
+            save=cache_intermediate,
+            accgoal=accgoal,
+        )
+    else:
+        kz0_lst = get_kz0_lst(nkz0, 1e-9, 1e-1)
+        preluts = _make_preluts(
+            zeta0,
+            nkz0,
+            nbeta,
+            jit,
+            resolved_n_cpu["preluts"],
+            verbose,
+            filter_kz0(kz0_lst, z0, diameter / 2),
+            accgoal=accgoal,
+        )
+        # Preserve the full-grid provenance in the final LUT's attributes.
+        preluts.attrs["kz0_lst"] = kz0_lst
 
     low_level_out, high_level_out = get_level_range(zlow, zhigh, zhub, z0)
 
-    flut_generator = FourierLUTGenerator(preluts, zhub, diameter, zi)
+    flut_generator = FourierLUTGenerator(preluts, zhub, diameter, zi, verbose=verbose)
     if low_level_out == high_level_out == 9999:
         fluts = flut_generator.make_hubheight_luts(z0, lut_vars, n_cpu=resolved_n_cpu["fluts"])
     else:
         fluts = flut_generator.make_lut(z0, low_level_out, high_level_out, lut_vars, n_cpu=resolved_n_cpu["fluts"])
 
-    fluts.save(fluts_path)
+    utils.stamp_lut_metadata(fluts)
+    if cache_intermediate:
+        fluts.save(fluts_path)
     return fluts
 
 
@@ -202,29 +288,53 @@ def get_preluts(
     jit: bool = True,
     n_cpu: int | None = None,
     n_cpu_stage: NCpuStageConfig | None = None,
+    verbose: bool = True,
+    *,
+    save: bool = True,
+    accgoal: float = ACCGOAL,
 ) -> PreLUTs:  # pragma: no cover
+    """Reuse or generate preLUTs, saving newly generated data unless ``save=False``."""
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     resolved_n_cpu = utils.resolve_n_cpu_stage(n_cpu, n_cpu_stage)
 
-    preluts_path = get_preluts_path(folder, zeta0, nkz0, nbeta)
+    preluts_path = get_preluts_path(folder, zeta0, nkz0, nbeta, accgoal=accgoal)
     if preluts_path.exists():
-        return PreLUTs.from_netcdf(preluts_path)
+        preluts = PreLUTs.from_netcdf(preluts_path)
+        if utils.load_lut_if_current(preluts, preluts_path):
+            return preluts
 
+    preluts = _make_preluts(zeta0, nkz0, nbeta, jit, resolved_n_cpu["preluts"], verbose, accgoal=accgoal)
+    if save:
+        preluts.save(preluts_path)
+    return preluts
+
+
+def _make_preluts(
+    zeta0: float,
+    nkz0: int,
+    nbeta: int,
+    jit: bool,
+    n_cpu: int,
+    verbose: bool,
+    kz0_lst: npt.NDArray[np.float64] | None = None,
+    accgoal: float = ACCGOAL,
+) -> PreLUTs:
     utils.compile(jit)
     preluts = PreLUTs.make_preluts(
         zeta0=zeta0,
-        kz0_lst=get_kz0_lst(nkz0, 1e-9, 1e-1),
+        kz0_lst=get_kz0_lst(nkz0, 1e-9, 1e-1) if kz0_lst is None else kz0_lst,
         beta_lst=get_beta_lst(nbeta),
         kzmax=300,
         ds=DS,
-        accgoal=0.0001,
+        accgoal=accgoal,
         jit=jit,
-        n_cpu=resolved_n_cpu["preluts"],
+        n_cpu=n_cpu,
+        verbose=verbose,
     )
     preluts.attrs["nkz0"] = nkz0
     preluts.attrs["nbeta"] = nbeta
-    preluts.save(preluts_path)
+    utils.stamp_lut_metadata(preluts)
     return preluts
 
 

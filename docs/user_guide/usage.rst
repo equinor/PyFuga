@@ -26,7 +26,8 @@ speeds in downstream PyWake simulations.
 
 This staged and scaled design improves both generality and efficiency. If
 intermediate files are already available, PyFuga reuses them. Otherwise, it
-generates and stores them automatically as NetCDF files.
+keeps intermediates in memory and saves only the final NetCDF LUT. Pass
+``cache_intermediate=True`` to also store intermediates for later configurations.
 
 Quick start
 -----------
@@ -83,7 +84,7 @@ The output folder
 -----------------
 
 The ``folder`` argument specifies where PyFuga stores all generated data,
-including both intermediate and final files.
+including the final file and, with ``cache_intermediate=True``, intermediate files.
 
 For the example above, the folder may contain files such as:
 
@@ -178,7 +179,8 @@ As a result:
 
 - the first run for a new configuration is usually slower
 - later runs with the same configuration are often faster
-- the output folder acts as a cache of reusable intermediate results
+- the output folder caches final LUTs and, with ``cache_intermediate=True``,
+  reusable intermediate results
 
 Single-layer output
 -------------------

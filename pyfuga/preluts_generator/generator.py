@@ -9,10 +9,13 @@ Generates preliminary look-up tables (preLUTs) for atmospheric boundary layer si
 
 import importlib
 import math
+from typing import Any
 
 import numpy as np
+from numpy.typing import NDArray
 from tqdm import tqdm
 
+from pyfuga import utils
 from pyfuga.common import get_cdivkL, get_psi
 from pyfuga.constants import COORD_S, COORD_T, MAX_NODES
 from pyfuga.preluts import PreLUT
@@ -45,8 +48,27 @@ from . import nodes as _nodes
 importlib.reload(_nodes)
 importlib.reload(_integration)
 
-from .integration import get_new_h2, integrate_between_stations, modified_midpoint_integration_step  # noqa: E402
+from .integration import (  # noqa: E402
+    get_new_h2,
+    integrate_all_stations,
+    integrate_between_stations,
+    modified_midpoint_integration_step,
+)
 from .nodes import PreLUTNode, PreLUTNodeFirst  # noqa: E402
+
+_NODE_VARS = [
+    "Y_lower",
+    "R_lower",
+    "R_upper",
+    "dbx_const",
+    "dbx_lin",
+    "dby_const",
+    "dby_lin",
+    "dbz_const",
+    "dbz_lin",
+    "log_s_lower",
+    "log_s_upper",
+]
 
 
 class PreLUTGenerator:
@@ -193,7 +215,11 @@ class PreLUTGenerator:
         --------
         pyfuga.flut.FourierLUTGenerator.make_lut : Next pipeline stage.
         """
-        self.nodes = []
+        data_vars, attrs = self._prelut_vars(self._integrate())
+        return PreLUT(data_vars, attrs=attrs)
+
+    def _integrate(self) -> list[NDArray[Any]]:
+        self.nodes: list[PreLUTNode] = []
         first = PreLUTNodeFirst(self.beta, self.ds)
         assert first.Y_lower is not None
         h = np.sqrt(self.acc * 6 / 3.125)
@@ -208,14 +234,71 @@ class PreLUTGenerator:
         # cumsum gives slightly different results than arange (more equal to fortran implementation)
         log_s_lst = np.sort(np.r_[0, np.cumsum(np.full(int(self.log_smaxx // self.ds) + 1, self.ds)), s_tr])
 
-        # equal(first.Y_lower, f'yleft{0:6.3f}')
-        segment, h = self.integrate_between_stations(first, h, yerr, self.acc, COORD_T)
-        # equal(segment.Y_upper, f'yright{0:6.3f}')
         log_s_from = log_s_lst[1:-1]
         log_s_to = log_s_lst[2:]
         if len(log_s_from) != len(log_s_to):
             raise ValueError("Length mismatch between log_s slices")
 
+        var_values: list[NDArray[Any]]
+        if utils.preludium_equivalent:
+            var_values = self._integrate_nodes(first, h, yerr, log_s_lst, log_s_from, log_s_to, s_tr)
+        else:
+            y_lower, r_lower, r_upper, db, log_s_lower, log_s_upper = integrate_all_stations(
+                np.ascontiguousarray(first.Y_lower),
+                h,
+                yerr,
+                self.acc,
+                float(self.ds),
+                np.ascontiguousarray(log_s_from),
+                np.ascontiguousarray(log_s_to),
+                float(s_tr),
+                float(self.log_smaxx),
+                MAX_NODES,
+                self.kz0,
+                self.lastkz,
+                self.zeta0,
+                self.cdivkL,
+                self.psi0,
+                self.cosbeta,
+                self.sinbeta,
+            )
+            # db rows: dbx/dby/dbz const, then lin
+            var_values = [np.moveaxis(v, 1, 2) for v in (y_lower, r_lower, r_upper)]
+            var_values += [np.ascontiguousarray(db[:, i]) for i in (0, 3, 1, 4, 2, 5)]
+            var_values += [log_s_lower, log_s_upper]
+
+        return var_values
+
+    def make_prelut_vars(self) -> tuple[dict[str, Any], dict[str, Any]]:
+        """:meth:`make_prelut` as plain ``(data_vars, attrs)`` without building the xarray Dataset (cheaper to
+        create and to send between processes)."""
+        return self._prelut_vars(self._integrate())
+
+    def _prelut_vars(self, var_values: list[NDArray[Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
+        return (
+            {
+                **{n: (("i", "j", "k")[: len(v.shape)], v) for n, v in zip(_NODE_VARS, var_values, strict=True)},
+                "beta": self.beta,
+                "kz0": self.kz0,
+                **{"level": (("i",), np.round(var_values[-2] / self.ds, 3).astype(int))},
+            },
+            {"ds": self.ds, "kzmax": self.kzmax, "zeta0": self.zeta0, "accgoal": self.accgoal},
+        )
+
+    def _integrate_nodes(
+        self,
+        first: PreLUTNode,
+        h: float,
+        yerr: ComplexArray,
+        log_s_lst: NDArray[np.float64],
+        log_s_from: NDArray[np.float64],
+        log_s_to: NDArray[np.float64],
+        s_tr: float,
+    ) -> list[NDArray[Any]]:
+        """Node-by-node Python station loop (used in preludium-equivalent mode, whose QR is Python only)."""
+        # equal(first.Y_lower, f'yleft{0:6.3f}')
+        segment, h = self.integrate_between_stations(first, h, yerr, self.acc, COORD_T)
+        # equal(segment.Y_upper, f'yright{0:6.3f}')
         for log_s1, log_s2 in tqdm(list(zip(log_s_from, log_s_to)), disable=True):  # noqa: B905
             self.nodes.append(segment)
             segment = segment.generate_next_node(log_s1, log_s2)
@@ -233,31 +316,9 @@ class PreLUTGenerator:
                 segment.generate_next_node(log_s_lst[-1], log_s_lst[-1])
                 segment.Y_upper = segment.Y_lower
 
-        var_names = [
-            "Y_lower",
-            "R_lower",
-            "R_upper",
-            "dbx_const",
-            "dbx_lin",
-            "dby_const",
-            "dby_lin",
-            "dbz_const",
-            "dbz_lin",
-            "log_s_lower",
-            "log_s_upper",
+        return [np.moveaxis(np.array([getattr(n, k) for n in self.nodes]), 1, 2) for k in _NODE_VARS[:3]] + [
+            np.array([getattr(n, k) for n in self.nodes]) for k in _NODE_VARS[3:]
         ]
-        var_values = [np.moveaxis(np.array([getattr(n, k) for n in self.nodes]), 1, 2) for k in var_names[:3]] + [
-            np.array([getattr(n, k) for n in self.nodes]) for k in var_names[3:]
-        ]
-        return PreLUT(
-            {
-                **{n: (("i", "j", "k")[: len(v.shape)], v) for n, v in zip(var_names, var_values, strict=True)},
-                "beta": self.beta,
-                "kz0": self.kz0,
-                **{"level": (("i",), np.round(var_values[-2] / self.ds, 3).astype(int))},
-            },
-            attrs={"ds": self.ds, "kzmax": self.kzmax, "zeta0": self.zeta0, "accgoal": self.accgoal},
-        )
 
     def modified_midpoint_integration_step(
         self,
