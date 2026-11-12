@@ -215,7 +215,7 @@ class PreLUTGenerator:
         --------
         pyfuga.flut.FourierLUTGenerator.make_lut : Next pipeline stage.
         """
-        data_vars, attrs = self._prelut_vars(self._integrate())
+        data_vars, attrs = self.make_prelut_vars()
         return PreLUT(data_vars, attrs=attrs)
 
     def _integrate(self) -> list[NDArray[Any]]:
@@ -272,9 +272,7 @@ class PreLUTGenerator:
     def make_prelut_vars(self) -> tuple[dict[str, Any], dict[str, Any]]:
         """:meth:`make_prelut` as plain ``(data_vars, attrs)`` without building the xarray Dataset (cheaper to
         create and to send between processes)."""
-        return self._prelut_vars(self._integrate())
-
-    def _prelut_vars(self, var_values: list[NDArray[Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
+        var_values = self._integrate()
         return (
             {
                 **{n: (("i", "j", "k")[: len(v.shape)], v) for n, v in zip(_NODE_VARS, var_values, strict=True)},

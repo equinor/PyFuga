@@ -11,13 +11,6 @@ def test_path_format_stability(tmp_path):
     assert get_luts_path(tmp_path, **f, nx=256, ny=64, dx=20.0, dy=5.0).name == (
         "LUTs_Zeta0=0.00e+00_1_2_D80_zhub70_zi400_z0=0.00001000_z70.0_UL_nx256_ny64_dx20.0_dy5.0.nc"
     )
-    assert get_luts_path(tmp_path, **f, nx=256, ny=64, dx=20.0, dy=5.0, single_precision=True).name == (
-        "LUTs_Zeta0=0.00e+00_1_2_D80_zhub70_zi400_z0=0.00001000_z70.0_UL_nx256_ny64_dx20.0_dy5.0_sp.nc"
-    )
-    assert get_preluts_path(tmp_path, **p, accgoal=1e-4).name == "preLUTs_Zeta0=0.00e+00_1_2.nc"
-    assert get_luts_path(tmp_path, **f, nx=256, ny=64, dx=20.0, dy=5.0, accgoal=1e-3).name == (
-        "LUTs_Zeta0=0.00e+00_1_2_acc0.001_D80_zhub70_zi400_z0=0.00001000_z70.0_UL_nx256_ny64_dx20.0_dy5.0.nc"
-    )
 
 
 def test_multiheight_produces_different_path(tmp_path):

@@ -6,11 +6,31 @@ import numpy as np
 import pytest
 import xarray as xr
 from numpy.testing import assert_allclose
+from scipy import sparse
 
 from pyfuga.file_readers import read_lut_dat_file, read_lut_file
 from pyfuga.trafalgar import Trafalgar, _interpolate_levels, _spline_operator
 
 from .test_files import tfp
+
+
+def _scipy_contracts_fma() -> bool:
+    a, b = 1.0 + 2.0**-30, 1.0 - 2.0**-30
+    return bool((sparse.csr_matrix(np.array([[1.0, a]])) @ np.array([[-1.0], [b]]))[0, 0] != 0.0)
+
+
+_FMA = _scipy_contracts_fma()
+
+
+def _assert_same_bits(actual, expected):
+    actual, expected = actual.view(np.float64), expected.view(np.float64)
+    if not _FMA:
+        np.testing.assert_array_equal(actual.view(np.uint64), expected.view(np.uint64))
+        return
+    finite = np.isfinite(expected)
+    np.testing.assert_array_equal(actual[~finite], expected[~finite])
+    atol = 16 * np.finfo(np.float64).eps * np.abs(expected[finite]).max()
+    assert_allclose(actual[finite], expected[finite], rtol=0, atol=atol)
 
 
 def test_trafalgar_make_luts_rejects_invalid_n_cpu() -> None:
@@ -137,21 +157,6 @@ def test_threaded_tiles_match_serial_without_mutating_input(var, legacy):
     xr.testing.assert_identical(fourier_lut, original)
 
 
-@pytest.mark.parametrize("var", ["UL", "UT"])
-@pytest.mark.parametrize("legacy", [False, True])
-def test_single_precision_close_to_double(var, legacy):
-    fourier_lut = read_lut_file(
-        tfp + f"D080.0000_zH070.0000_2_5/Z0=0.00001000Zi=00400Zeta0=0.00E+00/{var}0314.lut",
-        prelut_folder=tfp + "preLUTs_Zeta0=0.00E+00_2_5",
-    )
-    generator = Trafalgar(fourier_lut, nx=512, ny=128, verbose=False)
-    double = generator.make_luts(3, legacy=legacy, n_cpu=1)[var].values
-    single = generator.make_luts(3, legacy=legacy, n_cpu=1, single_precision=True)[var].values
-    assert single.dtype == np.float64
-    assert not np.array_equal(single, double)
-    assert np.abs(single - double).max() < 1e-5 * np.abs(double).max()
-
-
 @pytest.mark.parametrize(("nlevel", "kind"), [(1, "complex"), (3, "complex"), (3, "real"), (3, "nonfinite")])
 def test_interpolate_levels_preserves_bits(nlevel, kind):
     rng = np.random.default_rng(42)
@@ -174,7 +179,7 @@ def test_interpolate_levels_preserves_bits(nlevel, kind):
         expected = w @ coef.reshape(-1, nlevel)
         actual = _interpolate_levels(operator, flut)
 
-    np.testing.assert_array_equal(actual.view(np.uint64), expected.view(np.uint64))
+    _assert_same_bits(actual, expected)
     np.testing.assert_array_equal(flut, original)
 
 
@@ -189,12 +194,11 @@ def test_spline_operator_matches_scipy_design_matrix_bits():
     assert operator is not None
 
     expected = BSpline.design_matrix(q, t, 3)
-    np.testing.assert_array_equal(operator.bx.ravel().view(np.uint64), expected.data.view(np.uint64))
+    _assert_same_bits(operator.bx.ravel(), expected.data)
     np.testing.assert_array_equal(operator.ox, expected.indices[::4])
 
 
-@pytest.mark.parametrize("single", [False, True])
-def test_interpolate_scaled_matches_unfused_bits(single):
+def test_interpolate_scaled_matches_unfused_bits():
     from pyfuga.trafalgar import _interpolate_scaled
 
     rng = np.random.default_rng(7)
@@ -202,11 +206,8 @@ def test_interpolate_scaled_matches_unfused_bits(single):
     px, py = np.meshgrid(np.linspace(-0.2, 1.2, 8), np.linspace(-11, -1, 9))
     operator = _spline_operator(x, y, px, py, 3)
     assert operator is not None
-    dtype = np.float32 if single else np.float64
-    if single:
-        operator = operator._replace(dtype=np.float32)
     flut = rng.standard_normal((len(x), len(y), 3)) + 1j * rng.standard_normal((len(x), len(y), 3))
-    scale = (rng.standard_normal(px.shape) * np.exp(-rng.uniform(0, 30, px.shape))).astype(dtype)
+    scale = rng.standard_normal(px.shape) * np.exp(-rng.uniform(0, 30, px.shape))
     scale[0, :3] = [0.0, -0.0, 1e-30]
 
     expected = _interpolate_levels(operator, flut).reshape(*px.shape, -1) * scale[..., np.newaxis]
@@ -214,15 +215,14 @@ def test_interpolate_scaled_matches_unfused_bits(single):
 
     assert actual is not None
     assert actual.dtype == expected.dtype
-    np.testing.assert_array_equal(actual.view(dtype), np.ascontiguousarray(np.moveaxis(expected, -1, 0)).view(dtype))
+    _assert_same_bits(actual, np.ascontiguousarray(np.moveaxis(expected, -1, 0)))
     flut[0, 0, 0] = np.inf
     with np.errstate(invalid="ignore"):
         assert _interpolate_scaled(operator, flut, scale) is None
 
 
 @pytest.mark.parametrize("order", [1, 3])
-@pytest.mark.parametrize("single", [False, True])
-def test_x_transform_fused_matches_unfused_bits(single, order):
+def test_x_transform_fused_matches_unfused_bits(order):
     from pyfuga.trafalgar import _fitfit_x, _interpolate_scaled, _spline_components, _x_transform_fused
 
     rng = np.random.default_rng(3)
@@ -231,11 +231,8 @@ def test_x_transform_fused_matches_unfused_bits(single, order):
     px, py = np.meshgrid(np.linspace(-0.2, 1.2, ny), np.linspace(-11, -1, nx))
     operator = _spline_operator(x, y, px, py, order)
     assert operator is not None
-    dtype = np.float32 if single else np.float64
-    if single:
-        operator = operator._replace(dtype=np.float32)
     fluts = [rng.standard_normal((len(x), len(y), 3)) + 1j * rng.standard_normal((len(x), len(y), 3)) for _ in "ab"]
-    scale = rng.standard_normal(px.shape).astype(dtype)
+    scale = rng.standard_normal(px.shape)
     kx = np.linspace(1e-4, 1e-1, nx)
 
     components = [_spline_components(operator, f) for f in fluts]
@@ -244,7 +241,7 @@ def test_x_transform_fused_matches_unfused_bits(single, order):
         scaled = _interpolate_scaled(operator, flut, scale)
         assert scaled is not None
         expected = np.stack([_fitfit_x(field, sign, kx, nx, dx, 4) for field in scaled])
-        np.testing.assert_array_equal(actual[3 * j : 3 * (j + 1)].view(dtype), expected.view(dtype))
+        np.testing.assert_array_equal(actual[3 * j : 3 * (j + 1)], expected)
 
 
 @pytest.mark.parametrize("sign", [1, -1])

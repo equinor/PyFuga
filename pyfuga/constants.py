@@ -24,7 +24,6 @@ Y_NORM_THRESHOLD: int = 100  # Max value of Ynorm before a sublevel is made
 # LUT constant
 FIRST_Z_OUTPUT: float = 1.0  # First height level in output
 DS: float = 0.05  # Vertical grid spacing in log-height coordinate s = ln(z/z0)
-ACCGOAL: float = 0.0001  # Default preLUT integration accuracy goal
 
 # On-disk LUT cache compatibility version. Cached LUTs (preLUTs/fLUTs/LUTs) whose
 # stored ``lut_format_version`` differs from this value - or which predate versioning

@@ -184,10 +184,9 @@ that stale caches are rejected instead of silently loaded:
   `tests/test_flut.py` will flag such changes.
 - **Newly exposed generator option** (a knob that changes LUT values but is currently hardcoded
   in `pyfuga/_fuga.py` — e.g. `legacy`/tiling and `interpolation_order` in
-  `Trafalgar.make_luts`, `ds`/`kzmax` in `PreLUTs.make_preluts`, or the
+  `Trafalgar.make_luts`, `accgoal`/`ds`/`kzmax` in `PreLUTs.make_preluts`, or the
   `utils.preludium_equivalent` solver switch): cached LUTs are keyed by filename plus the
-  stamped metadata, and neither records these. (`accgoal` and `single_precision` are
-  exposed in `get_luts` and keyed by a file-name suffix when non-default.) Before making such an option user-settable,
+  stamped metadata, and neither records these. Before making such an option user-settable,
   add it to the metadata written by `utils.stamp_lut_metadata` and checked by
   `utils.cache_is_current`, and bump `LUT_FORMAT_VERSION`. Otherwise two runs with different
   settings share a cache entry and the second silently reuses the first. See issue

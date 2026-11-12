@@ -95,6 +95,7 @@ def _fill_M_s(
 
 @jit("complex128[:,:](double, double, double, double, double)")
 def create_M_t(u: float, K_star: float, dKstar_dz: float, K_star_cos: float, K_star_sin: float) -> ComplexArray:
+    """Create the 6x6 adjoint system matrix M = -A* in t-space."""
     m = np.zeros((6, 6), dtype=np.complex128)
     _fill_M_t(m, u, K_star, dKstar_dz, K_star_cos, K_star_sin)
     return m
@@ -104,6 +105,7 @@ def create_M_t(u: float, K_star: float, dKstar_dz: float, K_star_cos: float, K_s
 def create_M_s(
     u: float, K_star: float, dKstar_dz: float, cosbeta: float, sinbeta: float, K_star_cos: float, K_star_sin: float
 ) -> ComplexArray:
+    """Create the 6x6 adjoint system matrix M = -A* in s-space."""
     m = np.zeros((6, 6), dtype=np.complex128)
     _fill_M_s(m, u, K_star, dKstar_dz, cosbeta, sinbeta, K_star_cos, K_star_sin)
     return m

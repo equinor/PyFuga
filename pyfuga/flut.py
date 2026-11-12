@@ -90,6 +90,12 @@ def filter_kz0(kz0_lst: npt.NDArray[np.float64], z0: float, radius: float) -> np
     return cast(npt.NDArray[np.float64], kz0_lst[kz0_lst <= kz0limit])
 
 
+def _prelut_var_names(forcings: str) -> list[str]:
+    """PreLUT variables needed to solve for the given forcing directions (``"L"``, ``"T"`` or ``"LT"``)."""
+    axes = ["x" if forcing == "L" else "y" for forcing in forcings]
+    return ["level", "Y_lower", "R_upper", "R_lower", *(f"db{a}_{part}" for a in axes for part in ("const", "lin"))]
+
+
 def _select_prelut_arrays(
     preluts: PreLUTs, beta_kz0_lst: list[tuple[Any, Any]], names: list[str]
 ) -> Iterator[_PreLUTArrays]:
@@ -126,8 +132,7 @@ def _iter_solve_layer_jobs(
     high_level_out: int,
     prelut_lst: list[Any] | None = None,
 ) -> Iterator[SolveLayersJob]:
-    axis = "x" if forcing == "L" else "y"
-    names = ["level", "Y_lower", "R_upper", "R_lower", f"db{axis}_const", f"db{axis}_lin"]
+    names = _prelut_var_names(forcing)
     prelut_iter = _select_prelut_arrays(preluts, beta_kz0_lst, names) if prelut_lst is None else iter(prelut_lst)
     for (beta, kz0), prelut in zip(beta_kz0_lst, prelut_iter, strict=True):
         yield SolveLayersJob(
@@ -319,17 +324,10 @@ class FourierLUTGenerator:
 
         do_l = any(lut[1] == "L" for lut in luts)
         do_t = any(lut[1] == "T" for lut in luts)
+        # select once, share between forcings
         prelut_lst = (
-            list(
-                _select_prelut_arrays(
-                    self.preluts,
-                    beta_kz0_lst,
-                    ["level", "Y_lower", "R_upper", "R_lower", "dbx_const", "dbx_lin", "dby_const", "dby_lin"],
-                )
-            )
-            if do_l and do_t
-            else None
-        )  # select once, share between forcings
+            list(_select_prelut_arrays(self.preluts, beta_kz0_lst, _prelut_var_names("LT"))) if do_l and do_t else None
+        )
 
         # With the loops compiled a job takes well under a millisecond, so running them in-process beats both
         # worker processes (start-up, copying preLUTs) and threads (contention for the GIL between short kernels).

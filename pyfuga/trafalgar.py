@@ -116,7 +116,6 @@ class Trafalgar:
         NNNs: Sequence[int] = (2**16, 2**8, 2**2, 2**2),
         legacy: bool = False,
         n_cpu: int | None = None,
-        single_precision: bool = False,
     ) -> xr.Dataset:
         """
         Evaluate the 2D FFIT over all wavenumber tiles and return the wake LUTs.
@@ -140,11 +139,6 @@ class Trafalgar:
             CPUs (at least ``1``). Values greater than ``1`` use a bounded thread pool.
             In :func:`pyfuga.get_luts`, default policy also resolves to all CPUs
             unless overridden via ``n_cpu``/``n_cpu_stage``.
-        single_precision : bool
-            If ``True``, interpolate and transform each tile in single precision
-            (``float32``/``complex64``) for speed; tiles are still accumulated and
-            returned as ``float64``. Results differ from the default by roughly
-            ``1e-7`` relative to the field maximum.
 
         Returns
         -------
@@ -182,7 +176,6 @@ class Trafalgar:
                 # Per-tile bars only when serial; worker bars would interleave with the outer one
                 self.verbose and workers == 1,
                 legacy,
-                single_precision,
             )
             for t in tiles
         )
@@ -191,7 +184,7 @@ class Trafalgar:
         # sharing a y-axis are summed (in tile order) and y-transformed once per group.
         # Parallelism is per wavenumber tile for the x-transform and per (variable, level) for the
         # y-transform; groups are added in a fixed order, so results do not depend on ``n_cpu``.
-        groups: dict[tuple[Any, float], dict[str, NDArray[np.floating]]] = {}
+        groups: dict[tuple[Any, float], dict[str, NDArray[np.float64]]] = {}
         with threading_map(workers) as map_func:
             for tile, fields_x in zip(
                 tiles,
@@ -263,18 +256,16 @@ class _SplineOperator(NamedTuple):
     ny: int
     cx: NDArray[np.float64]
     cy: NDArray[np.float64]
-    dtype: type[np.floating] = np.float64
 
     def matrix(self) -> sparse.csr_matrix:
-        """The design matrix ``W`` as CSR with weights of ``dtype``."""
+        """The design matrix ``W`` as CSR."""
         n, m = self.bx.shape
         data = (self.bx.reshape(n, m, 1) * self.by.reshape(n, 1, m)).reshape(n, m * m)
         ix = self.ox[:, na] + np.arange(m)
         iy = self.oy[:, na] + np.arange(m)
         cols = (ix.reshape(n, m, 1) * self.ny + iy.reshape(n, 1, m)).reshape(n, m * m)
         indptr = np.arange(0, n * m * m + 1, m * m)
-        w = sparse.csr_matrix((data.ravel(), cols.ravel(), indptr), shape=(n, self.nx * self.ny))
-        return w.astype(self.dtype) if self.dtype != np.float64 else w
+        return sparse.csr_matrix((data.ravel(), cols.ravel(), indptr), shape=(n, self.nx * self.ny))
 
 
 @njit(cache=True, nogil=True)
@@ -349,20 +340,28 @@ def _spline_operator(
     return _SplineOperator(bx, ox, by, oy, len(x), len(y), sx.c, sy.c)
 
 
-def _interpolate_levels(operator: _SplineOperator, flut: NDArray[np.complex128]) -> NDArray[np.complexfloating]:
-    """Evaluate the spline of every level of ``flut`` (shape ``(nx, ny, nlevel)``) at the operator's points.
-
-    The result is ``complex64`` when the operator's weights are ``float32``, otherwise ``complex128``.
-    """
-    w = operator.matrix()
+def _spline_coefficients(operator: _SplineOperator, flut: NDArray[Any]) -> NDArray[Any]:
+    """Spline coefficients of every level of ``flut`` (shape ``(nx, ny, nlevel)``), one column per level."""
     coef = np.einsum("ab,bcl,dc->adl", operator.cx, flut, operator.cy, optimize=True)
-    coef = coef.reshape(-1, flut.shape[2])
-    if coef.dtype == np.complex128 and np.isfinite(coef).all():
-        # Real weights act independently on interleaved real/imaginary components.
-        components = np.ascontiguousarray(coef).view(np.float64).astype(w.dtype, copy=False)
-        out = w @ components
-        return cast("NDArray[np.complexfloating]", out.view(np.complex64 if out.dtype == np.float32 else np.complex128))
-    return cast("NDArray[np.complexfloating]", w @ coef)
+    return cast("NDArray[Any]", coef.reshape(-1, flut.shape[2]))
+
+
+def _as_components(coef: NDArray[Any]) -> NDArray[np.float64] | None:
+    """Finite complex coefficients as interleaved real/imaginary columns (real weights act on them
+    independently); ``None`` if they need the generic path."""
+    if coef.dtype != np.complex128 or not np.isfinite(coef).all():
+        return None
+    return np.ascontiguousarray(coef).view(np.float64)
+
+
+def _interpolate_levels(operator: _SplineOperator, flut: NDArray[np.complex128]) -> NDArray[np.complex128]:
+    """Evaluate the spline of every level of ``flut`` (shape ``(nx, ny, nlevel)``) at the operator's points."""
+    w = operator.matrix()
+    coef = _spline_coefficients(operator, flut)
+    components = _as_components(coef)
+    if components is not None:
+        return cast("NDArray[np.complex128]", (w @ components).view(np.complex128))
+    return cast("NDArray[np.complex128]", w @ coef)
 
 
 @njit(cache=True, nogil=True)
@@ -372,26 +371,25 @@ def _eval_scaled_spline(
     by: NDArray[np.float64],
     oy: NDArray[np.int64],
     ny: int,
-    components: NDArray[np.floating],
-    scale: NDArray[np.floating],
+    components: NDArray[np.float64],
+    scale: NDArray[np.float64],
     start: int,
-    out: NDArray[np.floating],
+    out: NDArray[np.float64],
 ) -> None:  # pragma: no cover - compiled
     """Fused ``(W @ components)`` and complex scaling for the columns ``start:start + width`` of ``scale``;
     ``out`` is the real view ``(nlevel, nrow, width, 2)``.
 
-    Each weight is formed as in :meth:`_SplineOperator.matrix` (float64 product, then cast to the
-    components' dtype). Each output is summed over the row's non-zeros in CSR order starting from zero,
-    and scaled as ``(re + i im) * (s + 0i)``, matching SciPy's sparse product followed by NumPy's
-    complex multiply bit for bit.
+    Each weight is formed as in :meth:`_SplineOperator.matrix`. Each output is summed over the row's
+    non-zeros in CSR order starting from zero, and scaled as ``(re + i im) * (s + 0i)``, matching SciPy's
+    sparse product followed by NumPy's complex multiply bit for bit.
     """
     m = bx.shape[1]
-    zero = scale[0, 0] * 0
+    zero = 0.0
     width = out.shape[2]
     nq = components.shape[1]
     # One row of accumulators, so each level is then stored as a contiguous run
-    rowacc = np.empty((width, nq), components.dtype)
-    ws = np.empty(m, components.dtype)
+    rowacc = np.empty((width, nq))
+    ws = np.empty(m)
     for r in range(out.shape[1]):
         for c in range(width):
             p = r * scale.shape[1] + start + c
@@ -421,26 +419,20 @@ def _eval_scaled_spline(
                 out[level, r, c, 1] = re * zero + im * s
 
 
-def _spline_components(operator: _SplineOperator, flut: NDArray[np.complex128]) -> NDArray[np.floating] | None:
-    """Spline coefficients of every level of ``flut`` as interleaved real/imaginary columns of the operator's
-    dtype; ``None`` if they need the generic (non-finite) path."""
-    coef = np.einsum("ab,bcl,dc->adl", operator.cx, flut, operator.cy, optimize=True)
-    coef = coef.reshape(-1, flut.shape[2])
-    if coef.dtype != np.complex128 or not np.isfinite(coef).all():
-        return None
-    return np.ascontiguousarray(np.ascontiguousarray(coef).view(np.float64).astype(operator.dtype, copy=False))
+def _spline_components(operator: _SplineOperator, flut: NDArray[np.complex128]) -> NDArray[np.float64] | None:
+    """Spline coefficients of every level of ``flut`` as interleaved real/imaginary columns; ``None`` if they
+    need the generic (non-finite) path."""
+    return _as_components(_spline_coefficients(operator, flut))
 
 
-def _interpolate_scaled(
-    operator: _SplineOperator, flut: NDArray[np.complex128], scale: NDArray[np.floating]
-) -> NDArray[np.complexfloating] | None:
-    """Return ``_interpolate_levels(operator, flut)`` times ``scale`` (2D), level-major with ``scale``'s shape
-    prepended by the level count; ``None`` if the coefficients need the generic (non-finite) path."""
-    components = _spline_components(operator, flut)
-    if components is None:
-        return None
-    dtype = operator.dtype
-    out = np.empty((flut.shape[2], *scale.shape), dtype=np.complex64 if dtype == np.float32 else np.complex128)
+def _scaled_block(
+    operator: _SplineOperator,
+    components: NDArray[np.float64],
+    scale: NDArray[np.float64],
+    start: int,
+    out: NDArray[np.complex128],
+) -> None:
+    """Interpolate and scale the columns ``start:start + out.shape[2]`` of the tile into ``out`` (level-major)."""
     _eval_scaled_spline(
         operator.bx,
         operator.ox,
@@ -449,23 +441,35 @@ def _interpolate_scaled(
         operator.ny,
         components,
         scale,
-        0,
-        out.view(dtype).reshape(*out.shape, 2),
+        start,
+        out.view(np.float64).reshape(*out.shape, 2),
     )
+
+
+def _interpolate_scaled(
+    operator: _SplineOperator, flut: NDArray[np.complex128], scale: NDArray[np.float64]
+) -> NDArray[np.complex128] | None:
+    """Return ``_interpolate_levels(operator, flut)`` times ``scale`` (2D), level-major with ``scale``'s shape
+    prepended by the level count; ``None`` if the coefficients need the generic (non-finite) path."""
+    components = _spline_components(operator, flut)
+    if components is None:
+        return None
+    out = np.empty((flut.shape[2], *scale.shape), dtype=np.complex128)
+    _scaled_block(operator, components, scale, 0, out)
     return out
 
 
 def _x_transform_fused(
     operator: _SplineOperator,
-    components: list[NDArray[np.floating]],
-    scale: NDArray[np.floating],
+    components: list[NDArray[np.float64]],
+    scale: NDArray[np.float64],
     signs: list[int],
     kx: NDArray[np.float64],
     nx: int,
     dx: float,
     NNNx: float,
     verbose: bool = False,
-) -> NDArray[np.floating]:
+) -> NDArray[np.float64]:
     """Interpolate, scale and x-transform all fields of a tile one column block at a time.
 
     ``components`` holds the spline coefficients of each variable (as :func:`_spline_components`) and
@@ -473,35 +477,23 @@ def _x_transform_fused(
     :func:`_interpolate_scaled` followed by :func:`_fitfit_x` per field, without materialising the
     interpolated tile.
     """
-    dtype = operator.dtype
-    single = dtype == np.float32
-    phix, psix, hhatx = _fitfit_axis(nx, dx, NNNx, float(kx[0]), -nx / 4.0, single)
+    phix, psix, hhatx = _fitfit_axis(nx, dx, NNNx, float(kx[0]), -nx / 4.0)
     n_level = components[0].shape[1] // 2
     n_fields = len(components) * n_level
     ny = scale.shape[1]
-    field_x = np.empty((n_fields, nx, ny), dtype=dtype)
+    field_x = np.empty((n_fields, nx, ny))
     for start in tqdm(range(0, ny, _FITFIT_BLOCK_X), desc="Trafalgar:", disable=(not verbose)):
         width = min(_FITFIT_BLOCK_X, ny - start)
-        block = np.empty((n_level, nx, width), dtype=np.complex64 if single else np.complex128)
+        block = np.empty((n_level, nx, width), dtype=np.complex128)
         for v, comp in enumerate(components):
-            _eval_scaled_spline(
-                operator.bx,
-                operator.ox,
-                operator.by,
-                operator.oy,
-                operator.ny,
-                comp,
-                scale,
-                start,
-                block.view(dtype).reshape(*block.shape, 2),
-            )
+            _scaled_block(operator, comp, scale, start, block)
             for i in range(n_level):
                 j = v * n_level + i
                 _fitfit_x_block(block[i], 0, width, signs[v], phix, psix, hhatx, field_x[j, :, start : start + width])
     return field_x
 
 
-def _x_transform_tile(args: tuple[Any, ...]) -> dict[str, NDArray[np.floating]]:
+def _x_transform_tile(args: tuple[Any, ...]) -> dict[str, NDArray[np.float64]]:
     """
     Evaluate the x-direction FFIT for a single wavenumber tile.
 
@@ -521,8 +513,7 @@ def _x_transform_tile(args: tuple[Any, ...]) -> dict[str, NDArray[np.floating]]:
     Returns
     -------
     dict of str to numpy.ndarray
-        Per variable, the x-transformed real fields with shape ``(n_levels, nx, ny)``
-        (``float32`` when ``single_precision``, else ``float64``).
+        Per variable, the x-transformed real fields with shape ``(n_levels, nx, ny)``.
     """
     (
         fluts,
@@ -539,9 +530,7 @@ def _x_transform_tile(args: tuple[Any, ...]) -> dict[str, NDArray[np.floating]]:
         sigmay,
         verbose,
         legacy,
-        single_precision,
     ) = args
-    real_dtype = np.float32 if single_precision else np.float64
 
     beta_lst = fluts.beta.values
     kz0_lst = fluts.kz0.values
@@ -567,9 +556,7 @@ def _x_transform_tile(args: tuple[Any, ...]) -> dict[str, NDArray[np.floating]]:
     kz0Tab = np.log(z0 * klen)
 
     operator = _spline_operator(beta_lst, np.log(kz0_lst), angleTab, kz0Tab, interpolation_order)
-    if operator is not None and single_precision:
-        operator = operator._replace(dtype=np.float32)
-    scale = (fuzz * force).astype(real_dtype)
+    scale = fuzz * force
 
     fields_x = {}
     tile_vars = [var for var in _SIGNS if var in fluts]
@@ -597,7 +584,7 @@ def _x_transform_tile(args: tuple[Any, ...]) -> dict[str, NDArray[np.floating]]:
         if operator is not None and scaled is None:
             fields = _interpolate_levels(operator, flut).reshape(*klen.shape, -1)
 
-        field_x = np.empty((len(fluts.level), nx, ny), dtype=real_dtype)
+        field_x = np.empty((len(fluts.level), nx, ny))
         for i in tqdm(range(len(fluts.level)), disable=(not verbose), leave=False):
             if scaled is not None:
                 field = scaled[i]
@@ -609,13 +596,13 @@ def _x_transform_tile(args: tuple[Any, ...]) -> dict[str, NDArray[np.floating]]:
                     beta_lst, np.log(kz0_lst), re, kx=interpolation_order, ky=interpolation_order
                 ).ev(angleTab, kz0Tab) + 1j * RectBivariateSpline(
                     beta_lst, np.log(kz0_lst), im, kx=interpolation_order, ky=interpolation_order
-                ).ev(angleTab, kz0Tab)
+                ).ev(
+                    angleTab, kz0Tab
+                )
 
             if scaled is None:
                 # Apply force spectrum and normalisation
                 field = field * scale
-                if single_precision:
-                    field = field.astype(np.complex64, copy=False)
 
             # Difference #3: legacy zeroes the DC component
             if legacy:
@@ -778,8 +765,8 @@ _FITFIT_BLOCK_Y = 128  # rows per y-transform block
 
 @functools.lru_cache(maxsize=64)
 def _fitfit_axis(
-    n: int, delta: float, NNN: float, k0: float, i0: float, single: bool = False
-) -> tuple[NDArray[np.complexfloating], NDArray[np.complexfloating], NDArray[np.complexfloating]]:
+    n: int, delta: float, NNN: float, k0: float, i0: float
+) -> tuple[NDArray[np.complex128], NDArray[np.complex128], NDArray[np.complex128]]:
     """Phase factors and chirp kernel for one axis of :func:`FITFIT` (cached; depends only on the grid)."""
     b = np.pi / (delta * n) / NNN
     ab = delta * b
@@ -792,10 +779,9 @@ def _fitfit_axis(
     i_ = np.arange(n + 1)
     aux = np.exp(-1j * ab / 2.0 * i_ * i_)
     hhat = sfft.ifft(np.r_[aux, aux[::-1][1:-1]])
-    out = tuple(arr.astype(np.complex64 if single else np.complex128) for arr in (phi, psi, hhat))
-    for arr in out:
+    for arr in (phi, psi, hhat):
         arr.flags.writeable = False
-    return cast("tuple[NDArray[np.complexfloating], NDArray[np.complexfloating], NDArray[np.complexfloating]]", out)
+    return cast("tuple[NDArray[np.complex128], NDArray[np.complex128], NDArray[np.complex128]]", (phi, psi, hhat))
 
 
 def FITFIT(
@@ -808,7 +794,7 @@ def FITFIT(
     ny: int,
     dy: float,
     NNN: tuple[int, int] = (4, 4),
-) -> NDArray[np.floating]:
+) -> NDArray[np.float64]:
     """
     Apply the 2D Fast Fourier Integral Transform to ``field``.
 
@@ -818,8 +804,7 @@ def FITFIT(
     Parameters
     ----------
     field : numpy.ndarray, shape (nx, ny)
-        Spectral field for one variable and one vertical level. ``complex64`` input is
-        transformed in single precision and returns ``float32``.
+        Spectral field for one variable and one vertical level.
     sign : int
         +1 → output is real part of FFIT; -1 → output is imaginary part.
     kx, ky : numpy.ndarray
@@ -840,11 +825,6 @@ def FITFIT(
     return _fitfit_y(_fitfit_x(field, sign, kx, nx, dx, NNNx), sign, ky, ny, dy, NNNy)
 
 
-def _is_single(dtype: np.dtype[Any]) -> bool:
-    """Single-precision input is transformed in single precision; anything else in double precision."""
-    return dtype in (np.complex64, np.float32)
-
-
 # ``roll(ifft(a)[::-1], 1) == fft(a) / N``, so the reversal and roll are folded into the transform
 # direction and the ``/ N`` cancels the ``* N`` that follows the second transform.
 # The 1D transforms are independent, so they are processed in blocks small enough to stay in cache.
@@ -856,7 +836,7 @@ def _is_single(dtype: np.dtype[Any]) -> bool:
 
 @njit(cache=True, nogil=True)
 def _chirp_pad_x(
-    phi: NDArray[np.complexfloating], field: NDArray[np.complexfloating], start: int, buf: NDArray[np.complexfloating]
+    phi: NDArray[np.complex128], field: NDArray[np.complexfloating], start: int, buf: NDArray[np.complex128]
 ) -> None:  # pragma: no cover - compiled
     """``buf = pad(phi[:, na] * field[:, start:start + w], 2n)`` along axis 0, as NumPy computes it."""
     n = field.shape[0]
@@ -873,12 +853,12 @@ def _chirp_pad_x(
 
 @njit(cache=True, nogil=True)
 def _chirp_pad_y(
-    phi: NDArray[np.complexfloating], field: NDArray[np.floating], start: int, buf: NDArray[np.complexfloating]
+    phi: NDArray[np.complex128], field: NDArray[np.float64], start: int, buf: NDArray[np.complex128]
 ) -> None:  # pragma: no cover - compiled
     """``buf = pad(phi[na, :] * field[start:start + h], 2n)`` along axis 1, as NumPy computes it (real ``field``
     promoted to complex with a zero imaginary part)."""
     n = field.shape[1]
-    zero = np.zeros(1, field.dtype)[0]
+    zero = 0.0
     for r in range(buf.shape[0]):
         for i in range(n):
             ar = phi[i].real
@@ -891,24 +871,23 @@ def _chirp_pad_y(
 
 @njit(cache=True, nogil=True)
 def _chirp_part(
-    psi: NDArray[np.complexfloating],
+    psi: NDArray[np.complex128],
     tmp: NDArray[np.complexfloating],
     axis: int,
-    factor: NDArray[np.floating],
+    factor: float,
     imag: bool,
-    out: NDArray[np.floating],
+    out: NDArray[np.float64],
 ) -> None:  # pragma: no cover - compiled
-    """``out = factor[0] * (psi * tmp[:n]).real`` (or ``.imag``) with ``psi`` along ``axis`` of ``out``, as NumPy
-    computes it; ``factor`` has ``out``'s dtype."""
-    f = factor[0]
+    """``out = factor * (psi * tmp[:n]).real`` (or ``.imag``) with ``psi`` along ``axis`` of ``out``, as NumPy
+    computes it."""
     for r in range(out.shape[0]):
         for c in range(out.shape[1]):
             a = psi[r] if axis == 0 else psi[c]
             b = tmp[r, c]
             if imag:
-                out[r, c] = f * _fma(a.real, b.imag, a.imag * b.real)
+                out[r, c] = factor * _fma(a.real, b.imag, a.imag * b.real)
             else:
-                out[r, c] = f * _fma(a.real, b.real, -(a.imag * b.imag))
+                out[r, c] = factor * _fma(a.real, b.real, -(a.imag * b.imag))
 
 
 def _fitfit_x_block(
@@ -916,10 +895,10 @@ def _fitfit_x_block(
     start: int,
     width: int,
     sign: int,
-    phix: NDArray[np.complexfloating],
-    psix: NDArray[np.complexfloating],
-    hhatx: NDArray[np.complexfloating],
-    out: NDArray[np.floating],
+    phix: NDArray[np.complex128],
+    psix: NDArray[np.complex128],
+    hhatx: NDArray[np.complex128],
+    out: NDArray[np.float64],
 ) -> None:
     """x-direction pass of :func:`FITFIT` for the columns ``start:start + width`` of ``field`` into ``out``."""
     nx = field.shape[0]
@@ -928,16 +907,15 @@ def _fitfit_x_block(
     ghatx = sfft.fft(buf, axis=0, overwrite_x=True)
     np.multiply(hhatx[:, na], ghatx, out=ghatx)
     tmpx = sfft.ifft(ghatx, axis=0, overwrite_x=True)
-    _chirp_part(psix, tmpx, 0, np.array([2.0 if sign == 1 else -2.0], out.dtype), sign != 1, out)
+    _chirp_part(psix, tmpx, 0, 2.0 if sign == 1 else -2.0, sign != 1, out)
 
 
 def _fitfit_x(
     field: NDArray[np.complexfloating], sign: int, kx: NDArray[np.float64], nx: int, dx: float, NNNx: float
-) -> NDArray[np.floating]:
+) -> NDArray[np.float64]:
     """x-direction pass of :func:`FITFIT`; returns the real intermediate field."""
-    single = _is_single(field.dtype)
-    phix, psix, hhatx = _fitfit_axis(nx, dx, NNNx, float(kx[0]), -nx / 4.0, single)
-    field_x = np.empty(field.shape, dtype=np.float32 if single else np.float64)
+    phix, psix, hhatx = _fitfit_axis(nx, dx, NNNx, float(kx[0]), -nx / 4.0)
+    field_x = np.empty(field.shape)
     for start in range(0, field.shape[1], _FITFIT_BLOCK_X):
         width = min(_FITFIT_BLOCK_X, field.shape[1] - start)
         _fitfit_x_block(field, start, width, sign, phix, psix, hhatx, field_x[:, start : start + width])
@@ -945,11 +923,11 @@ def _fitfit_x(
 
 
 def _fitfit_y(
-    field_x: NDArray[np.floating], sign: int, ky: NDArray[np.float64], ny: int, dy: float, NNNy: float
-) -> NDArray[np.floating]:
+    field_x: NDArray[np.float64], sign: int, ky: NDArray[np.float64], ny: int, dy: float, NNNy: float
+) -> NDArray[np.float64]:
     """y-direction pass of :func:`FITFIT`; linear in ``field_x``."""
-    phiy, psiy, hhaty = _fitfit_axis(ny, dy, NNNy, float(ky[0]), 0.0, _is_single(field_x.dtype))
-    field_y = np.empty(field_x.shape, dtype=field_x.dtype)
+    phiy, psiy, hhaty = _fitfit_axis(ny, dy, NNNy, float(ky[0]), 0.0)
+    field_y = np.empty(field_x.shape)
     for start in range(0, field_x.shape[0], _FITFIT_BLOCK_Y):
         height = min(_FITFIT_BLOCK_Y, field_x.shape[0] - start)
         buf = np.empty((height, 2 * ny), dtype=phiy.dtype)
@@ -957,5 +935,5 @@ def _fitfit_y(
         ghaty = sfft.fft(buf, axis=1, overwrite_x=True)
         np.multiply(hhaty[na, :], ghaty, out=ghaty)
         tmpy = sfft.ifft(ghaty, axis=1, overwrite_x=True)
-        _chirp_part(psiy, tmpy, 1, np.array([2.0], field_y.dtype), sign != 1, field_y[start : start + height])
+        _chirp_part(psiy, tmpy, 1, 2.0, sign != 1, field_y[start : start + height])
     return field_y

@@ -82,13 +82,11 @@ def _zmatmul6(m: ComplexArray, y: ComplexArray, out: ComplexArray) -> None:  # p
         out[i, 5] = complex(rr5 - ii5, ri5 + ir5)
 
 
-@njit(cache=True, nogil=True)
-def _blas_matmul(m: ComplexArray, y: ComplexArray, out: ComplexArray) -> None:  # pragma: no cover - compiled
-    np.dot(m, y, out)
-
-
 def _np_matmul(m: ComplexArray, y: ComplexArray, out: ComplexArray) -> None:
     np.dot(m, y, out)
+
+
+_blas_matmul = njit(cache=True, nogil=True)(_np_matmul)
 
 
 def _zmatmul6_matches_blas() -> bool:
@@ -135,10 +133,8 @@ d = "double,"
 db = c1 * 6
 
 
-@jit(
-    "complex128[:,:](int32,double,double, complex128[:,:],complex128[:,:], \
-        double,double,double,double,double,double,double)"
-)
+@jit("complex128[:,:](int32,double,double, complex128[:,:],complex128[:,:], \
+        double,double,double,double,double,double,double)")
 def rk2_integration_step(
     j: int,
     x: float,
@@ -184,46 +180,8 @@ def rk2_integration_step(
     return y2
 
 
-@jit("complex128[:,:](complex128[:,:],double,complex128[:,:],complex128[:,:])")
-def _rk2_step(m: ComplexArray, h: float, my: ComplexArray, y: ComplexArray) -> ComplexArray:
-    """:func:`rk2_integration_step` with the midpoint matrix ``m`` already computed."""
-    y_midpoint = y + h * my / 2
-    return y + h * np.dot(np.ascontiguousarray(m), y_midpoint)
-
-
 @jit
 def _update_forcing(
-    y: ComplexArray,
-    y2: ComplexArray,
-    y3: ComplexArray,
-    y4: ComplexArray,
-    x: float,
-    h: float,
-    j: int,
-    kz0: float,
-    lastkz: float,
-    zeta0: float,
-    cdivkL: float,
-    psi0: float,
-    dbx_const: ComplexArray,
-    dby_const: ComplexArray,
-    dbz_const: ComplexArray,
-    dbx_lin: ComplexArray,
-    dby_lin: ComplexArray,
-    dbz_lin: ComplexArray,
-) -> None:
-    """:func:`_update_forcing_kz`, computing the ``kz`` values."""
-    kz1 = kzm = kz2 = 0.0
-    if j == COORD_T:
-        kz1, kzm, kz2 = [t_to_s(x + s * h, zeta0, kz0, lastkz, psi0, cdivkL) for s in [0.0, 0.5, 1.0]]
-    _update_forcing_kz(
-        y, y2, y3, y4, x, h, j, kz0, lastkz, zeta0, cdivkL, psi0,
-        dbx_const, dby_const, dbz_const, dbx_lin, dby_lin, dbz_lin, kz1, kzm, kz2,
-    )  # fmt: skip
-
-
-@jit
-def _update_forcing_kz(
     y: ComplexArray,
     y2: ComplexArray,
     y3: ComplexArray,
@@ -306,11 +264,82 @@ def _update_forcing_kz(
             )
 
 
-@jit(
-    "Tuple((complex128[:,:],complex128[:,:]))(complex128[:,:], double,double,int64,\
+@jit
+def _rk2_into(
+    m: ComplexArray, h: float, my: ComplexArray, y: ComplexArray, ym: ComplexArray, out: ComplexArray
+) -> None:
+    """RK2 step with the midpoint matrix ``m`` given: ``out = y + h * (m @ (y + h * my / 2))``; ``ym`` is scratch."""
+    for r in range(y.shape[0]):
+        for c in range(y.shape[1]):
+            ym[r, c] = y[r, c] + h * my[r, c] / 2
+    _matmul(np.ascontiguousarray(m), ym, out)
+    for r in range(y.shape[0]):
+        for c in range(y.shape[1]):
+            out[r, c] = y[r, c] + h * out[r, c]
+
+
+@jit
+def _midpoint_step_into(
+    y: ComplexArray,
+    x: float,
+    h: float,
+    j: int,
+    kz_x: float,
+    kz0: float,
+    psi0: float,
+    lastkz: float,
+    zeta0: float,
+    cdivkL: float,
+    cosbeta: float,
+    sinbeta: float,
+    dbx_const: ComplexArray,
+    dby_const: ComplexArray,
+    dbz_const: ComplexArray,
+    dbx_lin: ComplexArray,
+    dby_lin: ComplexArray,
+    dbz_lin: ComplexArray,
+    work: ComplexArray,
+    y_upper: ComplexArray,
+    y_err: ComplexArray,
+) -> float:
+    """Modified midpoint step (see :func:`modified_midpoint_integration_step`) writing into ``y_upper``/``y_err``,
+    with scratch ``work`` of shape ``(7, *y.shape)``. ``kz_x`` is ``kz`` at ``x`` (``t_to_s(x, ...)`` for COORD_T);
+    returns ``kz`` at ``x + h`` for the next step, so each ``t_to_s`` is evaluated once."""
+    my, ym, y2, y3, y4, m, m_mid = work[0], work[1], work[2], work[3], work[4], work[5], work[6]
+    x_mid = x + h * 0.5
+    x_q1 = x + h * 0.5 * 0.5
+    x_q3 = x + h * 0.5 + h * 0.5 * 0.5
+    x_2 = x + 1.0 * h
+    if j == COORD_T:
+        kz_mid = t_to_s(x_mid, zeta0, kz0, lastkz, psi0, cdivkL)
+        kz_q1 = t_to_s(x_q1, zeta0, kz0, lastkz, psi0, cdivkL)
+        kz_q3 = t_to_s(x_q3, zeta0, kz0, lastkz, psi0, cdivkL)
+        kz_2 = t_to_s(x_2, zeta0, kz0, lastkz, psi0, cdivkL)
+    else:
+        kz_mid, kz_q1, kz_q3, kz_2 = x_mid, x_q1, x_q3, x_2
+    getM_into(m, j, x, kz_x, kz0, psi0, zeta0, cdivkL, cosbeta, sinbeta)
+    _matmul(m, y, my)
+    getM_into(m_mid, j, x_mid, kz_mid, kz0, psi0, zeta0, cdivkL, cosbeta, sinbeta)
+    _rk2_into(m_mid, h, my, y, ym, y2)
+    getM_into(m, j, x_q1, kz_q1, kz0, psi0, zeta0, cdivkL, cosbeta, sinbeta)
+    _rk2_into(m, h * 0.5, my, y, ym, y3)
+    _matmul(m_mid, y3, my)
+    getM_into(m, j, x_q3, kz_q3, kz0, psi0, zeta0, cdivkL, cosbeta, sinbeta)
+    _rk2_into(m, h * 0.5, my, y3, ym, y4)
+    for r in range(y.shape[0]):
+        for c in range(y.shape[1]):
+            y_upper[r, c] = B1 * y4[r, c] + B2 * y2[r, c]
+            y_err[r, c] = y_upper[r, c] - y4[r, c]
+    _update_forcing(
+        y, y2, y3, y4, x, h, j, kz0, lastkz, zeta0, cdivkL, psi0,
+        dbx_const, dby_const, dbz_const, dbx_lin, dby_lin, dbz_lin, kz_x, kz_mid, kz_2,
+    )  # fmt: skip
+    return kz_2
+
+
+@jit("Tuple((complex128[:,:],complex128[:,:]))(complex128[:,:], double,double,int64,\
     double,double,double,double,double,double,double,\
-    complex128[:],complex128[:],complex128[:],complex128[:],complex128[:],complex128[:])"
-)
+    complex128[:],complex128[:],complex128[:],complex128[:],complex128[:],complex128[:])")
 def modified_midpoint_integration_step(
     y: ComplexArray,
     x: float,
@@ -357,124 +386,15 @@ def modified_midpoint_integration_step(
         A tuple where the first element is the updated state matrix (y_upper)
         and the second element is an error estimate (y_err).
     """
-    # Compute matrix M and the product MY at y1, the initial point
-    m = getM(j, x, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
-    my = np.dot(np.ascontiguousarray(m), np.ascontiguousarray(y))
-
-    # M at the midpoint is shared by the full RK2 step and the second half step
-    m_mid = getM(j, x + h * 0.5, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
-
-    # Compute an estimate of y at x + h using RK2
-    y2 = _rk2_step(m_mid, h, my, y)
-
-    # Compute an estimate of y at x + h/2 using RK2
-    y3 = rk2_integration_step(j, x, h * 0.5, my, y, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
-
-    # Compute the product MY at y3, the midpoint
-    my = np.dot(np.ascontiguousarray(m_mid), np.ascontiguousarray(y3))
-
-    # Compute an estimate of y at x + h using RK2 from the midpoint
-    y4 = rk2_integration_step(j, x + h * 0.5, h * 0.5, my, y3, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta)
-
-    # Combine the two estimates to get the final output and error estimate
-    y_upper = B1 * y4 + B2 * y2  # eq. (17.3.4) in Numerical Recipes
-    y_err = y_upper - y4
-
-    _update_forcing(
-        y,
-        y2,
-        y3,
-        y4,
-        x,
-        h,
-        j,
-        kz0,
-        lastkz,
-        zeta0,
-        cdivkL,
-        psi0,
-        dbx_const,
-        dby_const,
-        dbz_const,
-        dbx_lin,
-        dby_lin,
-        dbz_lin,
-    )
-    return y_upper, y_err
-
-
-@jit
-def _rk2_into(
-    m: ComplexArray, h: float, my: ComplexArray, y: ComplexArray, ym: ComplexArray, out: ComplexArray
-) -> None:
-    """In-place :func:`_rk2_step`: ``out = y + h * (m @ (y + h * my / 2))``; ``ym`` is scratch."""
-    for r in range(y.shape[0]):
-        for c in range(y.shape[1]):
-            ym[r, c] = y[r, c] + h * my[r, c] / 2
-    _matmul(np.ascontiguousarray(m), ym, out)
-    for r in range(y.shape[0]):
-        for c in range(y.shape[1]):
-            out[r, c] = y[r, c] + h * out[r, c]
-
-
-@jit
-def _midpoint_step_into(
-    y: ComplexArray,
-    x: float,
-    h: float,
-    j: int,
-    kz_x: float,
-    kz0: float,
-    psi0: float,
-    lastkz: float,
-    zeta0: float,
-    cdivkL: float,
-    cosbeta: float,
-    sinbeta: float,
-    dbx_const: ComplexArray,
-    dby_const: ComplexArray,
-    dbz_const: ComplexArray,
-    dbx_lin: ComplexArray,
-    dby_lin: ComplexArray,
-    dbz_lin: ComplexArray,
-    work: ComplexArray,
-    y_upper: ComplexArray,
-    y_err: ComplexArray,
-) -> float:
-    """:func:`modified_midpoint_integration_step` writing into ``y_upper``/``y_err``, with scratch ``work`` of
-    shape ``(7, *y.shape)``. ``kz_x`` is ``kz`` at ``x`` (``t_to_s(x, ...)`` for COORD_T); returns ``kz`` at
-    ``x + h`` for the next step. Each ``t_to_s`` is evaluated once instead of in both ``getM`` and the forcing
-    update, with the same arguments, so the results are bitwise equal."""
-    my, ym, y2, y3, y4, m, m_mid = work[0], work[1], work[2], work[3], work[4], work[5], work[6]
-    x_mid = x + h * 0.5
-    x_q1 = x + h * 0.5 * 0.5
-    x_q3 = x + h * 0.5 + h * 0.5 * 0.5
-    x_2 = x + 1.0 * h
-    if j == COORD_T:
-        kz_mid = t_to_s(x_mid, zeta0, kz0, lastkz, psi0, cdivkL)
-        kz_q1 = t_to_s(x_q1, zeta0, kz0, lastkz, psi0, cdivkL)
-        kz_q3 = t_to_s(x_q3, zeta0, kz0, lastkz, psi0, cdivkL)
-        kz_2 = t_to_s(x_2, zeta0, kz0, lastkz, psi0, cdivkL)
-    else:
-        kz_mid, kz_q1, kz_q3, kz_2 = x_mid, x_q1, x_q3, x_2
-    getM_into(m, j, x, kz_x, kz0, psi0, zeta0, cdivkL, cosbeta, sinbeta)
-    _matmul(m, y, my)
-    getM_into(m_mid, j, x_mid, kz_mid, kz0, psi0, zeta0, cdivkL, cosbeta, sinbeta)
-    _rk2_into(m_mid, h, my, y, ym, y2)
-    getM_into(m, j, x_q1, kz_q1, kz0, psi0, zeta0, cdivkL, cosbeta, sinbeta)
-    _rk2_into(m, h * 0.5, my, y, ym, y3)
-    _matmul(m_mid, y3, my)
-    getM_into(m, j, x_q3, kz_q3, kz0, psi0, zeta0, cdivkL, cosbeta, sinbeta)
-    _rk2_into(m, h * 0.5, my, y3, ym, y4)
-    for r in range(y.shape[0]):
-        for c in range(y.shape[1]):
-            y_upper[r, c] = B1 * y4[r, c] + B2 * y2[r, c]
-            y_err[r, c] = y_upper[r, c] - y4[r, c]
-    _update_forcing_kz(
-        y, y2, y3, y4, x, h, j, kz0, lastkz, zeta0, cdivkL, psi0,
-        dbx_const, dby_const, dbz_const, dbx_lin, dby_lin, dbz_lin, kz_x, kz_mid, kz_2,
+    y_upper = np.empty(y.shape, dtype=np.complex128)
+    y_err = np.empty(y.shape, dtype=np.complex128)
+    work = np.empty((7, *y.shape), dtype=np.complex128)
+    kz_x = t_to_s(x, zeta0, kz0, lastkz, psi0, cdivkL) if j == COORD_T else x
+    _midpoint_step_into(
+        np.ascontiguousarray(y), x, h, j, kz_x, kz0, psi0, lastkz, zeta0, cdivkL, cosbeta, sinbeta,
+        dbx_const, dby_const, dbz_const, dbx_lin, dby_lin, dbz_lin, work, y_upper, y_err,
     )  # fmt: skip
-    return kz_2
+    return y_upper, y_err
 
 
 @jit(f"""Tuple(({c2}{d}{d}{d}))({c2}{d}{d}{db}{d}{c2}{d}int32,{d}{d}{d}{d}{d}{d}{d})""")
@@ -606,6 +526,28 @@ def integrate_between_stations(
 
 
 @jit
+def _store_node(
+    nodes: tuple[Any, ...],
+    y_lower: ComplexArray,
+    r_lower: ComplexArray,
+    db: ComplexArray,
+    log_s_lower: float,
+    log_s_upper: float,
+    y_upper: ComplexArray,
+) -> tuple[ComplexArray, ComplexArray]:
+    """Append the finished node to ``nodes`` and return the QR-factored ``(y_lower, r_lower)`` of the next one."""
+    ys, r_lowers, r_uppers, dbs, lowers, uppers = nodes
+    ys.append(y_lower.copy())
+    r_lowers.append(r_lower.copy())
+    dbs.append(db.copy())
+    lowers.append(log_s_lower)
+    uppers.append(log_s_upper)
+    y_next, r_next, r_upper = qr_decomposition(y_upper)
+    r_uppers.append(r_upper.copy())
+    return y_next, r_next
+
+
+@jit
 def _integrate_segment(
     y_lower: ComplexArray,
     r_lower: ComplexArray,
@@ -627,7 +569,6 @@ def _integrate_segment(
 ) -> tuple[ComplexArray, ComplexArray, ComplexArray, ComplexArray, float, float, float]:
     """Integrate one station segment, splitting off substations (appended to ``nodes``) like
     ``PreLUTGenerator.integrate_between_stations``. ``db`` rows are dbx/dby/dbz const then lin."""
-    ys, r_lowers, r_uppers, dbs, lowers, uppers = nodes
     while True:
         y_upper, h, s2, lastkz = integrate_between_stations(
             y_lower,
@@ -653,13 +594,7 @@ def _integrate_segment(
         )
         if s2 >= log_s_upper:
             return y_upper, y_lower, r_lower, db, log_s_lower, h, lastkz
-        ys.append(y_lower.copy())
-        r_lowers.append(r_lower.copy())
-        dbs.append(db.copy())
-        lowers.append(log_s_lower)
-        uppers.append(s2)
-        y_lower, r_lower, r_upper = qr_decomposition(y_upper)
-        r_uppers.append(r_upper.copy())
+        y_lower, r_lower = _store_node(nodes, y_lower, r_lower, db, log_s_lower, s2, y_upper)
         db = np.zeros_like(db)
         log_s_lower = s2
 
@@ -712,13 +647,7 @@ def integrate_all_stations(
     )  # fmt: skip
     completed = True
     for k in range(len(log_s_from)):
-        ys.append(y_lower.copy())
-        r_lowers.append(r_lower.copy())
-        dbs.append(db.copy())
-        lowers.append(log_s_lower)
-        uppers.append(log_s_upper)
-        y_lower, r_lower, r_upper = qr_decomposition(y_upper)
-        r_uppers.append(r_upper.copy())
+        y_lower, r_lower = _store_node(nodes, y_lower, r_lower, db, log_s_lower, log_s_upper, y_upper)
         db = np.zeros_like(db)
         log_s_lower = log_s_from[k]
         log_s_upper = log_s_to[k]
@@ -731,12 +660,7 @@ def integrate_all_stations(
             completed = False
             break
     if completed and s_tr < log_smaxx:
-        ys.append(y_lower.copy())
-        r_lowers.append(r_lower.copy())
-        dbs.append(db.copy())
-        lowers.append(log_s_lower)
-        uppers.append(log_s_upper)
-        r_uppers.append(qr_decomposition(y_upper)[2].copy())
+        _store_node(nodes, y_lower, r_lower, db, log_s_lower, log_s_upper, y_upper)
 
     n = len(ys)
     y_out = np.empty((n, n_eq, n_eq), dtype=np.complex128)
