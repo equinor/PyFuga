@@ -163,7 +163,7 @@ def getM_into(
     sinbeta: float,
 ) -> None:
     """:func:`getM` written into ``m``, with ``kz`` (``= t_to_s(t, ...)`` for COORD_T, ``= t`` for COORD_S)
-    already computed. Same arithmetic, so the result is bitwise equal."""
+    already computed."""
     u = t / KAPPA if j == COORD_T else u0(kz, kz0, get_psi(zeta0, kz, cdivkL), psi0)
     K_star, dKstar_dz, K_star_cos, K_star_sin = compute_kstar_params(zeta0, kz, cdivkL, cosbeta, sinbeta)
     for r in range(6):

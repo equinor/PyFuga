@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 from numpy.testing import assert_array_almost_equal, assert_array_equal
 
-import pyfuga.flut as flut_module
 from pyfuga.constants import UVW_LT
 from pyfuga.file_readers import read_lut_file
 from pyfuga.flut import (
@@ -12,7 +11,6 @@ from pyfuga.flut import (
     SolveLayersJob,
     _iter_solve_layer_jobs,
     _select_prelut_arrays,
-    _sweep,
     solve_layer,
     solve_layers,
 )
@@ -201,50 +199,15 @@ def test_make_lut_serial_does_not_construct_pool(monkeypatch):
     assert called["pool"] == 0
 
 
-def test_make_lut_compiled_runs_in_process(monkeypatch):
+def test_make_lut_runs_in_process_for_any_n_cpu(monkeypatch):
     def fake_pool(*args, **kwargs):
-        raise AssertionError("Pool should not be constructed when the kernels are compiled")
+        raise AssertionError("Pool should not be constructed: the compiled jobs run in the calling process")
 
     monkeypatch.setattr(mp.get_context("spawn"), "Pool", fake_pool)
-    monkeypatch.setattr(flut_module, "_up_sweep", flut_module._up_sweep_nb)
 
     preluts = expose_new_names(PreLUTs.from_netcdf(tfp + "preLUTs_Zeta0=0.00E+00_1_2.nc"))
     gen = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False)
     gen.make_lut(z0=0.00001, low_level_out=314, high_level_out=314, luts=["UL"], n_cpu=2)
-
-
-def test_sweep_same_bits_for_strided_and_contiguous_y():
-    # In-process jobs get strided views of the preLUT table; worker processes get C-ordered pickled copies.
-    rng = np.random.default_rng(0)
-
-    def rand(*shape):
-        return rng.standard_normal(shape) + 1j * rng.standard_normal(shape)
-
-    n = 30
-    y, r_upper, r_lower, f_up, f_down = rand(n, 6, 6), rand(n, 6, 6), rand(n, 6, 6), rand(n, 3), rand(n, 3)
-    strided = np.ascontiguousarray(y.transpose(0, 2, 1)).transpose(0, 2, 1)
-    out = [_sweep(r_upper, r_lower, q, f_up, f_down, 3) for q in (y, strided)]
-    assert out[0].tobytes() == out[1].tobytes()
-
-
-def test_make_lut_parallel_uses_spawn_context(monkeypatch):
-    monkeypatch.setattr(flut_module, "_up_sweep", flut_module._up_sweep_np)  # NumPy fallback: worker processes
-    real_get_context = mp.get_context
-    seen = {"arg": None}
-
-    def spy_get_context(arg=None):
-        seen["arg"] = arg
-        return real_get_context(arg)
-
-    monkeypatch.setattr(mp, "get_context", spy_get_context)
-
-    preluts = PreLUTs.from_netcdf(tfp + "preLUTs_Zeta0=0.00E+00_1_2.nc")
-    preluts = expose_new_names(preluts)
-
-    gen = FourierLUTGenerator(preluts, zhub=70, diameter=80, zi=400, verbose=False)
-    gen.make_lut(z0=0.00001, low_level_out=314, high_level_out=314, luts=["UL"], n_cpu=2)
-
-    assert seen["arg"] == "spawn"
 
 
 def test_make_lut_clamps_low_level_out():

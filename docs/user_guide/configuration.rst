@@ -189,9 +189,8 @@ recommended for production runs.
 
 Number of parallel workers used in each LUT pipeline stage when you call
 :func:`pyfuga.get_luts`. Compiled PreLUT generation (``jit=True``) uses threads
-and otherwise processes. Fourier LUTs run in the calling process when their
-compiled kernels are available (each job then takes well under a millisecond,
-so the ``fluts`` worker count is not used) and otherwise use processes.
+and otherwise processes. Fourier LUTs run in the calling process (each compiled
+job takes well under a millisecond, so the ``fluts`` worker count is not used).
 Trafalgar uses threads to avoid copying large tile outputs between processes.
 Tile results are accumulated in their original order.
 

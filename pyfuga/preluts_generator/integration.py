@@ -11,9 +11,9 @@ from numpy.typing import NDArray
 
 import pyfuga.utils as utils
 from pyfuga.common import get_phi, get_phi_inverse
-from pyfuga.constants import COORD_S, COORD_T, KAPPA, Y_NORM_THRESHOLD
+from pyfuga.constants import COORD_S, COORD_T, KAPPA, N_EQ, Y_NORM_THRESHOLD
 from pyfuga.typing import ComplexArray
-from pyfuga.utils import fma, jit
+from pyfuga.utils import jit
 
 from .matrices import getM, getM_into
 from .nodes import qr_decomposition
@@ -42,79 +42,26 @@ def _get_new_h2_impl() -> Callable[[float, float, ComplexArray, ComplexArray], f
 get_new_h2 = _get_new_h2_impl()
 
 
-@njit(cache=True, nogil=True)
-def _zmatmul6(m: ComplexArray, y: ComplexArray, out: ComplexArray) -> None:  # pragma: no cover - compiled
-    """``out = m @ y`` for 6x6 complex matrices with the operation order of OpenBLAS's ``zgemm`` (columns 0-3:
-    one fma chain over k; columns 4-5: separate re/im product sums), skipping the exact zeros of the sparse ``m``
-    (they add nothing to an fma chain), so the result is bitwise equal to ``np.dot`` but much faster."""
-    for i in range(6):
-        # 16 independent accumulators (columns unrolled) so the fma chains overlap
-        re0 = re1 = re2 = re3 = im0 = im1 = im2 = im3 = 0.0
-        rr4 = ii4 = ri4 = ir4 = rr5 = ii5 = ri5 = ir5 = 0.0
-        for k in range(6):
+@njit(cache=True, nogil=True, fastmath={"contract", "reassoc", "nsz"})
+def _matmul_compiled(m: ComplexArray, y: ComplexArray, out: ComplexArray) -> None:  # pragma: no cover - compiled
+    """``out = m @ y`` for the ``N_EQ`` x ``N_EQ`` system, skipping the exact zeros of the sparse matrix ``m``."""
+    for i in range(N_EQ):
+        for c in range(N_EQ):
+            out[i, c] = 0
+        for k in range(N_EQ):
             xr = m[i, k].real
             xi = m[i, k].imag
-            if xr == 0.0 and xi == 0.0:
-                continue
-            nxi = -xi
-            b0, b1, b2, b3, b4, b5 = y[k, 0], y[k, 1], y[k, 2], y[k, 3], y[k, 4], y[k, 5]
-            re0 = fma(nxi, b0.imag, fma(xr, b0.real, re0))
-            im0 = fma(xi, b0.real, fma(xr, b0.imag, im0))
-            re1 = fma(nxi, b1.imag, fma(xr, b1.real, re1))
-            im1 = fma(xi, b1.real, fma(xr, b1.imag, im1))
-            re2 = fma(nxi, b2.imag, fma(xr, b2.real, re2))
-            im2 = fma(xi, b2.real, fma(xr, b2.imag, im2))
-            re3 = fma(nxi, b3.imag, fma(xr, b3.real, re3))
-            im3 = fma(xi, b3.real, fma(xr, b3.imag, im3))
-            rr4 = fma(xr, b4.real, rr4)
-            ii4 = fma(xi, b4.imag, ii4)
-            ri4 = fma(xr, b4.imag, ri4)
-            ir4 = fma(xi, b4.real, ir4)
-            rr5 = fma(xr, b5.real, rr5)
-            ii5 = fma(xi, b5.imag, ii5)
-            ri5 = fma(xr, b5.imag, ri5)
-            ir5 = fma(xi, b5.real, ir5)
-        out[i, 0] = complex(re0, im0)
-        out[i, 1] = complex(re1, im1)
-        out[i, 2] = complex(re2, im2)
-        out[i, 3] = complex(re3, im3)
-        out[i, 4] = complex(rr4 - ii4, ri4 + ir4)
-        out[i, 5] = complex(rr5 - ii5, ri5 + ir5)
+            if xr != 0.0 or xi != 0.0:
+                for c in range(N_EQ):
+                    b = y[k, c]
+                    out[i, c] += complex(xr * b.real - xi * b.imag, xr * b.imag + xi * b.real)
 
 
 def _np_matmul(m: ComplexArray, y: ComplexArray, out: ComplexArray) -> None:
     np.dot(m, y, out)
 
 
-_blas_matmul = njit(cache=True, nogil=True)(_np_matmul)
-
-
-def _zmatmul6_matches_blas() -> bool:
-    """True if :func:`_zmatmul6` reproduces this machine's BLAS bit for bit (the operation order is
-    BLAS-kernel specific), checked on random dense and sparse matrices spanning many magnitudes."""
-    rng = np.random.default_rng(0)
-    out_blas = np.empty((6, 6), dtype=np.complex128)
-    out_kernel = np.empty_like(out_blas)
-    for t in range(400):
-        m, y = (
-            np.asarray(
-                (rng.standard_normal((6, 6)) + 1j * rng.standard_normal((6, 6))) * 10.0 ** rng.uniform(-6, 6, (6, 6)),
-                dtype=np.complex128,
-            )
-            for _ in range(2)
-        )
-        if t % 2:
-            m[rng.random((6, 6)) < 0.6] = 0
-        _blas_matmul(m, y, out_blas)
-        _zmatmul6(m, y, out_kernel)
-        if out_blas.tobytes() != out_kernel.tobytes():
-            return False
-    return True
-
-
-# Product of the 6x6 system matrix with the state. The fast kernel is only used when compiled and when it matches
-# the BLAS that np.dot would call (otherwise np.dot itself is used), so results never change.
-_matmul = _zmatmul6 if utils.numba_jit and _zmatmul6_matches_blas() else _blas_matmul if utils.numba_jit else _np_matmul
+_matmul = _matmul_compiled if utils.numba_jit else _np_matmul
 
 # 2nd order Runge-Kutta coefficients
 B1 = 4.0 / 3.0

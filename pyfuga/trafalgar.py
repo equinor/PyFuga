@@ -39,12 +39,10 @@ from numba import njit
 from numpy import newaxis as na
 from numpy.typing import NDArray
 from scipy import fft as sfft
-from scipy import sparse
 from scipy.interpolate import BSpline, RectBivariateSpline, make_interp_spline
 from tqdm import tqdm
 
 from pyfuga.constants import KAPPA
-from pyfuga.utils import fma as _fma
 from pyfuga.utils import normalise_n_cpu_workers, threading_map
 
 M_PI = 3.141592653589793
@@ -257,25 +255,13 @@ class _SplineOperator(NamedTuple):
     cx: NDArray[np.float64]
     cy: NDArray[np.float64]
 
-    def matrix(self) -> sparse.csr_matrix:
-        """The design matrix ``W`` as CSR."""
-        n, m = self.bx.shape
-        data = (self.bx.reshape(n, m, 1) * self.by.reshape(n, 1, m)).reshape(n, m * m)
-        ix = self.ox[:, na] + np.arange(m)
-        iy = self.oy[:, na] + np.arange(m)
-        cols = (ix.reshape(n, m, 1) * self.ny + iy.reshape(n, 1, m)).reshape(n, m * m)
-        indptr = np.arange(0, n * m * m + 1, m * m)
-        return sparse.csr_matrix((data.ravel(), cols.ravel(), indptr), shape=(n, self.nx * self.ny))
-
 
 @njit(cache=True, nogil=True)
 def _bspline_basis(
     x: NDArray[np.float64], t: NDArray[np.float64], k: int, vals: NDArray[np.float64], offsets: NDArray[np.int64]
 ) -> None:  # pragma: no cover - compiled
-    """Non-zero B-spline values at in-range ``x``, as SciPy's ``BSpline.design_matrix`` (FITPACK ``data_matrix``).
-
-    Same interval search and de Boor recursion as SciPy's C++, so the values match bit for bit.
-    """
+    """Non-zero B-spline values at in-range ``x``, as SciPy's ``BSpline.design_matrix`` (FITPACK ``data_matrix``):
+    the same interval search and de Boor recursion."""
     nt = t.shape[0] - k - 1
     h = np.empty(k + 1)
     hh = np.empty(k + 1)
@@ -340,28 +326,12 @@ def _spline_operator(
     return _SplineOperator(bx, ox, by, oy, len(x), len(y), sx.c, sy.c)
 
 
-def _spline_coefficients(operator: _SplineOperator, flut: NDArray[Any]) -> NDArray[Any]:
-    """Spline coefficients of every level of ``flut`` (shape ``(nx, ny, nlevel)``), one column per level."""
+def _spline_components(operator: _SplineOperator, flut: NDArray[np.complex128]) -> NDArray[np.float64]:
+    """Spline coefficients of every level of ``flut`` (shape ``(nx, ny, nlevel)``) as interleaved real/imaginary
+    columns, on which the real spline weights act independently."""
     coef = np.einsum("ab,bcl,dc->adl", operator.cx, flut, operator.cy, optimize=True)
-    return cast("NDArray[Any]", coef.reshape(-1, flut.shape[2]))
-
-
-def _as_components(coef: NDArray[Any]) -> NDArray[np.float64] | None:
-    """Finite complex coefficients as interleaved real/imaginary columns (real weights act on them
-    independently); ``None`` if they need the generic path."""
-    if coef.dtype != np.complex128 or not np.isfinite(coef).all():
-        return None
-    return np.ascontiguousarray(coef).view(np.float64)
-
-
-def _interpolate_levels(operator: _SplineOperator, flut: NDArray[np.complex128]) -> NDArray[np.complex128]:
-    """Evaluate the spline of every level of ``flut`` (shape ``(nx, ny, nlevel)``) at the operator's points."""
-    w = operator.matrix()
-    coef = _spline_coefficients(operator, flut)
-    components = _as_components(coef)
-    if components is not None:
-        return cast("NDArray[np.complex128]", (w @ components).view(np.complex128))
-    return cast("NDArray[np.complex128]", w @ coef)
+    coef = np.ascontiguousarray(coef.reshape(-1, flut.shape[2]), dtype=np.complex128)
+    return cast("NDArray[np.float64]", coef.view(np.float64))
 
 
 @njit(cache=True, nogil=True)
@@ -376,53 +346,33 @@ def _eval_scaled_spline(
     start: int,
     out: NDArray[np.float64],
 ) -> None:  # pragma: no cover - compiled
-    """Fused ``(W @ components)`` and complex scaling for the columns ``start:start + width`` of ``scale``;
-    ``out`` is the real view ``(nlevel, nrow, width, 2)``.
+    """Evaluate the spline of every level at the points of the columns ``start:start + width`` of ``scale`` and
+    multiply by ``scale``; ``out`` is the real view ``(nlevel, nrow, width, 2)``.
 
-    Each weight is formed as in :meth:`_SplineOperator.matrix`. Each output is summed over the row's
-    non-zeros in CSR order starting from zero, and scaled as ``(re + i im) * (s + 0i)``, matching SciPy's
-    sparse product followed by NumPy's complex multiply bit for bit.
+    Point ``p`` has the weights ``bx[p, a] * by[p, b]`` on the coefficient rows ``(ox[p] + a) * ny + oy[p] + b``.
     """
     m = bx.shape[1]
-    zero = 0.0
     width = out.shape[2]
     nq = components.shape[1]
     # One row of accumulators, so each level is then stored as a contiguous run
     rowacc = np.empty((width, nq))
-    ws = np.empty(m)
     for r in range(out.shape[1]):
         for c in range(width):
             p = r * scale.shape[1] + start + c
             acc = rowacc[c]
-            acc[:] = zero
+            acc[:] = 0.0
             for a in range(m):
-                for b in range(m):
-                    ws[b] = bx[p, a] * by[p, b]
                 base = (ox[p] + a) * ny + oy[p]
-                if m == 4:  # cubic: the four terms of a row in one pass, same summation order
-                    w0, w1, w2, w3 = ws[0], ws[1], ws[2], ws[3]
-                    r0, r1, r2, r3 = components[base], components[base + 1], components[base + 2], components[base + 3]
+                for b in range(m):
+                    w = bx[p, a] * by[p, b]
+                    row = components[base + b]
                     for q in range(nq):
-                        acc[q] = (((acc[q] + w0 * r0[q]) + w1 * r1[q]) + w2 * r2[q]) + w3 * r3[q]
-                else:
-                    for b in range(m):
-                        w = ws[b]
-                        row = components[base + b]
-                        for q in range(nq):
-                            acc[q] += w * row[q]
+                        acc[q] += w * row[q]
         for level in range(out.shape[0]):
             for c in range(width):
                 s = scale[r, start + c]
-                re = rowacc[c, 2 * level]
-                im = rowacc[c, 2 * level + 1]
-                out[level, r, c, 0] = re * s - im * zero
-                out[level, r, c, 1] = re * zero + im * s
-
-
-def _spline_components(operator: _SplineOperator, flut: NDArray[np.complex128]) -> NDArray[np.float64] | None:
-    """Spline coefficients of every level of ``flut`` as interleaved real/imaginary columns; ``None`` if they
-    need the generic (non-finite) path."""
-    return _as_components(_spline_coefficients(operator, flut))
+                out[level, r, c, 0] = rowacc[c, 2 * level] * s
+                out[level, r, c, 1] = rowacc[c, 2 * level + 1] * s
 
 
 def _scaled_block(
@@ -448,12 +398,10 @@ def _scaled_block(
 
 def _interpolate_scaled(
     operator: _SplineOperator, flut: NDArray[np.complex128], scale: NDArray[np.float64]
-) -> NDArray[np.complex128] | None:
-    """Return ``_interpolate_levels(operator, flut)`` times ``scale`` (2D), level-major with ``scale``'s shape
-    prepended by the level count; ``None`` if the coefficients need the generic (non-finite) path."""
+) -> NDArray[np.complex128]:
+    """Spline of every level of ``flut`` at the operator's points times ``scale`` (2D), level-major with
+    ``scale``'s shape prepended by the level count."""
     components = _spline_components(operator, flut)
-    if components is None:
-        return None
     out = np.empty((flut.shape[2], *scale.shape), dtype=np.complex128)
     _scaled_block(operator, components, scale, 0, out)
     return out
@@ -473,7 +421,7 @@ def _x_transform_fused(
     """Interpolate, scale and x-transform all fields of a tile one column block at a time.
 
     ``components`` holds the spline coefficients of each variable (as :func:`_spline_components`) and
-    ``signs`` the sign of each variable. Returns ``(n_variables * n_levels, nx, ny)``, bitwise equal to
+    ``signs`` the sign of each variable. Returns ``(n_variables * n_levels, nx, ny)``, the same as
     :func:`_interpolate_scaled` followed by :func:`_fitfit_x` per field, without materialising the
     interpolated tile.
     """
@@ -561,13 +509,11 @@ def _x_transform_tile(args: tuple[Any, ...]) -> dict[str, NDArray[np.float64]]:
     fields_x = {}
     tile_vars = [var for var in _SIGNS if var in fluts]
     if operator is not None and not legacy:
-        maybe = [_spline_components(operator, fluts[var].values) for var in tile_vars]
-        components = [c for c in maybe if c is not None]
-        if len(components) == len(maybe):
-            n_level = len(fluts.level)
-            signs = [_SIGNS[var] for var in tile_vars]
-            stacked = _x_transform_fused(operator, components, scale, signs, kx, nx, dx, NNNx, verbose)
-            return {var: stacked[j * n_level : (j + 1) * n_level] for j, var in enumerate(tile_vars)}
+        components = [_spline_components(operator, fluts[var].values) for var in tile_vars]
+        n_level = len(fluts.level)
+        signs = [_SIGNS[var] for var in tile_vars]
+        stacked = _x_transform_fused(operator, components, scale, signs, kx, nx, dx, NNNx, verbose)
+        return {var: stacked[j * n_level : (j + 1) * n_level] for j, var in enumerate(tile_vars)}
 
     for var, sign in tqdm(_SIGNS.items(), desc="Trafalgar:", disable=(not verbose)):
         if var not in fluts:
@@ -581,15 +527,11 @@ def _x_transform_tile(args: tuple[Any, ...]) -> dict[str, NDArray[np.float64]]:
 
         # Interpolation and the force/normalisation scaling, fused where possible
         scaled = None if operator is None else _interpolate_scaled(operator, flut, scale)
-        if operator is not None and scaled is None:
-            fields = _interpolate_levels(operator, flut).reshape(*klen.shape, -1)
 
         field_x = np.empty((len(fluts.level), nx, ny))
         for i in tqdm(range(len(fluts.level)), disable=(not verbose), leave=False):
             if scaled is not None:
                 field = scaled[i]
-            elif operator is not None:
-                field = fields[:, :, i]
             else:
                 re, im = flut[:, :, i].real, flut[:, :, i].imag
                 field = RectBivariateSpline(
@@ -599,8 +541,6 @@ def _x_transform_tile(args: tuple[Any, ...]) -> dict[str, NDArray[np.float64]]:
                 ).ev(
                     angleTab, kz0Tab
                 )
-
-            if scaled is None:
                 # Apply force spectrum and normalisation
                 field = field * scale
 
@@ -830,22 +770,15 @@ def FITFIT(
 # The 1D transforms are independent, so they are processed in blocks small enough to stay in cache.
 
 
-# NumPy's SIMD complex multiply ``a * b`` computes ``re = fma(ar, br, -(ai * bi))`` and
-# ``im = fma(ar, bi, ai * br)``; the kernels below repeat that so their results are bitwise identical.
-
-
 @njit(cache=True, nogil=True)
 def _chirp_pad_x(
     phi: NDArray[np.complex128], field: NDArray[np.complexfloating], start: int, buf: NDArray[np.complex128]
 ) -> None:  # pragma: no cover - compiled
-    """``buf = pad(phi[:, na] * field[:, start:start + w], 2n)`` along axis 0, as NumPy computes it."""
+    """``buf = pad(phi[:, na] * field[:, start:start + w], 2n)`` along axis 0."""
     n = field.shape[0]
     for i in range(n):
-        ar = phi[i].real
-        ai = phi[i].imag
         for c in range(buf.shape[1]):
-            b = field[i, start + c]
-            buf[i, c] = complex(_fma(ar, b.real, -(ai * b.imag)), _fma(ar, b.imag, ai * b.real))
+            buf[i, c] = phi[i] * field[i, start + c]
     for i in range(n, buf.shape[0]):
         for c in range(buf.shape[1]):
             buf[i, c] = 0
@@ -855,16 +788,11 @@ def _chirp_pad_x(
 def _chirp_pad_y(
     phi: NDArray[np.complex128], field: NDArray[np.float64], start: int, buf: NDArray[np.complex128]
 ) -> None:  # pragma: no cover - compiled
-    """``buf = pad(phi[na, :] * field[start:start + h], 2n)`` along axis 1, as NumPy computes it (real ``field``
-    promoted to complex with a zero imaginary part)."""
+    """``buf = pad(phi[na, :] * field[start:start + h], 2n)`` along axis 1."""
     n = field.shape[1]
-    zero = 0.0
     for r in range(buf.shape[0]):
         for i in range(n):
-            ar = phi[i].real
-            ai = phi[i].imag
-            b = field[start + r, i]
-            buf[r, i] = complex(_fma(ar, b, -(ai * zero)), _fma(ar, zero, ai * b))
+            buf[r, i] = phi[i] * field[start + r, i]
         for i in range(n, buf.shape[1]):
             buf[r, i] = 0
 
@@ -878,16 +806,11 @@ def _chirp_part(
     imag: bool,
     out: NDArray[np.float64],
 ) -> None:  # pragma: no cover - compiled
-    """``out = factor * (psi * tmp[:n]).real`` (or ``.imag``) with ``psi`` along ``axis`` of ``out``, as NumPy
-    computes it."""
+    """``out = factor * (psi * tmp[:n]).real`` (or ``.imag``) with ``psi`` along ``axis`` of ``out``."""
     for r in range(out.shape[0]):
         for c in range(out.shape[1]):
-            a = psi[r] if axis == 0 else psi[c]
-            b = tmp[r, c]
-            if imag:
-                out[r, c] = factor * _fma(a.real, b.imag, a.imag * b.real)
-            else:
-                out[r, c] = factor * _fma(a.real, b.real, -(a.imag * b.imag))
+            v = (psi[r] if axis == 0 else psi[c]) * tmp[r, c]
+            out[r, c] = factor * (v.imag if imag else v.real)
 
 
 def _fitfit_x_block(

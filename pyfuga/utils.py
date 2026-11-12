@@ -42,10 +42,7 @@ except ImportError:  # pragma: no cover - trivial no-op fallback
         return func
 
 
-from llvmlite import ir  # type: ignore[import-untyped]
-from numba import types
 from numba.core.decorators import njit  # type: ignore[import-untyped]
-from numba.extending import intrinsic
 
 debugging = sys.gettrace() is not None
 numba_jit = False  # and not debugging
@@ -105,22 +102,6 @@ def compile(jit: bool = True) -> None:
                 importlib.reload(mod)
         if numba_jit:
             print(f"JIT compiled in {time.time() - t}s")
-
-
-def _fma_typer(typingctx: Any, a: Any, b: Any, c: Any) -> Any:  # pragma: no cover - compiled
-    """Fused ``a * b + c`` with a single rounding (LLVM ``fma``)."""
-    if not (isinstance(a, types.Float) and a == b == c):
-        return None
-
-    def codegen(context: Any, builder: Any, signature: Any, args: Any) -> Any:
-        ty = context.get_value_type(signature.return_type)
-        fn = builder.module.declare_intrinsic("llvm.fma", [ty], ir.FunctionType(ty, [ty, ty, ty]))
-        return builder.call(fn, args)
-
-    return a(a, b, c), codegen
-
-
-fma: Any = intrinsic(_fma_typer)
 
 
 def validate_n_cpu(n_cpu: int | None) -> None:
