@@ -132,7 +132,7 @@ def _iter_solve_layer_jobs(
     prelut_iter = _select_prelut_arrays(preluts, beta_kz0_lst, names) if prelut_lst is None else iter(prelut_lst)
     for (beta, kz0), prelut in zip(beta_kz0_lst, prelut_iter, strict=True):
         yield SolveLayersJob(
-            prelut=_PreLUTArrays(prelut.ds, {n: np.asarray(prelut[n]) for n in names}),
+            prelut=prelut,
             beta=beta,
             kz0=kz0,
             z0=z0,

@@ -584,8 +584,8 @@ def integrate_all_stations(
     uppers.pop()
     nodes = (ys, r_lowers, r_uppers, dbs, lowers, uppers)
 
-    r_lower = np.eye(n_eq, dtype=np.complex128)
-    db = np.zeros((6, n_eq), dtype=np.complex128)
+    r_lower: ComplexArray = np.eye(n_eq, dtype=np.complex128)
+    db: ComplexArray = np.zeros((6, n_eq), dtype=np.complex128)
     log_s_lower = 0.0
     log_s_upper = ds
     y_upper, y_lower, r_lower, db, log_s_lower, h, lastkz = _integrate_segment(
